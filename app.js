@@ -52,10 +52,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // Async function to load either from Firebase or LocalStorage
 async function loadDatabase() {
+    let config = null;
     const savedConfig = localStorage.getItem('firebase_config');
+    
     if (savedConfig) {
         try {
-            const config = JSON.parse(savedConfig);
+            config = JSON.parse(savedConfig);
+        } catch (e) {
+            console.error(e);
+        }
+    } else if (typeof DEFAULT_FIREBASE_CONFIG !== 'undefined' && DEFAULT_FIREBASE_CONFIG !== null) {
+        config = DEFAULT_FIREBASE_CONFIG;
+    }
+
+    if (config) {
+        try {
             // Check if Firebase is loaded via SDK script
             if (typeof firebase !== 'undefined') {
                 // Initialize app if not already initialized
