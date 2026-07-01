@@ -38,6 +38,7 @@ let firebaseActive = false;
 
 // Initialize Application
 document.addEventListener('DOMContentLoaded', async () => {
+    window.sessionStartTimestamp = Date.now();
     // Set default month selector value
     monthSelector.value = currentMonth;
     
@@ -100,6 +101,48 @@ async function loadDatabase() {
                 
                 // Update UI badge & disconnect button
                 updateFirebaseUI(true, config);
+
+                // Real-time Firestore tickets listener for immediate technical alarms
+                db.collection('tickets').onSnapshot(snapshot => {
+                    let hasNewTicket = false;
+                    snapshot.docChanges().forEach(change => {
+                        const ticket = change.doc.data();
+                        if (change.type === 'added') {
+                            const isNew = ticket.createdAt && ticket.createdAt > (window.sessionStartTimestamp || Date.now() - 5000);
+                            const alreadyExists = state.tickets.some(t => t.id === ticket.id);
+                            if (isNew && !alreadyExists) {
+                                hasNewTicket = true;
+                            }
+                            
+                            // Upsert ticket
+                            const idx = state.tickets.findIndex(t => t.id === ticket.id);
+                            if (idx !== -1) {
+                                state.tickets[idx] = ticket;
+                            } else {
+                                state.tickets.push(ticket);
+                            }
+                        } else if (change.type === 'modified') {
+                            const idx = state.tickets.findIndex(t => t.id === ticket.id);
+                            if (idx !== -1) {
+                                const prevStatus = state.tickets[idx].status;
+                                state.tickets[idx] = ticket;
+                                if (prevStatus !== ticket.status && ticket.status !== 'no-visto') {
+                                    showToast(`Área Técnica: El pedido de ${ticket.clientName || 'Cliente'} cambió a [${ticket.status.toUpperCase()}]`, 'info');
+                                }
+                            }
+                        } else if (change.type === 'removed') {
+                            state.tickets = state.tickets.filter(t => t.id !== ticket.id);
+                        }
+                    });
+                    
+                    if (hasNewTicket) {
+                        playTechnicalAlertSound();
+                        showToast('🔔 ¡NUEVO PEDIDO DE SERVICIO TÉCNICO REGISTRADO!', 'warning');
+                    }
+                    
+                    saveToLocalStorage();
+                    renderApp();
+                });
                 return;
             }
         } catch (err) {
@@ -123,6 +166,7 @@ async function fetchCloudData() {
         state.readings = await fetchCollection('readings');
         state.maintenance = await fetchCollection('maintenance') || [];
         state.users = await fetchCollection('users');
+        state.tickets = await fetchCollection('tickets') || [];
         
         // Load company logo if stored in Firestore
         const logoDoc = await db.collection('settings').doc('companyLogo').get();
@@ -282,6 +326,7 @@ function loadFromLocalStorage() {
             if (!state.readings) state.readings = [];
             if (!state.maintenance) state.maintenance = [];
             if (!state.users) state.users = [];
+            if (!state.tickets) state.tickets = [];
             if (state.currentUser === undefined) state.currentUser = null;
             if (!state.settings) {
                 state.settings = {
@@ -506,6 +551,7 @@ function loadDemoData() {
         }
     ];
 
+    state.tickets = [];
     saveToLocalStorage();
 }
 
@@ -579,6 +625,10 @@ function updateTitleText(tabName) {
             pageTitle.textContent = 'Respaldos y Configuración';
             pageSubtitle.textContent = 'Herramientas de exportación, importación y demostración';
             break;
+        case 'technical-area':
+            pageTitle.textContent = 'Área Técnica - Soporte';
+            pageSubtitle.textContent = 'Pedidos de servicio técnico, insumos y repuestos registrados';
+            break;
     }
 }
 
@@ -610,6 +660,9 @@ function renderApp() {
             break;
         case 'data-management':
             renderDataManagementTab();
+            break;
+        case 'technical-area':
+            renderTechnicalAreaTab();
             break;
     }
 }
@@ -1379,6 +1432,26 @@ function setupActions() {
         const counter = getLatestCounterForMachine(machineId);
         document.getElementById('maintenance-counter').value = counter;
         showToast('Contador sincronizado con éxito', 'info');
+    };
+
+    // Technical Area Actions
+    const btnAddTicket = document.getElementById('btn-add-ticket');
+    if (btnAddTicket) {
+        btnAddTicket.onclick = () => {
+            openTicketModal();
+        };
+    }
+    
+    document.getElementById('close-modal-ticket').onclick = () => {
+        document.getElementById('modal-ticket').style.display = 'none';
+    };
+    document.getElementById('cancel-modal-ticket').onclick = () => {
+        document.getElementById('modal-ticket').style.display = 'none';
+    };
+    
+    document.getElementById('form-ticket').onsubmit = (e) => {
+        e.preventDefault();
+        saveTicket();
     };
 
     // Company Logo Upload actions
@@ -2253,6 +2326,7 @@ function renderDashboardNotifications() {
 function renderDashboardTab() {
     // 1. Calculate General Metrics
     renderDashboardNotifications();
+    renderDashboardTechnicalTickets();
     const activeClientsCount = state.clients.length;
     const rentedMachines = state.machines.filter(m => m.clientId);
     const rentedMachinesCount = rentedMachines.length;
@@ -3168,6 +3242,9 @@ function importDataFromJSON(e) {
                         reminder1Day: true
                     };
                 }
+                if (!state.tickets) {
+                    state.tickets = [];
+                }
 
                 saveToLocalStorage();
                 checkAuthSession(); // Ensure layout & sidebar is loaded
@@ -3631,6 +3708,13 @@ function setupFirebaseControls() {
                         }
                     }
                     
+                    // Upload tickets
+                    if (localState.tickets) {
+                        for (const ticket of localState.tickets) {
+                            await db.collection('tickets').doc(ticket.id).set(ticket);
+                        }
+                    }
+                    
                     // Upload logo
                     if (localState.companyLogo) {
                         await db.collection('settings').doc('companyLogo').set({ value: localState.companyLogo });
@@ -3672,6 +3756,7 @@ async function clearFirestoreCollections() {
             await deleteCol('abonos');
             await deleteCol('readings');
             await deleteCol('maintenance');
+            await deleteCol('tickets');
             // We do NOT clear the 'users' collection to avoid administrative lockouts!
         } catch (err) {
             console.error("Error clearing Firestore collections:", err);
@@ -3694,6 +3779,9 @@ async function syncStateToFirestore() {
                 const cloudUser = { ...u };
                 delete cloudUser.password;
                 await db.collection('users').doc(u.id).set(cloudUser);
+            }
+            for (const t of state.tickets || []) {
+                await db.collection('tickets').doc(t.id).set(t);
             }
             
             if (state.companyLogo) {
@@ -3848,4 +3936,377 @@ function checkPopNotifications() {
         };
     }
 }
+
+// Web Audio API Technical Siren Alarm
+function playTechnicalAlertSound() {
+    try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const playBeep = (freq, duration, startTime) => {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, startTime);
+            gain.gain.setValueAtTime(0.12, startTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(startTime);
+            osc.stop(startTime + duration);
+        };
+        
+        const now = audioCtx.currentTime;
+        playBeep(880, 0.12, now);
+        playBeep(1046.50, 0.12, now + 0.15);
+        playBeep(1318.51, 0.25, now + 0.3);
+    } catch (e) {
+        console.warn("Could not play technical sound:", e);
+    }
+}
+
+// Render Technical Area Tab
+function renderTechnicalAreaTab() {
+    const tableBody = document.querySelector('#tickets-table tbody');
+    if (!tableBody) return;
+    tableBody.innerHTML = '';
+
+    const priorityWeight = { alta: 3, media: 2, baja: 1 };
+    const statusWeight = { 'no-visto': 3, 'pendiente-de-solucion': 3, 'visto-no-resuelto': 2, 'sin-solucion': 1, 'visto-resuelto': 0 };
+
+    const sortedTickets = [...(state.tickets || [])].sort((a, b) => {
+        const statusDiff = (statusWeight[b.status] || 0) - (statusWeight[a.status] || 0);
+        if (statusDiff !== 0) return statusDiff;
+        const prioDiff = (priorityWeight[b.priority] || 0) - (priorityWeight[a.priority] || 0);
+        if (prioDiff !== 0) return prioDiff;
+        return (b.createdAt || 0) - (a.createdAt || 0);
+    });
+
+    if (sortedTickets.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-secondary-light">No hay pedidos de servicio registrados. Haz clic en "Registrar Pedido".</td></tr>`;
+        return;
+    }
+
+    sortedTickets.forEach(ticket => {
+        const dateFmt = ticket.date ? ticket.date.split('-').reverse().join('/') : 'N/A';
+        
+        let priorityBadge = '';
+        if (ticket.priority === 'alta') {
+            priorityBadge = `<span class="badge danger" style="font-weight:700;">🔴 Alta Prioridad</span>`;
+        } else if (ticket.priority === 'media') {
+            priorityBadge = `<span class="badge warning" style="font-weight:700; color:#d97706; background-color:rgba(245,158,11,0.12);">🟡 Media</span>`;
+        } else {
+            priorityBadge = `<span class="badge success" style="font-weight:700;">🟢 Baja</span>`;
+        }
+
+        let statusBadge = '';
+        if (ticket.status === 'no-visto') {
+            statusBadge = `<span class="badge danger" style="text-transform:uppercase;">No Visto</span>`;
+        } else if (ticket.status === 'visto-no-resuelto') {
+            statusBadge = `<span class="badge warning" style="text-transform:uppercase;">Visto - No Resuelto</span>`;
+        } else if (ticket.status === 'visto-resuelto') {
+            statusBadge = `<span class="badge success" style="text-transform:uppercase;">Resuelto</span>`;
+        } else if (ticket.status === 'sin-solucion') {
+            statusBadge = `<span class="badge bg-secondary text-white" style="text-transform:uppercase; background-color:#6b7280;">Sin Solución</span>`;
+        } else {
+            statusBadge = `<span class="badge bg-indigo-light text-indigo" style="text-transform:uppercase;">Pendiente Solución</span>`;
+        }
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>
+                <strong>${dateFmt}</strong>
+                <span class="text-xs text-secondary-light d-block">${ticket.time || ''}</span>
+            </td>
+            <td>
+                <span class="font-bold-title">${ticket.clientName}</span>
+                ${ticket.clientType === 'externo' ? '<span class="badge bg-secondary-light text-secondary d-block mt-0.5" style="width:fit-content; font-size:9px;">Externo</span>' : ''}
+            </td>
+            <td>
+                <span class="text-sm">${ticket.machineDesc}</span>
+                ${ticket.machineType === 'externo' ? '<span class="badge bg-secondary-light text-secondary d-block mt-0.5" style="width:fit-content; font-size:9px;">Equipo Ext.</span>' : ''}
+            </td>
+            <td>
+                <strong>${ticket.taskType}</strong>
+                <span class="text-xs text-secondary-light d-block" style="max-width:250px; white-space:normal; line-height:1.3; margin-top:2px;">${escapeHTML(ticket.description)}</span>
+            </td>
+            <td>${priorityBadge}</td>
+            <td>${statusBadge}</td>
+            <td>
+                <div class="flex-actions-row">
+                    <button class="btn btn-secondary btn-sm" onclick="editTicketTrigger('${ticket.id}')">Editar / Resolver</button>
+                    <button class="btn btn-danger-outline btn-sm" onclick="deleteTicketTrigger('${ticket.id}')">Eliminar</button>
+                </div>
+            </td>
+        `;
+        tableBody.appendChild(row);
+    });
+}
+
+// Render Active Tickets on Dashboard
+function renderDashboardTechnicalTickets() {
+    const listEl = document.getElementById('dashboard-tickets-list');
+    const rowEl = document.getElementById('dashboard-tickets-row');
+    const countBadge = document.getElementById('dashboard-tickets-count-badge');
+    if (!listEl || !rowEl) return;
+
+    listEl.innerHTML = '';
+
+    // Active tickets: those NOT in visto-resuelto or sin-solucion
+    const activeTickets = (state.tickets || []).filter(t => t.status !== 'visto-resuelto' && t.status !== 'sin-solucion');
+
+    // Sort by priority (high first), then date
+    const priorityWeight = { alta: 3, media: 2, baja: 1 };
+    activeTickets.sort((a, b) => {
+        const prioDiff = (priorityWeight[b.priority] || 0) - (priorityWeight[a.priority] || 0);
+        if (prioDiff !== 0) return prioDiff;
+        return (b.createdAt || 0) - (a.createdAt || 0);
+    });
+
+    if (activeTickets.length > 0) {
+        rowEl.style.display = 'block';
+        if (countBadge) countBadge.textContent = `${activeTickets.length} Activos`;
+
+        activeTickets.forEach(ticket => {
+            const li = document.createElement('li');
+            li.style.padding = '10px 14px';
+            li.style.borderRadius = '8px';
+            li.style.fontSize = '13px';
+            li.style.display = 'flex';
+            li.style.alignItems = 'center';
+            li.style.justifyContent = 'space-between';
+            li.style.gap = '12px';
+
+            let bg = 'rgba(16, 185, 129, 0.05)';
+            let border = '1px solid rgba(16, 185, 129, 0.15)';
+            let color = 'var(--emerald)';
+            let badgeText = '🟢 Baja';
+
+            if (ticket.priority === 'alta') {
+                bg = 'rgba(239, 68, 68, 0.08)';
+                border = '1px solid rgba(239, 68, 68, 0.15)';
+                color = '#dc2626';
+                badgeText = '🔴 Alta';
+            } else if (ticket.priority === 'media') {
+                bg = 'rgba(245, 158, 11, 0.08)';
+                border = '1px solid rgba(245, 158, 11, 0.15)';
+                color = '#d97706';
+                badgeText = '🟡 Media';
+            }
+
+            li.style.backgroundColor = bg;
+            li.style.border = border;
+            li.style.color = color;
+
+            let statusLabel = '';
+            if (ticket.status === 'no-visto') statusLabel = 'NO VISTO';
+            else if (ticket.status === 'pendiente-de-solucion') statusLabel = 'PENDIENTE';
+            else statusLabel = 'VISTO';
+
+            li.innerHTML = `
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span class="badge" style="font-weight:700; font-size:10px; padding:2px 6px; background-color:white; border:1px solid currentColor;">${badgeText}</span>
+                    <span><strong>${ticket.clientName}</strong> (${ticket.machineDesc}): <span style="color:var(--text-primary); font-weight:500;">[${statusLabel}] ${escapeHTML(ticket.description)}</span></span>
+                </div>
+                <button class="btn btn-secondary btn-sm" onclick="editTicketTrigger('${ticket.id}')" style="background-color:white; border:1px solid rgba(0,0,0,0.1); color:var(--text-primary); font-size:11px; padding:4px 10px; white-space:nowrap; flex-shrink:0;">
+                    Atender
+                </button>
+            `;
+            listEl.appendChild(li);
+        });
+    } else {
+        rowEl.style.display = 'none';
+        if (countBadge) countBadge.textContent = '0 Activos';
+    }
+}
+
+// Modal Form: Add / Edit Technical Ticket
+function openTicketModal(ticketId = null) {
+    closeAllModals();
+    const modal = document.getElementById('modal-ticket');
+    const form = document.getElementById('form-ticket');
+    form.reset();
+
+    const titleEl = document.getElementById('modal-ticket-title');
+    const idInput = document.getElementById('ticket-id');
+    const clientSelect = document.getElementById('ticket-client-id');
+    const machineSelect = document.getElementById('ticket-machine-id');
+
+    // Populate clients dropdown
+    clientSelect.innerHTML = '<option value="">-- Seleccionar Cliente --</option>';
+    state.clients.forEach(c => {
+        const option = document.createElement('option');
+        option.value = c.id;
+        option.textContent = c.name;
+        clientSelect.appendChild(option);
+    });
+
+    // Helper: update machines dropdown for selected client
+    const updateMachinesDropdown = (clientId) => {
+        machineSelect.innerHTML = '<option value="">-- Seleccionar Equipo --</option>';
+        if (!clientId) return;
+        const clientMachines = state.machines.filter(m => m.clientId === clientId);
+        clientMachines.forEach(m => {
+            const option = document.createElement('option');
+            option.value = m.id;
+            option.textContent = `${m.brand || ''} ${m.model} (S/N: ${m.serial})`;
+            machineSelect.appendChild(option);
+        });
+    };
+
+    clientSelect.onchange = (e) => {
+        updateMachinesDropdown(e.target.value);
+    };
+
+    // Client type change handlers
+    const clientTypeSelect = document.getElementById('ticket-client-type');
+    const groupClientSelect = document.getElementById('group-ticket-client-select');
+    const groupExternalClient = document.getElementById('group-ticket-external-client');
+    const groupMachineSelect = document.getElementById('group-ticket-machine-select');
+    const groupExternalMachine = document.getElementById('group-ticket-external-machine');
+
+    const handleClientTypeChange = () => {
+        const type = clientTypeSelect.value;
+        if (type === 'existente') {
+            groupClientSelect.style.display = 'block';
+            groupExternalClient.style.display = 'none';
+            groupMachineSelect.style.display = 'block';
+            groupExternalMachine.style.display = 'none';
+            document.getElementById('ticket-client-id').required = true;
+            document.getElementById('ticket-external-client').required = false;
+            document.getElementById('ticket-machine-id').required = true;
+            document.getElementById('ticket-external-machine').required = false;
+        } else {
+            groupClientSelect.style.display = 'none';
+            groupExternalClient.style.display = 'block';
+            groupMachineSelect.style.display = 'none';
+            groupExternalMachine.style.display = 'block';
+            document.getElementById('ticket-client-id').required = false;
+            document.getElementById('ticket-external-client').required = true;
+            document.getElementById('ticket-machine-id').required = false;
+            document.getElementById('ticket-external-machine').required = true;
+        }
+    };
+
+    clientTypeSelect.onchange = handleClientTypeChange;
+
+    if (ticketId) {
+        titleEl.textContent = 'Editar / Resolver Pedido de Soporte';
+        const ticket = state.tickets.find(t => t.id === ticketId);
+        if (ticket) {
+            idInput.value = ticket.id;
+            clientTypeSelect.value = ticket.clientType;
+            handleClientTypeChange();
+
+            if (ticket.clientType === 'existente') {
+                clientSelect.value = ticket.clientId || '';
+                updateMachinesDropdown(ticket.clientId);
+                machineSelect.value = ticket.machineId || '';
+            } else {
+                document.getElementById('ticket-external-client').value = ticket.clientName || '';
+                document.getElementById('ticket-external-machine').value = ticket.machineDesc || '';
+            }
+
+            document.getElementById('ticket-task-type').value = ticket.taskType || 'Servicio';
+            document.getElementById('ticket-priority').value = ticket.priority || 'baja';
+            document.getElementById('ticket-status').value = ticket.status || 'no-visto';
+            document.getElementById('ticket-description').value = ticket.description || '';
+            document.getElementById('ticket-diagnostic').value = ticket.diagnostic || '';
+            document.getElementById('ticket-action-taken').value = ticket.actionTaken || '';
+        }
+    } else {
+        titleEl.textContent = 'Registrar Pedido de Servicio';
+        idInput.value = '';
+        clientTypeSelect.value = 'existente';
+        handleClientTypeChange();
+        document.getElementById('ticket-status').value = 'no-visto';
+        document.getElementById('ticket-priority').value = 'baja';
+    }
+
+    modal.style.display = 'block';
+}
+
+async function saveTicket() {
+    const id = document.getElementById('ticket-id').value;
+    const clientType = document.getElementById('ticket-client-type').value;
+    const priority = document.getElementById('ticket-priority').value;
+    const taskType = document.getElementById('ticket-task-type').value;
+    const status = document.getElementById('ticket-status').value;
+    const description = document.getElementById('ticket-description').value;
+    const diagnostic = document.getElementById('ticket-diagnostic').value;
+    const actionTaken = document.getElementById('ticket-action-taken').value;
+
+    let clientId = '';
+    let clientName = '';
+    let machineId = '';
+    let machineDesc = '';
+
+    if (clientType === 'existente') {
+        clientId = document.getElementById('ticket-client-id').value;
+        const client = state.clients.find(c => c.id === clientId);
+        clientName = client ? client.name : 'Cliente no encontrado';
+
+        machineId = document.getElementById('ticket-machine-id').value;
+        const machine = state.machines.find(m => m.id === machineId);
+        machineDesc = machine ? `${machine.brand || ''} ${machine.model} (${machine.serial})` : 'Copiadora no encontrada';
+    } else {
+        clientName = document.getElementById('ticket-external-client').value.trim();
+        machineDesc = document.getElementById('ticket-external-machine').value.trim();
+    }
+
+    if (!clientName || !machineDesc) {
+        showToast('Por favor completa todos los campos del cliente y equipo.', 'error');
+        return;
+    }
+
+    const today = new Date();
+    const dateStr = today.toISOString().split('T')[0];
+    const timeStr = today.toTimeString().split(' ')[0].substring(0, 5);
+
+    const ticketData = {
+        id: id || ('tick-' + Date.now()),
+        clientType,
+        clientId,
+        clientName,
+        machineId,
+        machineDesc,
+        taskType,
+        priority,
+        status,
+        description,
+        diagnostic,
+        actionTaken,
+        date: id ? (state.tickets.find(t => t.id === id)?.date || dateStr) : dateStr,
+        time: id ? (state.tickets.find(t => t.id === id)?.time || timeStr) : timeStr,
+        createdAt: id ? (state.tickets.find(t => t.id === id)?.createdAt || Date.now()) : Date.now()
+    };
+
+    if (id) {
+        const idx = state.tickets.findIndex(t => t.id === id);
+        if (idx !== -1) {
+            state.tickets[idx] = ticketData;
+            showToast('Pedido de servicio modificado', 'success');
+        }
+    } else {
+        state.tickets.push(ticketData);
+        // Play local warning beep for the creator
+        playTechnicalAlertSound();
+        showToast('Pedido de servicio registrado con éxito', 'success');
+    }
+
+    dbSet('tickets', ticketData.id, ticketData);
+    closeAllModals();
+    renderApp();
+}
+
+window.editTicketTrigger = (ticketId) => {
+    openTicketModal(ticketId);
+};
+
+window.deleteTicketTrigger = (ticketId) => {
+    if (confirm('¿Estás seguro de que deseas eliminar permanentemente este pedido de servicio técnico?')) {
+        state.tickets = state.tickets.filter(t => t.id !== ticketId);
+        dbDelete('tickets', ticketId);
+        showToast('Pedido eliminado de la base de datos', 'warning');
+        renderTechnicalAreaTab();
+    }
+};
 
