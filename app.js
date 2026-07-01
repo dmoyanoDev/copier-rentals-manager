@@ -3018,6 +3018,24 @@ window.editClientTrigger = (clientId) => {
 };
 
 window.deleteClientTrigger = (clientId) => {
+    // Check if user is administrator
+    if (state.currentUser?.role === 'tecnico') {
+        showToast('Acceso denegado: El rol Técnico no tiene permisos para eliminar clientes', 'error');
+        return;
+    }
+
+    // Check if the client has any reading history or outstanding debts
+    const clientReadings = state.readings.filter(r => r.clientId === clientId);
+    if (clientReadings.length > 0) {
+        const pendingReadings = clientReadings.filter(r => r.status === 'pending');
+        if (pendingReadings.length > 0) {
+            showToast('No se puede eliminar el cliente porque posee deudas pendientes de pago', 'error');
+        } else {
+            showToast('No se puede eliminar este cliente porque cuenta con un historial de facturación que debe conservarse', 'error');
+        }
+        return;
+    }
+
     if (confirm('¿Seguro que deseas eliminar este cliente? No se desasignarán las máquinas de forma automática pero dejará huérfanas sus referencias.')) {
         state.clients = state.clients.filter(c => c.id !== clientId);
         dbDelete('clients', clientId);
@@ -3032,16 +3050,27 @@ window.editMachineTrigger = (machineId) => {
 };
 
 window.deleteMachineTrigger = (machineId) => {
-    if (confirm('¿Seguro que deseas eliminar esta máquina? Se perderá su historial de lecturas asociadas.')) {
-        const readingsToDelete = state.readings.filter(r => r.machineId === machineId);
-        state.machines = state.machines.filter(m => m.id !== machineId);
-        state.readings = state.readings.filter(r => r.machineId !== machineId);
-        
-        dbDelete('machines', machineId);
-        for (const r of readingsToDelete) {
-            dbDelete('readings', r.id);
+    // Check if user is administrator
+    if (state.currentUser?.role === 'tecnico') {
+        showToast('Acceso denegado: El rol Técnico no tiene permisos para eliminar máquinas', 'error');
+        return;
+    }
+
+    // Check if the machine has any reading history or outstanding debts
+    const machineReadings = state.readings.filter(r => r.machineId === machineId);
+    if (machineReadings.length > 0) {
+        const pendingReadings = machineReadings.filter(r => r.machineId === machineId && r.status === 'pending');
+        if (pendingReadings.length > 0) {
+            showToast('No se puede eliminar esta máquina porque tiene deudas/lecturas pendientes asociadas', 'error');
+        } else {
+            showToast('No se puede eliminar esta máquina porque cuenta con un historial de lecturas que debe conservarse', 'error');
         }
-        
+        return;
+    }
+
+    if (confirm('¿Seguro que deseas eliminar esta máquina?')) {
+        state.machines = state.machines.filter(m => m.id !== machineId);
+        dbDelete('machines', machineId);
         renderApp();
         showToast('Máquina eliminada', 'warning');
     }
