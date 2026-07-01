@@ -5195,42 +5195,32 @@ function generateClientReportPlainText(client) {
         maintStr += `• ${dateFmt} - ${mName} (${mn.type}): ${mn.description} | Contador: ${(mn.counter || 0).toLocaleString('es-AR')}\n`;
     });
 
-    let msg = `📊 *REPORTE CONSOLIDADO CONTABLE - M&S*\n` +
+    let msg = `📊 *ESTADO DE CUENTA CORRIENTE - M&S*\n` +
               `*Cliente:* ${client.name}\n` +
-              `*Dirección:* ${client.address || '-'}\n` +
-              `*Fecha Emisión:* ${new Date().toLocaleDateString('es-AR')}\n\n` +
+              `*Emisión:* ${new Date().toLocaleDateString('es-AR')}\n\n` +
               `----------------------------------\n` +
-              `📋 *DATOS DE CONTACTO*\n` +
-              `• Razón Social: ${client.name}\n` +
-              `• Teléfono: ${client.phone || '-'}\n` +
-              `• Email: ${client.email || '-'}\n\n` +
+              `💰 *RESUMEN CONTABLE*\n` +
+              `• Total Facturado (Cargos): ${formatCurrency(totalFacturadoGeneral)}\n` +
+              `• Total Cobrado (Abonos): ${formatCurrency(totalCobrado)}\n` +
+              `*• SALDO ACTUAL PENDIENTE: ${formatCurrency(saldoAdeudado)}*\n\n` +
               `----------------------------------\n` +
-              `⚖️ *CONCILIACIÓN IMPOSITIVA (IVA)*\n` +
+              `⚖️ *DESGLOSE FISCAL E IVA*\n` +
               `• Neto Gravado (Oficial): ${formatCurrency(totalNetoGravado)}\n` +
-              `• IVA 21% Facturado: ${formatCurrency(totalIva21)}\n` +
-              `• IVA 10.5% Facturado: ${formatCurrency(totalIva105)}\n` +
+              `• Débito IVA Facturado: ${formatCurrency(totalIva21 + totalIva105)}\n` +
               `• Notas de Crédito (Desc.): -${formatCurrency(totalCredito)}\n` +
               `• Notas de Débito (Rec.): +${formatCurrency(totalDebito)}\n` +
-              `• Subtotal Oficial: ${formatCurrency(totalFacturadoOfficial)}\n` +
-              `• Operaciones No Oficiales (Negro): ${formatCurrency(totalNoOficial)}\n` +
-              `*• TOTAL FACTURADO HISTÓRICO: ${formatCurrency(totalFacturadoGeneral)}*\n\n` +
+              `• Operaciones No Oficiales: ${formatCurrency(totalNoOficial)}\n` +
+              `----------------------------------\n\n` +
+              (pendingListStr ? `*⚠️ COMPROBANTES IMPAGOS:*\n${pendingListStr}\n` : `🎉 *Estado Financiero:* Al Día / Sin Deudas.\n\n`) +
               `----------------------------------\n` +
-              `💳 *ESTADO FINANCIERO DE CUENTA*\n` +
-              `• Facturado General: ${formatCurrency(totalFacturadoGeneral)}\n` +
-              `• Total Cobrado (Ingresos): ${formatCurrency(totalCobrado)}\n` +
-              `*• SALDO EXIGIBLE PENDIENTE: ${formatCurrency(saldoAdeudado)}*\n\n` +
-              (pendingListStr ? `*Detalle de Comprobantes Impagos:*\n${pendingListStr}\n` : `🎉 El cliente no posee saldo deudor pendiente.\n\n`) +
-              `----------------------------------\n` +
-              `📖 *LIBRO MAYOR DE CUENTA CORRIENTE*\n` +
-              (ledgerStr || 'No se registran movimientos.\n') +
+              `📖 *MOVIMIENTOS (LIBRO MAYOR)*\n` +
+              `Fecha | Comprobante | Concepto | Debe | Haber | Saldo\n` +
+              (ledgerStr || 'Sin movimientos registrados.\n') +
               `\n----------------------------------\n` +
               `🖨️ *EQUIPOS EN ALQUILER (${assignedMachines.length})*\n` +
               (machinesStr || 'Sin equipos asignados.\n') +
               `\n----------------------------------\n` +
-              `🔧 *BITÁCORA TÉCNICA RECIENTE (Últimos 5 registros)*\n` +
-              (maintStr || 'Sin intervenciones registradas.\n') +
-              `\n----------------------------------\n` +
-              `🌐 Acceder a la plataforma:\nhttps://dashboard-mys.netlify.app/`;
+              `🌐 *Acceso a la plataforma:*\nhttps://dashboard-mys.netlify.app/`;
     return msg;
 }
 
@@ -5558,59 +5548,54 @@ function generateClientReportHtml(client) {
 
     return `
         <div style="margin-bottom: 20px; display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:15px; width:100%;">
-            <!-- Card 1: General Info -->
+            <!-- Card 1: Datos Generales -->
             <div style="background: rgba(0,0,0,0.015); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; box-sizing:border-box;">
-                <h4 style="margin:0 0 10px 0; font-size:13px; font-weight:700; color:var(--indigo); border-bottom: 1px solid rgba(0,0,0,0.05); padding-bottom:5px;">📋 DATOS GENERALES DEL CLIENTE</h4>
+                <h4 style="margin:0 0 10px 0; font-size:12px; font-weight:700; color:var(--indigo); border-bottom: 1px solid rgba(0,0,0,0.05); padding-bottom:5px; text-transform: uppercase; letter-spacing: 0.5px;">📋 Datos del Cliente</h4>
                 <div style="display:grid; grid-template-columns: 1fr; gap: 8px; font-size:12px;">
                     <div><strong>Razón Social:</strong> ${client.name}</div>
                     <div><strong>Teléfono:</strong> ${client.phone || '-'}</div>
                     <div><strong>Email:</strong> ${client.email || '-'}</div>
                     <div><strong>Dirección:</strong> ${client.address || '-'}</div>
                 </div>
-                ${client.notes ? `<div style="margin-top:10px; font-size:11px; border-top:1px dashed rgba(0,0,0,0.05); padding-top:8px;"><strong>Notas internas:</strong> <span style="font-style:italic;">${client.notes}</span></div>` : ''}
+                ${client.notes ? `<div style="margin-top:10px; font-size:11px; border-top:1px dashed rgba(0,0,0,0.05); padding-top:8px;"><strong>Notas:</strong> <span style="font-style:italic;">${client.notes}</span></div>` : ''}
             </div>
 
-            <!-- Card 2: Tax / Impositivo details -->
-            <div style="background: rgba(0,0,0,0.015); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; box-sizing:border-box;">
-                <h4 style="margin:0 0 10px 0; font-size:13px; font-weight:700; color:var(--indigo); border-bottom: 1px solid rgba(0,0,0,0.05); padding-bottom:5px;">📊 CONCILIACIÓN IMPOSITIVA (IVA)</h4>
-                <div style="display:grid; grid-template-columns: 1fr 120px; gap: 6px; font-size:12px;">
-                    <span><strong>Neto Gravado (Oficial):</strong></span><span style="text-align:right; font-weight:500;">${formatCurrency(totalNetoGravado)}</span>
-                    <span><strong>Débito Fiscal IVA 21%:</strong></span><span style="text-align:right; font-weight:500;">${formatCurrency(totalIva21)}</span>
-                    <span><strong>Débito Fiscal IVA 10.5%:</strong></span><span style="text-align:right; font-weight:500;">${formatCurrency(totalIva105)}</span>
-                    <span><strong>Notas de Crédito (Desc.):</strong></span><span style="text-align:right; color:var(--emerald); font-weight:500;">-${formatCurrency(totalCredito)}</span>
-                    <span><strong>Notas de Débito (Rec.):</strong></span><span style="text-align:right; color:#dc2626; font-weight:500;">+${formatCurrency(totalDebito)}</span>
-                    <span><strong>Subtotal Oficial Facturado:</strong></span><span style="text-align:right; font-weight:600; color:var(--indigo);">${formatCurrency(totalFacturadoOfficial)}</span>
-                    <span style="border-top:1px dashed rgba(0,0,0,0.05); padding-top:4px;"><strong>Operaciones No Oficiales (Negro):</strong></span><span style="text-align:right; border-top:1px dashed rgba(0,0,0,0.05); padding-top:4px; font-weight:500;">${formatCurrency(totalNoOficial)}</span>
-                    <span style="border-top:1px solid rgba(0,0,0,0.1); padding-top:6px; font-size:13px; color:var(--text-primary);"><strong>TOTAL FACTURADO:</strong></span><span style="text-align:right; border-top:1px solid rgba(0,0,0,0.1); padding-top:6px; font-size:13px; font-weight:700; color:var(--indigo);">${formatCurrency(totalFacturadoGeneral)}</span>
-                </div>
-            </div>
-
-            <!-- Card 3: Financial balance status -->
-            <div style="border: 1px solid ${saldoAdeudado > 0 ? 'rgba(239, 68, 68, 0.25)' : 'rgba(16, 185, 129, 0.25)'}; background: ${saldoAdeudado > 0 ? 'rgba(239, 68, 68, 0.03)' : 'rgba(16, 185, 129, 0.03)'}; border-radius: 8px; padding: 15px; display:flex; flex-direction:column; justify-content:space-between; box-sizing:border-box;">
+            <!-- Card 2: Resumen Contable (Saldos) -->
+            <div style="border: 1px solid ${saldoAdeudado > 0 ? 'rgba(239, 68, 68, 0.25)' : 'rgba(16, 185, 129, 0.25)'}; background: ${saldoAdeudado > 0 ? 'rgba(239, 68, 68, 0.02)' : 'rgba(16, 185, 129, 0.02)'}; border-radius: 8px; padding: 15px; display:flex; flex-direction:column; justify-content:space-between; box-sizing:border-box;">
                 <div>
-                    <h4 style="margin:0 0 10px 0; font-size:13px; font-weight:700; color:${saldoAdeudado > 0 ? '#dc2626' : 'var(--emerald)'}; border-bottom: 1px solid rgba(0,0,0,0.05); padding-bottom:5px; display:flex; justify-content:space-between; align-items:center;">
-                        <span>💳 ESTADO FINANCIERO</span>
-                        <span class="badge" style="font-size:10px; padding:2px 6px; background-color:${saldoAdeudado > 0 ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)'}; color:${saldoAdeudado > 0 ? '#dc2626' : 'var(--emerald)'}; border:none;">${saldoAdeudado > 0 ? 'Con Saldo Deudor' : 'Al Día / Cancelado'}</span>
+                    <h4 style="margin:0 0 10px 0; font-size:12px; font-weight:700; color:${saldoAdeudado > 0 ? '#dc2626' : 'var(--emerald)'}; border-bottom: 1px solid rgba(0,0,0,0.05); padding-bottom:5px; text-transform: uppercase; letter-spacing: 0.5px; display:flex; justify-content:space-between; align-items:center;">
+                        <span>💰 Resumen de Cuenta</span>
+                        <span class="badge" style="font-size:9px; padding:2px 6px; background-color:${saldoAdeudado > 0 ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)'}; color:${saldoAdeudado > 0 ? '#dc2626' : 'var(--emerald)'}; border:none;">${saldoAdeudado > 0 ? 'Saldo Impago' : 'Al Día'}</span>
                     </h4>
-                    <div style="font-size:12px; display:grid; grid-template-columns: 1fr 120px; gap:6px; margin-bottom:10px;">
-                        <span><strong>Total Facturado General:</strong></span><span style="text-align:right;">${formatCurrency(totalFacturadoGeneral)}</span>
-                        <span><strong>Total Cobrado (Ingresos):</strong></span><span style="text-align:right; color:var(--emerald); font-weight:600;">${formatCurrency(totalCobrado)}</span>
-                    </div>
-                    <div style="max-height: 80px; overflow-y:auto; padding-right:5px; margin-bottom:8px; border-top:1px dashed rgba(0,0,0,0.05); padding-top:6px;">
-                        ${pendingDetailsHtml}
+                    <div style="font-size:12px; display:grid; grid-template-columns: 1fr 120px; gap:8px;">
+                        <span><strong>Total Facturado (Cargos):</strong></span><span style="text-align:right; font-weight:500;">${formatCurrency(totalFacturadoGeneral)}</span>
+                        <span><strong>Total Recibido (Abonos):</strong></span><span style="text-align:right; color:var(--emerald); font-weight:600;">+ ${formatCurrency(totalCobrado)}</span>
                     </div>
                 </div>
-                <div style="padding-top:8px; border-top:1px solid rgba(0,0,0,0.05); display:flex; justify-content:space-between; align-items:center;">
-                    <strong style="font-size:12px;">SALDO EXIGIBLE PENDIENTE:</strong>
-                    <strong style="font-size:16px; color:${saldoAdeudado > 0 ? '#dc2626' : 'var(--emerald)'};">${formatCurrency(saldoAdeudado)}</strong>
+                <div style="margin-top:15px; padding-top:8px; border-top:1px solid rgba(0,0,0,0.05); display:flex; justify-content:space-between; align-items:center;">
+                    <strong style="font-size:12px; color:var(--text-secondary);">SALDO ACTUAL PENDIENTE:</strong>
+                    <strong style="font-size:18px; color:${saldoAdeudado > 0 ? '#dc2626' : 'var(--emerald)'};">${formatCurrency(saldoAdeudado)}</strong>
                 </div>
                 ${saldoAdeudado > 0 ? `
                 <div style="margin-top:10px; text-align:right;" class="no-print">
-                    <button class="btn btn-primary btn-sm btn-icon" onclick="openSettleDebtModal('${client.id}')" style="font-size:11px; padding:6px 12px; font-weight:600; width:100%; justify-content:center;">
-                        💵 Registrar Pago / Saldar Deuda
+                    <button type="button" class="btn btn-primary btn-sm btn-icon" onclick="openSettleDebtModal('${client.id}')" style="font-size:11px; padding:6px 12px; font-weight:600; width:100%; justify-content:center; border-radius:4px;">
+                        💵 Registrar Pago / Saldar
                     </button>
                 </div>
                 ` : ''}
+            </div>
+
+            <!-- Card 3: Desglose de IVA y Ajustes -->
+            <div style="background: rgba(0,0,0,0.015); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; box-sizing:border-box;">
+                <h4 style="margin:0 0 10px 0; font-size:12px; font-weight:700; color:var(--indigo); border-bottom: 1px solid rgba(0,0,0,0.05); padding-bottom:5px; text-transform: uppercase; letter-spacing: 0.5px;">⚖️ Detalle Fiscal e Impositivo</h4>
+                <div style="display:grid; grid-template-columns: 1fr 120px; gap: 6px; font-size:11px;">
+                    <span>Neto Gravado (Facturado Oficial):</span><span style="text-align:right; font-weight:500;">${formatCurrency(totalNetoGravado)}</span>
+                    <span>Débito Fiscal IVA (21% / 10.5%):</span><span style="text-align:right; font-weight:500;">${formatCurrency(totalIva21 + totalIva105)}</span>
+                    <span>Notas de Crédito (Descuentos):</span><span style="text-align:right; color:var(--emerald); font-weight:500;">-${formatCurrency(totalCredito)}</span>
+                    <span>Notas de Débito (Recargos):</span><span style="text-align:right; color:#dc2626; font-weight:500;">+${formatCurrency(totalDebito)}</span>
+                    <span style="border-top:1px dashed rgba(0,0,0,0.05); padding-top:4px;">Operaciones No Oficiales (Negro):</span><span style="text-align:right; border-top:1px dashed rgba(0,0,0,0.05); padding-top:4px; font-weight:500;">${formatCurrency(totalNoOficial)}</span>
+                    <span style="border-top:1px solid rgba(0,0,0,0.1); padding-top:6px; font-size:12px; font-weight:700; color:var(--text-primary);">Total Liquidado General:</span><span style="text-align:right; border-top:1px solid rgba(0,0,0,0.1); padding-top:6px; font-size:12px; font-weight:700; color:var(--indigo);">${formatCurrency(totalFacturadoGeneral)}</span>
+                </div>
             </div>
         </div>
 
