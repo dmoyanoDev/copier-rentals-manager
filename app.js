@@ -5376,7 +5376,7 @@ async function submitEndRental(e) {
     const activeReading = state.readings.find(r => r.machineId === machineId && r.month === currentMonth);
     if (activeReading) {
         activeReading.final = finalCounter;
-        activeReading.status = 'paid'; // mark paid since rental ended and settled
+        activeReading.status = 'pending'; // keep it pending so client retains the debt until paid
         await dbSet('readings', activeReading.id, activeReading);
     } else if (machine.clientId) {
         const newReading = {
@@ -5387,7 +5387,7 @@ async function submitEndRental(e) {
             month: currentMonth,
             initial: machine.machineCounter || 0,
             final: finalCounter,
-            status: 'paid'
+            status: 'pending' // keep it pending so client retains the debt until paid
         };
         state.readings.push(newReading);
         await dbSet('readings', newReading.id, newReading);
@@ -5494,7 +5494,7 @@ async function submitChangeMachine(e) {
         const activeReading = state.readings.find(r => r.machineId === oldMachineId && r.month === currentMonth);
         if (activeReading) {
             activeReading.final = oldFinalCounter;
-            activeReading.status = 'paid';
+            activeReading.status = 'pending'; // keep it pending so client retains the debt until paid
             await dbSet('readings', activeReading.id, activeReading);
         } else {
             const newReading = {
@@ -5505,7 +5505,7 @@ async function submitChangeMachine(e) {
                 month: currentMonth,
                 initial: oldMachine.machineCounter || 0,
                 final: oldFinalCounter,
-                status: 'paid'
+                status: 'pending' // keep it pending so client retains the debt until paid
             };
             state.readings.push(newReading);
             await dbSet('readings', newReading.id, newReading);
