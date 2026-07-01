@@ -693,6 +693,8 @@
                                     <tr>
                                         <th>Usuario</th>
                                         <th>Nombre Completo</th>
+                                        <th>Rol</th>
+                                        <th>Celular</th>
                                         <th>Email de Recuperación</th>
                                         <th>Contraseña</th>
                                         <th>Acciones</th>
@@ -1441,6 +1443,13 @@
                     </div>
                 </div>
 
+                <div class="form-group" style="margin-top: 15px;">
+                    <label for="ticket-assigned-tech">Técnico Asignado (Recibirá aviso WhatsApp)</label>
+                    <select id="ticket-assigned-tech" class="form-control">
+                        <option value="">-- Seleccionar Técnico --</option>
+                    </select>
+                </div>
+
                 <div class="form-group">
                     <label for="ticket-description">Detalle del Problema o Motivo <span class="required">*</span></label>
                     <textarea id="ticket-description" class="form-control" required rows="2" placeholder="Ej: La máquina traba papel en la bandeja 2 o pide tóner negro..."></textarea>
@@ -1608,6 +1617,20 @@
                 <div class="form-group" style="margin-top: 15px;">
                     <label for="user-password">Contraseña <span class="required">*</span></label>
                     <input type="text" id="user-password" class="form-control" required placeholder="Contraseña de acceso">
+                </div>
+
+                <div class="form-row" style="margin-top: 15px;">
+                    <div class="form-group col-6">
+                        <label for="user-role">Rol de Usuario <span class="required">*</span></label>
+                        <select id="user-role" class="form-control" required>
+                            <option value="administrativo">Administrativo</option>
+                            <option value="tecnico">Técnico</option>
+                        </select>
+                    </div>
+                    <div class="form-group col-6">
+                        <label for="user-phone">Celular (WhatsApp) <span class="required">*</span></label>
+                        <input type="text" id="user-phone" class="form-control" required placeholder="Ej: 5491159002415">
+                    </div>
                 </div>
                 
                 <div class="modal-footer" style="margin-top: 20px;">

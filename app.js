@@ -292,7 +292,24 @@ function checkAuthSession() {
 
         const user = state.currentUser;
         nameEl.textContent = user.fullname;
-        roleEl.textContent = user.username === 'dmoyano' ? 'Administrador' : 'Operador';
+        
+        const userRole = user.role || 'administrativo';
+        roleEl.textContent = userRole === 'tecnico' ? 'Técnico' : 'Administrativo';
+        
+        // Filter sidebar navigation by role (technicians only see dashboard, technical area, and machines)
+        const navItems = document.querySelectorAll('.nav-menu .nav-item');
+        navItems.forEach(item => {
+            const tabName = item.getAttribute('data-tab');
+            if (userRole === 'tecnico') {
+                if (tabName !== 'dashboard' && tabName !== 'technical-area' && tabName !== 'machines') {
+                    item.style.display = 'none';
+                } else {
+                    item.style.display = 'flex';
+                }
+            } else {
+                item.style.display = 'flex';
+            }
+        });
         
         // Generate initials
         const parts = user.fullname.split(' ');
@@ -351,7 +368,9 @@ function loadFromLocalStorage() {
                 username: 'dmoyano',
                 fullname: 'Darío Moyano',
                 email: 'dmoyano@mstecnologia.com.ar',
-                password: 'Jueves2389$'
+                password: 'Jueves2389$',
+                role: 'administrativo',
+                phone: '5491133445566'
             }
         ];
     }
@@ -1242,7 +1261,10 @@ function setupForms() {
             }
         }
 
-        const userData = { id: id || ('user-' + Date.now()), username, fullname, email, password };
+        const role = document.getElementById('user-role').value;
+        const phone = document.getElementById('user-phone').value.trim();
+
+        const userData = { id: id || ('user-' + Date.now()), username, fullname, email, password, role, phone };
 
         if (id) {
             const idx = state.users.findIndex(u => u.id === id);
@@ -3228,7 +3250,9 @@ function importDataFromJSON(e) {
                             username: 'dmoyano',
                             fullname: 'Darío Moyano',
                             email: 'dmoyano@mstecnologia.com.ar',
-                            password: 'jUEVES2389$'
+                            password: 'jUEVES2389$',
+                            role: 'administrativo',
+                            phone: '5491133445566'
                         }
                     ];
                 }
@@ -3521,9 +3545,17 @@ function renderUsersTab() {
             ? `<button class="btn btn-sm btn-secondary" style="opacity: 0.5; cursor: not-allowed;" disabled title="El administrador maestro no puede ser eliminado">No Eliminar</button>`
             : `<button class="btn btn-danger-outline btn-sm" onclick="deleteUserTrigger('${user.id}')">Eliminar</button>`;
 
+        const userRole = user.role || 'administrativo';
+        const roleLabel = userRole === 'tecnico' ? 'Técnico' : 'Administrativo';
+        const roleBadge = userRole === 'tecnico' 
+            ? `<span class="badge warning" style="color:#d97706; background-color:rgba(245,158,11,0.12); font-weight:600;">Técnico</span>` 
+            : `<span class="badge success" style="font-weight:600;">Administrativo</span>`;
+
         row.innerHTML = `
             <td><strong>${user.username}</strong> ${isMaster ? '<span class="badge success" style="font-size:9px; padding:1px 4px; margin-left:4px;">Master</span>' : ''}</td>
             <td>${user.fullname}</td>
+            <td>${roleBadge}</td>
+            <td><strong>${user.phone || 'N/A'}</strong></td>
             <td>${user.email}</td>
             <td style="font-family: monospace;">••••••••</td>
             <td>
@@ -3555,18 +3587,24 @@ function openUserModal(userId = null) {
             document.getElementById('user-fullname').value = user.fullname;
             document.getElementById('user-email').value = user.email;
             document.getElementById('user-password').value = user.password;
+            document.getElementById('user-role').value = user.role || 'administrativo';
+            document.getElementById('user-phone').value = user.phone || '';
 
-            // Master admin username cannot be edited to protect integrity
             if (user.username === 'dmoyano') {
                 usernameInput.disabled = true;
+                document.getElementById('user-role').disabled = true; // master admin role locked to admin
             } else {
                 usernameInput.disabled = false;
+                document.getElementById('user-role').disabled = false;
             }
         }
     } else {
         titleEl.textContent = 'Agregar Usuario';
         idInput.value = '';
         usernameInput.disabled = false;
+        document.getElementById('user-role').disabled = false;
+        document.getElementById('user-role').value = 'administrativo';
+        document.getElementById('user-phone').value = '';
     }
 
     modal.style.display = 'block';
@@ -4139,6 +4177,19 @@ function openTicketModal(ticketId = null) {
         clientSelect.appendChild(option);
     });
 
+    // Populate technicians dropdown
+    const techSelect = document.getElementById('ticket-assigned-tech');
+    if (techSelect) {
+        techSelect.innerHTML = '<option value="">-- Seleccionar Técnico --</option>';
+        const technicians = (state.users || []).filter(u => u.role === 'tecnico');
+        technicians.forEach(t => {
+            const option = document.createElement('option');
+            option.value = t.id;
+            option.textContent = `${t.fullname} (${t.phone || 'Sin Celular'})`;
+            techSelect.appendChild(option);
+        });
+    }
+
     // Helper: update machines dropdown for selected client
     const updateMachinesDropdown = (clientId) => {
         machineSelect.innerHTML = '<option value="">-- Seleccionar Equipo --</option>';
@@ -4211,6 +4262,7 @@ function openTicketModal(ticketId = null) {
             document.getElementById('ticket-description').value = ticket.description || '';
             document.getElementById('ticket-diagnostic').value = ticket.diagnostic || '';
             document.getElementById('ticket-action-taken').value = ticket.actionTaken || '';
+            document.getElementById('ticket-assigned-tech').value = ticket.assignedTechId || '';
         }
     } else {
         titleEl.textContent = 'Registrar Pedido de Servicio';
@@ -4219,6 +4271,7 @@ function openTicketModal(ticketId = null) {
         handleClientTypeChange();
         document.getElementById('ticket-status').value = 'no-visto';
         document.getElementById('ticket-priority').value = 'baja';
+        document.getElementById('ticket-assigned-tech').value = '';
     }
 
     modal.style.display = 'block';
@@ -4261,6 +4314,8 @@ async function saveTicket() {
     const dateStr = today.toISOString().split('T')[0];
     const timeStr = today.toTimeString().split(' ')[0].substring(0, 5);
 
+    const assignedTechId = document.getElementById('ticket-assigned-tech').value;
+
     const ticketData = {
         id: id || ('tick-' + Date.now()),
         clientType,
@@ -4274,6 +4329,7 @@ async function saveTicket() {
         description,
         diagnostic,
         actionTaken,
+        assignedTechId,
         date: id ? (state.tickets.find(t => t.id === id)?.date || dateStr) : dateStr,
         time: id ? (state.tickets.find(t => t.id === id)?.time || timeStr) : timeStr,
         createdAt: id ? (state.tickets.find(t => t.id === id)?.createdAt || Date.now()) : Date.now()
@@ -4287,14 +4343,61 @@ async function saveTicket() {
         }
     } else {
         state.tickets.push(ticketData);
-        // Play local warning beep for the creator
         playTechnicalAlertSound();
         showToast('Pedido de servicio registrado con éxito', 'success');
+    }
+
+    // Auto-log to machine maintenance history if actionTaken is provided and clientType is "existente"
+    if (clientType === 'existente' && machineId && actionTaken.trim()) {
+        const currentCounter = getLatestCounterForMachine(machineId) || 0;
+        const maintEntry = state.maintenance.find(e => e.ticketId === ticketData.id);
+        
+        const newMaint = {
+            id: maintEntry ? maintEntry.id : ('maint-' + Date.now()),
+            machineId: machineId,
+            date: dateStr,
+            type: taskType === 'Insumo' ? 'Insumo' : (taskType === 'Repuesto' ? 'Repuesto' : 'Servicio'),
+            description: `Área Técnica (Ticket #${ticketData.id.split('-')[1] || ''}): ${diagnostic.trim() ? diagnostic + ' - ' : ''}${actionTaken}`,
+            counter: currentCounter,
+            ticketId: ticketData.id
+        };
+
+        if (maintEntry) {
+            const idx = state.maintenance.findIndex(e => e.id === maintEntry.id);
+            if (idx !== -1) state.maintenance[idx] = newMaint;
+        } else {
+            state.maintenance.push(newMaint);
+        }
+        dbSet('maintenance', newMaint.id, newMaint);
     }
 
     dbSet('tickets', ticketData.id, ticketData);
     closeAllModals();
     renderApp();
+
+    // Trigger WhatsApp notification to the assigned technician if select has target with phone
+    if (assignedTechId) {
+        const tech = state.users.find(u => u.id === assignedTechId);
+        if (tech && tech.phone) {
+            setTimeout(() => {
+                const sendConfirm = confirm(`¿Deseas enviar el aviso de WhatsApp al técnico asignado (${tech.fullname})?`);
+                if (sendConfirm) {
+                    const cleanPhone = tech.phone.replace(/\D/g, ''); // Clean non-digits
+                    const formattedMsg = `⚠️ *AVISO DE SOPORTE - M&S* ⚠️\n\n` +
+                                         `*Fecha:* ${dateStr.split('-').reverse().join('/')} ${timeStr}\n` +
+                                         `*Cliente:* ${clientName}\n` +
+                                         `*Equipo:* ${machineDesc}\n` +
+                                         `*Prioridad:* ${priority.toUpperCase()}\n` +
+                                         `*Tarea:* ${taskType}\n` +
+                                         `*Problema:* ${description}\n` +
+                                         `*Estado:* ${status.toUpperCase()}\n` +
+                                         (actionTaken.trim() ? `*Resolución:* ${actionTaken}` : '');
+                    const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(formattedMsg)}`;
+                    window.open(waUrl, '_blank');
+                }
+            }, 300);
+        }
+    }
 }
 
 window.editTicketTrigger = (ticketId) => {
