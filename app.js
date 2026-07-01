@@ -651,6 +651,28 @@ function updateTitleText(tabName) {
 }
 
 function renderApp() {
+    const userRole = state.currentUser ? (state.currentUser.role || 'administrativo') : 'administrativo';
+    if (userRole === 'tecnico') {
+        if (currentTab !== 'dashboard' && currentTab !== 'technical-area' && currentTab !== 'machines') {
+            currentTab = 'dashboard';
+            tabs.forEach(t => {
+                if (t.getAttribute('data-tab') === 'dashboard') {
+                    t.classList.add('active');
+                } else {
+                    t.classList.remove('active');
+                }
+            });
+            tabSections.forEach(section => {
+                if (section.id === 'tab-dashboard') {
+                    section.classList.add('active');
+                } else {
+                    section.classList.remove('active');
+                }
+            });
+            updateTitleText('dashboard');
+        }
+    }
+
     switch (currentTab) {
         case 'dashboard':
             renderDashboardTab();
@@ -3834,6 +3856,11 @@ function renderUsersTab() {
 }
 
 function openUserModal(userId = null) {
+    const userRole = state.currentUser ? (state.currentUser.role || 'administrativo') : 'administrativo';
+    if (userRole === 'tecnico') {
+        showToast('Acceso denegado: Privilegios insuficientes', 'error');
+        return;
+    }
     const modal = document.getElementById('modal-user');
     const form = document.getElementById('form-user');
     form.reset();
@@ -3879,6 +3906,11 @@ window.editUserTrigger = (userId) => {
 };
 
 window.deleteUserTrigger = (userId) => {
+    const userRole = state.currentUser ? (state.currentUser.role || 'administrativo') : 'administrativo';
+    if (userRole === 'tecnico') {
+        showToast('Acceso denegado: Privilegios insuficientes', 'error');
+        return;
+    }
     const user = state.users.find(u => u.id === userId);
     if (!user) return;
 
