@@ -1249,10 +1249,19 @@ function setupForms() {
                 const savedConfig = localStorage.getItem('firebase_config');
                 if (savedConfig) {
                     const config = JSON.parse(savedConfig);
-                    // Use a secondary app instance so GCM / active session is not modified/logged-out
-                    const secondaryApp = firebase.initializeApp(config, 'SecondaryApp');
+                    let secondaryApp;
+                    const existingApp = firebase.apps.find(app => app.name === 'SecondaryApp');
+                    if (existingApp) {
+                        secondaryApp = existingApp;
+                    } else {
+                        secondaryApp = firebase.initializeApp(config, 'SecondaryApp');
+                    }
                     await secondaryApp.auth().createUserWithEmailAndPassword(email, password);
-                    await secondaryApp.delete();
+                    try {
+                        await secondaryApp.delete();
+                    } catch (delErr) {
+                        console.warn("Error deleting secondary app:", delErr);
+                    }
                 }
             } catch (authErr) {
                 console.error("Error creating user in Firebase Auth:", authErr);
