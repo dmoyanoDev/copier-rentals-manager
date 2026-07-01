@@ -379,6 +379,32 @@ function loadFromLocalStorage() {
             }
         ];
     }
+
+    // Migrate readings without clientId or abonoId
+    let migrated = false;
+    state.readings.forEach(r => {
+        let changed = false;
+        if (!r.clientId || !r.abonoId) {
+            const machine = state.machines.find(m => m.id === r.machineId);
+            if (machine) {
+                if (!r.clientId && machine.clientId) {
+                    r.clientId = machine.clientId;
+                    changed = true;
+                }
+                if (!r.abonoId && machine.abonoId) {
+                    r.abonoId = machine.abonoId;
+                    changed = true;
+                }
+            }
+        }
+        if (changed) {
+            dbSet('readings', r.id, r);
+            migrated = true;
+        }
+    });
+    if (migrated) {
+        saveToLocalStorage();
+    }
 }
 
 // Demo Data Setup
@@ -1194,9 +1220,28 @@ function setupForms() {
             return;
         }
 
+        const machine = state.machines.find(m => m.id === machineId);
+        let resolvedClientId = '';
+        let resolvedAbonoId = '';
+        if (id) {
+            const existingReading = state.readings.find(r => r.id === id);
+            if (existingReading) {
+                resolvedClientId = existingReading.clientId;
+                resolvedAbonoId = existingReading.abonoId;
+            }
+        }
+        if (!resolvedClientId && machine) {
+            resolvedClientId = machine.clientId || '';
+        }
+        if (!resolvedAbonoId && machine) {
+            resolvedAbonoId = machine.abonoId || '';
+        }
+
         const readingData = {
             id: id || ('read-' + Date.now()),
             machineId,
+            clientId: resolvedClientId,
+            abonoId: resolvedAbonoId,
             month,
             initial,
             final,
@@ -3240,13 +3285,14 @@ function renderHistoryTab() {
     const searchVal = document.getElementById('search-history').value.toLowerCase();
     const statusFilter = document.getElementById('filter-history-status').value;
 
-    // Filter state.readings
-    let filteredReadings = state.readings.filter(reading => {
+    const filteredReadings = state.readings.filter(reading => {
+        let client = state.clients.find(c => c.id === reading.clientId);
         const machine = state.machines.find(m => m.id === reading.machineId);
-        if (!machine) return false;
-        const client = state.clients.find(c => c.id === machine.clientId);
+        if (!client && machine) {
+            client = state.clients.find(c => c.id === machine.clientId);
+        }
         const clientName = client ? client.name.toLowerCase() : '';
-        const machineName = `${machine.brand || ''} ${machine.model}`.toLowerCase();
+        const machineName = machine ? `${machine.brand || ''} ${machine.model}`.toLowerCase() : '';
         
         const matchesSearch = clientName.includes(searchVal) || machineName.includes(searchVal);
         
@@ -3265,10 +3311,10 @@ function renderHistoryTab() {
         if (b.month !== a.month) {
             return b.month.localeCompare(a.month);
         }
-        const machineA = state.machines.find(m => m.id === a.machineId);
-        const machineB = state.machines.find(m => m.id === b.machineId);
-        const nameA = (state.clients.find(c => c.id === machineA?.clientId)?.name || '').toLowerCase();
-        const nameB = (state.clients.find(c => c.id === machineB?.clientId)?.name || '').toLowerCase();
+        const clientA = state.clients.find(c => c.id === a.clientId);
+        const clientB = state.clients.find(c => c.id === b.clientId);
+        const nameA = (clientA?.name || '').toLowerCase();
+        const nameB = (clientB?.name || '').toLowerCase();
         return nameA.localeCompare(nameB);
     });
 
@@ -3279,12 +3325,14 @@ function renderHistoryTab() {
 
     filteredReadings.forEach(reading => {
         const machine = state.machines.find(m => m.id === reading.machineId);
-        if (!machine) return;
-        const client = state.clients.find(c => c.id === machine.clientId);
-        const abono = state.abonos.find(a => a.id === machine.abonoId);
+        let client = state.clients.find(c => c.id === reading.clientId);
+        if (!client && machine) {
+            client = state.clients.find(c => c.id === machine.clientId);
+        }
+        const abono = state.abonos.find(a => a.id === reading.abonoId) || (machine ? state.abonos.find(a => a.id === machine.abonoId) : null);
 
         const clientName = client ? client.name : 'Cliente no asignado';
-        const machineName = `${machine.brand || ''} ${machine.model}`;
+        const machineName = machine ? `${machine.brand || ''} ${machine.model}` : 'Equipo no encontrado';
         const abonoName = abono ? abono.name : '-';
         
         let initialVal = reading.initial.toLocaleString('es-AR');
@@ -3299,7 +3347,9 @@ function renderHistoryTab() {
         const excessCost = abono ? (exc * abono.excessPrice) : 0;
         const netCost = fixedCost + excessCost;
         
-        const ivaRate = machine.applyIva && abono ? (abono.ivaRate || 0) : 0;
+        const serialNum = machine ? machine.serial : 'N/A';
+        const applyIva = machine ? machine.applyIva : false;
+        const ivaRate = applyIva && abono ? (abono.ivaRate || 0) : 0;
         const ivaCost = netCost * (ivaRate / 100);
         const totalCost = netCost + ivaCost;
 
@@ -3318,7 +3368,7 @@ function renderHistoryTab() {
         row.innerHTML = `
             <td><strong>${formatPeriod(reading.month)}</strong></td>
             <td class="font-bold-title">${clientName}</td>
-            <td>${machineName} <span class="text-xs text-secondary-light">(${machine.serial})</span></td>
+            <td>${machineName} <span class="text-xs text-secondary-light">(${serialNum})</span></td>
             <td class="text-xs">${abonoName}</td>
             <td>${initialVal}</td>
             <td>${finalVal}</td>
@@ -4864,9 +4914,8 @@ function generateClientReportHtml(client) {
         `;
     }).join('');
 
-    // Readings for all client machines
-    const clientMachineIds = assignedMachines.map(m => m.id);
-    const clientReadings = state.readings.filter(r => clientMachineIds.includes(r.machineId));
+    // Readings for all client machines (historical and active)
+    const clientReadings = state.readings.filter(r => r.clientId === client.id);
     clientReadings.sort((a, b) => b.month.localeCompare(a.month));
 
     // Calculate total debt and pending details html
@@ -4878,7 +4927,7 @@ function generateClientReportHtml(client) {
         pendingReadings.forEach(r => {
             const m = state.machines.find(mac => mac.id === r.machineId);
             const mName = m ? `${m.brand} ${m.model}` : 'Desconocido';
-            const abono = m ? state.abonos.find(a => a.id === m.abonoId) : null;
+            const abono = state.abonos.find(a => a.id === r.abonoId) || (m ? state.abonos.find(a => a.id === m.abonoId) : null);
             const diff = Math.max(0, r.final - r.initial);
             const exc = abono ? Math.max(0, diff - abono.limit) : 0;
             const ivaRate = (m && m.applyIva && abono) ? (abono.ivaRate || 0) : 0;
@@ -4902,7 +4951,7 @@ function generateClientReportHtml(client) {
     const readingsTableRows = clientReadings.map(r => {
         const m = state.machines.find(mac => mac.id === r.machineId);
         const mName = m ? `${m.brand} ${m.model}` : 'Desconocido';
-        const abono = m ? state.abonos.find(a => a.id === m.abonoId) : null;
+        const abono = state.abonos.find(a => a.id === r.abonoId) || (m ? state.abonos.find(a => a.id === m.abonoId) : null);
         const diff = Math.max(0, r.final - r.initial);
         const exc = abono ? Math.max(0, diff - abono.limit) : 0;
         const ivaRate = (m && m.applyIva && abono) ? (abono.ivaRate || 0) : 0;
@@ -5153,7 +5202,7 @@ function downloadCsvFile(content, filename) {
 function exportClientToCsv(client) {
     const assignedMachines = state.machines.filter(m => m.clientId === client.id);
     const clientMachineIds = assignedMachines.map(m => m.id);
-    const clientReadings = state.readings.filter(r => clientMachineIds.includes(r.machineId));
+    const clientReadings = state.readings.filter(r => r.clientId === client.id);
     const clientMaintenance = state.maintenance.filter(mn => clientMachineIds.includes(mn.machineId));
 
     let csvContent = "";
@@ -5175,7 +5224,7 @@ function exportClientToCsv(client) {
     csvContent += `Periodo;Equipo;N Serie;Rango Contadores;Consumo;Monto Total\n`;
     clientReadings.forEach(r => {
         const m = state.machines.find(mac => mac.id === r.machineId);
-        const abono = m ? state.abonos.find(a => a.id === m.abonoId) : null;
+        const abono = state.abonos.find(a => a.id === r.abonoId) || (m ? state.abonos.find(a => a.id === m.abonoId) : null);
         const diff = Math.max(0, r.final - r.initial);
         const exc = abono ? Math.max(0, diff - abono.limit) : 0;
         const ivaRate = (m && m.applyIva && abono) ? (abono.ivaRate || 0) : 0;
