@@ -46,6 +46,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         await loadDatabase();
         // Re-render UI with latest downloaded data
         renderApp();
+        if (state.currentUser) {
+            checkPopNotifications();
+        }
     } catch (e) {
         console.error("Error loading database:", e);
     }
@@ -1459,6 +1462,7 @@ function setupActions() {
                 checkAuthSession();
                 showToast('¡Bienvenido de nuevo, ' + userObj.fullname + '!', 'success');
                 document.getElementById('form-login').reset();
+                checkPopNotifications();
             } catch (err) {
                 console.warn("Firebase Auth sign-in failed, trying fallback creation:", err);
                 
@@ -1473,6 +1477,7 @@ function setupActions() {
                         checkAuthSession();
                         showToast('¡Bienvenido y registrado en la nube, ' + userObj.fullname + '!', 'success');
                         document.getElementById('form-login').reset();
+                        checkPopNotifications();
                         return;
                     } catch (createErr) {
                         console.error("Auto-registration failed:", createErr);
@@ -1492,6 +1497,7 @@ function setupActions() {
                 checkAuthSession();
                 showToast('¡Bienvenido de nuevo, ' + user.fullname + '!', 'success');
                 document.getElementById('form-login').reset();
+                checkPopNotifications();
             } else {
                 showToast('Usuario o contraseña incorrectos', 'error');
             }
@@ -3496,5 +3502,137 @@ function escapeHTML(str) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+// Web Audio API notification sound synthesis (no audio file dependencies)
+function playNotificationSound() {
+    try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Note 1 (D5)
+        const osc1 = audioCtx.createOscillator();
+        const gain1 = audioCtx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+        gain1.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gain1.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+        osc1.connect(gain1);
+        gain1.connect(audioCtx.destination);
+        osc1.start();
+        osc1.stop(audioCtx.currentTime + 0.15);
+        
+        // Note 2 (A5) after a small delay
+        setTimeout(() => {
+            const osc2 = audioCtx.createOscillator();
+            const gain2 = audioCtx.createGain();
+            osc2.type = 'sine';
+            osc2.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
+            gain2.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain2.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+            osc2.connect(gain2);
+            gain2.connect(audioCtx.destination);
+            osc2.start();
+            osc2.stop(audioCtx.currentTime + 0.3);
+        }, 80);
+    } catch (e) {
+        console.warn("AudioContext not allowed or supported yet:", e);
+    }
+}
+
+// Pop Notification Manager
+function checkPopNotifications() {
+    if (sessionStorage.getItem('notified_readings_this_session') === 'true') {
+        return; // Already notified in this session
+    }
+
+    const popModal = document.getElementById('modal-notification-pop');
+    const popList = document.getElementById('pop-notification-list');
+    if (!popModal || !popList) return;
+
+    popList.innerHTML = '';
+    
+    const today = new Date();
+    const todayNormalized = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+    const activeRentals = state.machines.filter(m => m.clientId);
+    const urgentAlerts = [];
+
+    activeRentals.forEach(machine => {
+        // Check if reading is already loaded for current month
+        const reading = state.readings.find(r => r.machineId === machine.id && r.month === currentMonth);
+        if (reading) return;
+
+        const client = state.clients.find(c => c.id === machine.clientId);
+        if (!client) return;
+
+        const readingDay = machine.readingDay || 10;
+        const deadline = new Date(today.getFullYear(), today.getMonth(), readingDay);
+        const diffTime = deadline - todayNormalized;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        // High priority: overdue or due today
+        if (diffDays <= 0) {
+            let label = '';
+            if (diffDays < 0) {
+                label = `Atrasado por ${Math.abs(diffDays)} ${Math.abs(diffDays) === 1 ? 'día' : 'días'}`;
+            } else {
+                label = 'Vence hoy';
+            }
+
+            urgentAlerts.push({
+                clientName: client.name,
+                machineDesc: `${machine.brand || ''} ${machine.model} (${machine.serial})`,
+                label,
+                readingDay
+            });
+        }
+    });
+
+    if (urgentAlerts.length > 0) {
+        // Play chime sound
+        playNotificationSound();
+
+        // Render list items
+        urgentAlerts.forEach(alert => {
+            const li = document.createElement('li');
+            li.style.padding = '8px 12px';
+            li.style.borderRadius = '6px';
+            li.style.backgroundColor = 'rgba(239, 68, 68, 0.05)';
+            li.style.border = '1px solid rgba(239, 68, 68, 0.15)';
+            li.style.color = 'var(--danger)';
+            li.style.fontSize = '12px';
+            li.style.display = 'flex';
+            li.style.justifyContent = 'space-between';
+            li.style.alignItems = 'center';
+
+            li.innerHTML = `
+                <div>
+                    <strong>${alert.clientName}</strong> - <span style="color:var(--text-secondary);">${alert.machineDesc}</span>
+                </div>
+                <span class="badge" style="background-color: var(--danger-light); color: var(--danger); font-size:10px; font-weight:700; text-transform:uppercase;">${alert.label}</span>
+            `;
+            popList.appendChild(li);
+        });
+
+        // Set session storage flag to prevent repeating
+        sessionStorage.setItem('notified_readings_this_session', 'true');
+
+        // Show pop-up modal
+        popModal.style.display = 'block';
+
+        // Set up button actions
+        document.getElementById('btn-pop-close').onclick = () => {
+            popModal.style.display = 'none';
+        };
+
+        document.getElementById('btn-pop-view-readings').onclick = () => {
+            popModal.style.display = 'none';
+            // Switch to readings tab
+            const readingsTabBtn = document.querySelector('[data-tab="readings"]');
+            if (readingsTabBtn) {
+                readingsTabBtn.click();
+            }
+        };
+    }
 }
 

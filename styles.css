@@ -1594,3 +1594,13 @@ textarea.form-control {
     background-color: rgba(0, 0, 0, 0.03);
 }
 
+@keyframes bellRing {
+    0%, 100% { transform: rotate(0); }
+    15% { transform: rotate(15deg); }
+    30% { transform: rotate(-15deg); }
+    45% { transform: rotate(10deg); }
+    60% { transform: rotate(-10deg); }
+    75% { transform: rotate(4deg); }
+    85% { transform: rotate(-4deg); }
+}
+
