@@ -1199,6 +1199,74 @@ function setupActions() {
         document.querySelector('.nav-item[data-tab="readings"]').click();
     });
 
+    // Quick Add Rental
+    const quickAddRentalBtn = document.getElementById('quick-add-rental');
+    if (quickAddRentalBtn) {
+        quickAddRentalBtn.addEventListener('click', () => {
+            openQuickRentalModal();
+        });
+    }
+
+    // Quick Rental Cancel actions
+    const cancelQuickRentalBtn = document.getElementById('cancel-quick-rental');
+    if (cancelQuickRentalBtn) {
+        cancelQuickRentalBtn.addEventListener('click', closeAllModals);
+    }
+    const closeQuickRentalBtn = document.getElementById('close-quick-rental');
+    if (closeQuickRentalBtn) {
+        closeQuickRentalBtn.addEventListener('click', closeAllModals);
+    }
+
+    // Quick Rental Form Submit
+    const quickRentalForm = document.getElementById('form-quick-rental');
+    if (quickRentalForm) {
+        quickRentalForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const clientId = document.getElementById('qr-client-id').value;
+            const machineId = document.getElementById('qr-machine-id').value;
+            const abonoId = document.getElementById('qr-abono-id').value;
+            const initialCounter = parseInt(document.getElementById('qr-initial-counter').value, 10) || 0;
+            const applyIva = document.getElementById('qr-apply-iva').checked;
+
+            const machineIdx = state.machines.findIndex(m => m.id === machineId);
+            if (machineIdx !== -1) {
+                // Update machine fields
+                state.machines[machineIdx].clientId = clientId;
+                state.machines[machineIdx].abonoId = abonoId;
+                state.machines[machineIdx].initialCounter = initialCounter;
+                state.machines[machineIdx].machineCounter = initialCounter;
+                state.machines[machineIdx].status = 'Alquilada';
+                state.machines[machineIdx].applyIva = applyIva;
+                state.machines[machineIdx].installationDate = new Date().toISOString().split('T')[0];
+
+                // Sync machine to Firebase
+                await dbSet('machines', machineId, state.machines[machineIdx]);
+
+                // Create initial reading record for currentMonth
+                const existingReading = state.readings.find(r => r.machineId === machineId && r.month === currentMonth);
+                if (!existingReading) {
+                    const newReading = {
+                        id: 'read-' + Date.now(),
+                        machineId: machineId,
+                        clientId: clientId,
+                        month: currentMonth,
+                        initial: initialCounter,
+                        final: initialCounter,
+                        status: 'pending'
+                    };
+                    state.readings.push(newReading);
+                    await dbSet('readings', newReading.id, newReading);
+                }
+
+                showToast('¡Alquiler activado y máquina asignada con éxito!', 'success');
+                closeAllModals();
+                renderApp();
+            } else {
+                showToast('Error: No se encontró la máquina seleccionada', 'error');
+            }
+        });
+    }
+
     // Sync previous month final readings
     document.getElementById('btn-sync-previous-readings').addEventListener('click', () => {
         syncFinalReadings();
@@ -1578,6 +1646,59 @@ function closeAllModals() {
     document.querySelectorAll('.modal').forEach(modal => {
         modal.style.display = 'none';
     });
+}
+
+function openQuickRentalModal() {
+    closeAllModals();
+    const form = document.getElementById('form-quick-rental');
+    if (form) form.reset();
+
+    const clientSelect = document.getElementById('qr-client-id');
+    const machineSelect = document.getElementById('qr-machine-id');
+    const abonoSelect = document.getElementById('qr-abono-id');
+
+    if (clientSelect && machineSelect && abonoSelect) {
+        // Populate Clients Select
+        clientSelect.innerHTML = '<option value="">-- Selecciona un cliente existente --</option>';
+        const sortedClients = [...state.clients].sort((a, b) => a.name.localeCompare(b.name));
+        sortedClients.forEach(c => {
+            const option = document.createElement('option');
+            option.value = c.id;
+            option.textContent = c.name;
+            clientSelect.appendChild(option);
+        });
+
+        // Populate Available Machines Select
+        machineSelect.innerHTML = '<option value="">-- Selecciona una máquina disponible --</option>';
+        const availableMachines = state.machines.filter(m => m.status === 'Disponible' || !m.clientId);
+        availableMachines.forEach(m => {
+            const option = document.createElement('option');
+            option.value = m.id;
+            option.textContent = `${m.brand} ${m.model} (${m.serial}) - ${m.type}`;
+            machineSelect.appendChild(option);
+        });
+
+        // Populate Abonos Select
+        abonoSelect.innerHTML = '<option value="">-- Selecciona un abono --</option>';
+        state.abonos.forEach(a => {
+            const option = document.createElement('option');
+            option.value = a.id;
+            option.textContent = `${a.name} (${formatCurrency(a.price)})`;
+            abonoSelect.appendChild(option);
+        });
+
+        // Prefill counter on machine change
+        machineSelect.onchange = (e) => {
+            const selectedId = e.target.value;
+            const machine = state.machines.find(m => m.id === selectedId);
+            const counterInput = document.getElementById('qr-initial-counter');
+            if (machine && counterInput) {
+                counterInput.value = machine.machineCounter || 0;
+            }
+        };
+    }
+
+    document.getElementById('modal-quick-rental').style.display = 'block';
 }
 
 function openClientModal(client = null) {
@@ -2000,6 +2121,45 @@ function renderDashboardTab() {
         `;
         dashboardTableBody.appendChild(row);
     });
+
+    // 4. Recent Maintenance Service Log
+    const recentMaintenanceBody = document.querySelector('#dashboard-recent-maintenance-table tbody');
+    if (recentMaintenanceBody) {
+        recentMaintenanceBody.innerHTML = '';
+        const sortedMaint = [...state.maintenance].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
+        
+        if (sortedMaint.length === 0) {
+            recentMaintenanceBody.innerHTML = `<tr><td colspan="4" class="text-center py-3 text-secondary-light">No hay registros de servicio recientes.</td></tr>`;
+        } else {
+            sortedMaint.forEach(entry => {
+                const machine = state.machines.find(m => m.id === entry.machineId);
+                const machineLabel = machine ? `${machine.model} (${machine.serial})` : 'Desconocido';
+                const dateFmt = entry.date ? entry.date.split('-').reverse().join('/') : 'N/A';
+                
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><strong>${dateFmt}</strong></td>
+                    <td>${machineLabel}</td>
+                    <td><span class="badge" style="font-size: 10px;">${entry.type}</span></td>
+                    <td class="font-bold-title">${entry.description}</td>
+                `;
+                recentMaintenanceBody.appendChild(row);
+            });
+        }
+    }
+
+    // 5. Machine Inventory Distribution Counts
+    const totalAvailable = state.machines.filter(m => m.status === 'Disponible' || !m.clientId).length;
+    const colorRented = state.machines.filter(m => m.clientId && m.type === 'Color').length;
+    const monoRented = state.machines.filter(m => m.clientId && m.type !== 'Color').length;
+
+    const availableEl = document.getElementById('stat-machines-available');
+    const colorEl = document.getElementById('stat-machines-color');
+    const monoEl = document.getElementById('stat-machines-mono');
+
+    if (availableEl) availableEl.textContent = totalAvailable;
+    if (colorEl) colorEl.textContent = colorRented;
+    if (monoEl) monoEl.textContent = monoRented;
 }
 
 // Window globally scoped triggers so they can be triggered from HTML attributes (onclick)
