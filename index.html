@@ -1,0 +1,1261 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>M&S Tecnología Digital - Gestor de Alquiler de Fotocopiadoras e Impresoras</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Login Screen wrapper -->
+    <div id="login-container" style="display: none; align-items: center; justify-content: center; min-height: 100vh; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);">
+        <div class="login-card">
+            <div class="login-logo" style="text-align: center; margin-bottom: 24px;">
+                <img src="logo.png" alt="M&S" style="height:64px; border-radius:8px; margin-bottom:12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+                <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary); margin:0;">M&S Tecnología Digital</h2>
+                <p class="text-xs text-secondary-light" style="margin-top: 4px;">Acceso Administrativo al Gestor de Alquileres</p>
+            </div>
+            <form id="form-login">
+                <div class="form-group">
+                    <label for="login-username" style="font-weight: 600; font-size: 13px; color: var(--text-secondary);">Usuario</label>
+                    <input type="text" id="login-username" class="form-control" required placeholder="Ej: dmoyano">
+                </div>
+                <div class="form-group" style="margin-top: 15px;">
+                    <label for="login-password" style="font-weight: 600; font-size: 13px; color: var(--text-secondary);">Contraseña</label>
+                    <input type="password" id="login-password" class="form-control" required placeholder="••••••••">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block mt-4" style="justify-content:center; padding: 12px; font-weight: 600; font-size: 14px;">Iniciar Sesión</button>
+            </form>
+            <div style="text-align: center; margin-top: 18px;">
+                <a href="#" id="link-forgot-password" class="text-xs text-indigo" style="text-decoration:none; font-weight:600;">¿Olvidaste tu contraseña? Restablecer contraseña</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Password Recovery wrapper -->
+    <div id="reset-password-container" style="display: none; align-items: center; justify-content: center; min-height: 100vh; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);">
+        <!-- Step 1: Request email/username -->
+        <div class="login-card" id="recovery-step-1">
+            <div class="login-logo" style="text-align: center; margin-bottom: 24px;">
+                <h2 style="font-size: 1.35rem; font-weight: 700; color: var(--text-primary); margin:0;">Recuperar Contraseña</h2>
+                <p class="text-xs text-secondary-light" style="margin-top: 6px;">Ingresa tu usuario o email registrado para buscar la cuenta.</p>
+            </div>
+            <form id="form-recovery-req">
+                <div class="form-group">
+                    <label for="recovery-identity" style="font-weight: 600; font-size: 13px; color: var(--text-secondary);">Usuario o Email</label>
+                    <input type="text" id="recovery-identity" class="form-control" required placeholder="Ej: dmoyano">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block mt-4" style="justify-content:center; padding:12px; font-weight: 600; font-size: 14px;">Buscar Cuenta</button>
+            </form>
+            <div style="text-align: center; margin-top: 18px;">
+                <a href="#" id="link-back-login-1" class="text-xs text-secondary-light" style="text-decoration:none; font-weight:500;">Volver al Inicio de Sesión</a>
+            </div>
+        </div>
+
+        <!-- Step 2: Verification code and new password -->
+        <div class="login-card" id="recovery-step-2" style="display: none;">
+            <div class="login-logo" style="text-align: center; margin-bottom: 24px;">
+                <h2 style="font-size: 1.35rem; font-weight: 700; color: var(--text-primary); margin:0;">Restablecer Nueva Contraseña</h2>
+                <p class="text-xs text-secondary" id="recovery-email-hint" style="color:var(--emerald) !important; font-weight:600; margin-top: 6px;"></p>
+            </div>
+            <form id="form-recovery-reset">
+                <div class="form-group">
+                    <label for="recovery-code" style="font-weight: 600; font-size: 13px; color: var(--text-secondary);">Código de Verificación <span class="required">*</span></label>
+                    <input type="text" id="recovery-code" class="form-control" required placeholder="Ingresa el código de 6 dígitos">
+                </div>
+                <div class="form-group" style="margin-top: 15px;">
+                    <label for="recovery-new-password" style="font-weight: 600; font-size: 13px; color: var(--text-secondary);">Nueva Contraseña <span class="required">*</span></label>
+                    <input type="password" id="recovery-new-password" class="form-control" required placeholder="Mínimo 6 caracteres" minlength="6">
+                </div>
+                <div class="form-group" style="margin-top: 15px;">
+                    <label for="recovery-new-password-confirm" style="font-weight: 600; font-size: 13px; color: var(--text-secondary);">Confirmar Contraseña <span class="required">*</span></label>
+                    <input type="password" id="recovery-new-password-confirm" class="form-control" required placeholder="Repite la contraseña">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block mt-4" style="justify-content:center; padding:12px; font-weight: 600; font-size: 14px;">Guardar y Continuar</button>
+            </form>
+            <div style="text-align: center; margin-top: 18px;">
+                <a href="#" id="link-back-login-2" class="text-xs text-secondary-light" style="text-decoration:none; font-weight:500;">Cancelar y Volver</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="app-container" style="display: none;">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo-container" style="display:flex; align-items:center; gap:10px; padding: 20px 24px;">
+                <img id="sidebar-logo-img" src="logo.png" alt="M&S" style="height:36px; border-radius:6px; object-fit:contain;">
+                <div style="display:flex; flex-direction:column; line-height:1.1;">
+                    <span style="font-size: 16px; font-weight: 800; color: var(--text-primary); letter-spacing: 0.5px;">M&S</span>
+                    <span style="font-size: 8px; font-weight: 600; color: var(--text-secondary-light); letter-spacing: 1px;">TECNOLOGÍA DIGITAL</span>
+                </div>
+            </div>
+            <nav class="nav-menu">
+                <button class="nav-item active" data-tab="dashboard">
+                    <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>
+                    Panel de Control
+                </button>
+                <button class="nav-item" data-tab="rentals">
+                    <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+                    Alquileres
+                </button>
+                <button class="nav-item" data-tab="readings">
+                    <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    Lecturas y Facturas
+                </button>
+                <button class="nav-item" data-tab="history">
+                    <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    Historial
+                </button>
+                <button class="nav-item" data-tab="clients">
+                    <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                    Clientes
+                </button>
+                <button class="nav-item" data-tab="machines">
+                    <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+                    Máquinas
+                </button>
+                <button class="nav-item" data-tab="abonos">
+                    <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                    Abonos (Planes)
+                </button>
+                <button class="nav-item" data-tab="users">
+                    <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                    Usuarios
+                </button>
+                <button class="nav-item" data-tab="data-management">
+                    <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    Datos y Respaldo
+                </button>
+            </nav>
+            <div class="sidebar-footer" style="padding-bottom:10px;">
+                <p>CopyRent v1.0</p>
+                <span>Desarrollado para ARS ($)</span>
+            </div>
+            <!-- Logged User Profile card at sidebar bottom -->
+            <div class="sidebar-user-card" style="margin-top: auto; padding: 15px 20px; border-top: 1px solid var(--border-color); display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                <div style="display:flex; align-items:center; gap:8px; overflow:hidden;">
+                    <div style="width:32px; height:32px; border-radius:50%; background:var(--primary); color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; flex-shrink:0;" id="user-avatar-initials">
+                        DM
+                    </div>
+                    <div style="display:flex; flex-direction:column; overflow:hidden; line-height:1.2;">
+                        <span style="font-size:12px; font-weight:600; color:var(--text-primary); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;" id="user-display-name">Darío Moyano</span>
+                        <span style="font-size:10px; color:var(--text-secondary-light); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;" id="user-display-role">Administrador</span>
+                    </div>
+                </div>
+                <button id="btn-logout" title="Cerrar Sesión" style="border:none; background:none; color:var(--danger); cursor:pointer; padding:6px; display:flex; align-items:center; justify-content:center; border-radius:6px; transition: var(--transition-fast);">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px; height:16px;"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="content-header">
+                <div class="header-title">
+                    <h1 id="page-title">Panel de Control</h1>
+                    <p id="page-subtitle" class="text-secondary">Información y rendimiento general de alquileres</p>
+                </div>
+                <div class="header-actions">
+                    <div class="month-selector-wrapper">
+                        <label for="global-month-select">Mes de gestión:</label>
+                        <input type="month" id="global-month-select" class="form-control-inline">
+                    </div>
+                </div>
+            </header>
+
+            <!-- Notification Area -->
+            <div id="toast-container" class="toast-container"></div>
+
+            <!-- Tab: Dashboard -->
+            <section id="tab-dashboard" class="tab-content active">
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-icon bg-indigo-light text-indigo">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
+                        </div>
+                        <div class="metric-info">
+                            <h3>Clientes Activos</h3>
+                            <p class="metric-value" id="stat-active-clients">0</p>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-icon bg-emerald-light text-emerald">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect></svg>
+                        </div>
+                        <div class="metric-info">
+                            <h3>Máquinas Alquiladas</h3>
+                            <p class="metric-value" id="stat-rented-machines">0</p>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-icon bg-blue-light text-blue">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                        </div>
+                        <div class="metric-info">
+                            <h3>Abono Mensual Fijo</h3>
+                            <p class="metric-value" id="stat-fixed-revenue">$0</p>
+                            <span class="metric-subtext">Total proyectado base</span>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-icon bg-purple-light text-purple">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path><polyline points="18 8 22 12 18 16"></polyline></svg>
+                        </div>
+                        <div class="metric-info">
+                            <h3>Facturación Total Mes</h3>
+                            <p class="metric-value" id="stat-total-revenue">$0</p>
+                            <span class="metric-subtext" id="stat-excedente-revenue">Excedentes: $0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-row">
+                    <!-- Left: Readings Status -->
+                    <div class="dashboard-card flex-2">
+                        <div class="card-header">
+                            <h2>Estado de Lecturas del Mes Seleccionado</h2>
+                            <span class="badge" id="dashboard-month-label">Junio 2026</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="progress-container">
+                                <div class="progress-text">
+                                    <span>Progreso de carga de lecturas</span>
+                                    <span id="readings-progress-percent">0%</span>
+                                </div>
+                                <div class="progress-bar-bg">
+                                    <div class="progress-bar-fill" id="readings-progress-bar" style="width: 0%"></div>
+                                </div>
+                                <p class="text-secondary text-sm mt-1" id="readings-progress-desc">0 de 0 máquinas registradas</p>
+                            </div>
+                            <div class="table-container mt-4">
+                                <table class="table" id="dashboard-pending-readings-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Cliente</th>
+                                            <th>Máquina</th>
+                                            <th>Abono</th>
+                                            <th>Estado Lectura</th>
+                                            <th>Acción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- Dynamic rows -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Fast Info / Quick actions -->
+                    <div class="dashboard-card flex-1">
+                        <div class="card-header">
+                            <h2>Resumen de Cobros</h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="billing-summary-block">
+                                <div class="billing-stat-row">
+                                    <span class="label">Cobrado:</span>
+                                    <span class="value text-emerald font-semibold" id="billing-summary-paid">$0</span>
+                                </div>
+                                <div class="billing-stat-row">
+                                    <span class="label">Pendiente:</span>
+                                    <span class="value text-amber font-semibold" id="billing-summary-pending">$0</span>
+                                </div>
+                                <div class="chart-mini-container mt-3">
+                                    <div class="chart-mini-bar" style="display: flex; height: 16px; border-radius: 8px; overflow: hidden;">
+                                        <div id="chart-bar-paid" style="background-color: var(--emerald); width: 0%;"></div>
+                                        <div id="chart-bar-pending" style="background-color: var(--amber); width: 0%;"></div>
+                                    </div>
+                                    <div class="chart-mini-legend mt-2">
+                                        <span class="legend-dot bg-emerald"></span> Cobrado (<span id="chart-pct-paid">0%</span>)
+                                        <span class="legend-dot bg-amber ml-3"></span> Pendiente (<span id="chart-pct-pending">0%</span>)
+                                    </div>
+                                </div>
+                            </div>
+
+                            <hr class="card-divider">
+
+                            <div class="quick-actions">
+                                <h3>Acciones Rápidas</h3>
+                                <button class="btn btn-primary btn-block mb-2 btn-icon" id="quick-add-client">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="14"></line><line x1="22" y1="11" x2="16" y2="11"></line></svg>
+                                    Registrar Nuevo Cliente
+                                </button>
+                                <button class="btn btn-secondary btn-block mb-2 btn-icon" id="quick-add-reading">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+                                    Cargar Lecturas
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab: Rentals (Alquileres Activos) -->
+            <section id="tab-rentals" class="tab-content">
+                <div class="action-header">
+                    <div class="search-wrapper">
+                        <input type="text" id="search-rentals" class="form-control" placeholder="Buscar por cliente, marca o modelo...">
+                    </div>
+                </div>
+
+                <div class="rentals-grid mt-3" id="rentals-grid-container">
+                    <!-- Dynamic Rental Cards rendered by client -->
+                </div>
+            </section>
+
+            <!-- Tab: Readings & Invoices -->
+            <section id="tab-readings" class="tab-content">
+                <div class="filter-bar">
+                    <div class="filter-group">
+                        <label for="filter-reading-status">Filtrar por Cobro:</label>
+                        <select id="filter-reading-status" class="form-control">
+                            <option value="all">Todos los Estados</option>
+                            <option value="pending">Pendientes de Pago</option>
+                            <option value="paid">Cobrados</option>
+                            <option value="unregistered">Sin Lectura Cargada</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="search-reading-client">Buscar Cliente:</label>
+                        <input type="text" id="search-reading-client" class="form-control" placeholder="Nombre de cliente...">
+                    </div>
+                </div>
+
+                <div class="dashboard-card mt-3">
+                    <div class="card-header">
+                        <h2>Listado de Facturación y Lecturas</h2>
+                        <button class="btn btn-secondary btn-sm" id="btn-sync-previous-readings">
+                            Copiar Lecturas Finales como Iniciales
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-container">
+                            <table class="table" id="readings-table">
+                                <thead>
+                                    <tr>
+                                        <th>Cliente</th>
+                                        <th>Máquina</th>
+                                        <th>Abono</th>
+                                        <th>L. Inicial</th>
+                                        <th>L. Final</th>
+                                        <th>Consumo</th>
+                                        <th>Excedente</th>
+                                        <th>Monto Fijo</th>
+                                        <th>Monto Exced.</th>
+                                        <th>IVA</th>
+                                        <th>Total</th>
+                                        <th>Estado</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Dynamic rows -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab: History (All Months Billing Ledger) -->
+            <section id="tab-history" class="tab-content">
+                <div class="action-header">
+                    <div class="filter-group-inline">
+                        <input type="text" id="search-history" class="form-control" placeholder="Buscar por cliente, marca o modelo...">
+                        <select id="filter-history-status" class="form-control ml-2">
+                            <option value="all">Todos los Estados</option>
+                            <option value="paid">Cobrados</option>
+                            <option value="pending">Pendientes de Pago</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="dashboard-card mt-3">
+                    <div class="card-header">
+                        <h2>Historial Completo de Lecturas y Facturas</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-container">
+                            <table class="table" id="history-table">
+                                <thead>
+                                    <tr>
+                                        <th>Periodo</th>
+                                        <th>Cliente</th>
+                                        <th>Máquina</th>
+                                        <th>Abono</th>
+                                        <th>L. Inicial</th>
+                                        <th>L. Final</th>
+                                        <th>Consumo</th>
+                                        <th>Excedente</th>
+                                        <th>Subtotal</th>
+                                        <th>IVA</th>
+                                        <th>Total</th>
+                                        <th>Estado</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Dynamic rows -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab: Clients -->
+            <section id="tab-clients" class="tab-content">
+                <div class="action-header">
+                    <div class="search-wrapper">
+                        <input type="text" id="search-client" class="form-control" placeholder="Buscar cliente por nombre o dirección...">
+                    </div>
+                    <button class="btn btn-primary" id="btn-add-client">
+                        + Agregar Cliente
+                    </button>
+                </div>
+
+                <div class="dashboard-card mt-3">
+                    <div class="card-body">
+                        <div class="table-container">
+                            <table class="table" id="clients-table">
+                                <thead>
+                                    <tr>
+                                        <th>Nombre / Razón Social</th>
+                                        <th>Contacto</th>
+                                        <th>Dirección</th>
+                                        <th>Máquinas Asignadas</th>
+                                        <th>Notas</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Dynamic rows -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab: Machines -->
+            <section id="tab-machines" class="tab-content">
+                <div class="action-header">
+                    <div class="filter-group-inline">
+                        <input type="text" id="search-machine" class="form-control" placeholder="Buscar por marca, modelo o serie...">
+                        <select id="filter-machine-status" class="form-control ml-2">
+                            <option value="all">Todos los Estados (Alquiler / Condición)</option>
+                            <option value="rented">Alquiladas (Con cliente)</option>
+                            <option value="available">Disponibles (Sin cliente)</option>
+                            <option value="Nuevo">Físico: Nuevo</option>
+                            <option value="Usado">Físico: Usado</option>
+                            <option value="En Servicio">Físico: En Servicio</option>
+                            <option value="Scrap">Físico: Scrap</option>
+                            <option value="No funciona">Físico: No funciona</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary" id="btn-add-machine">
+                        + Agregar Máquina
+                    </button>
+                </div>
+
+                <div class="dashboard-card mt-3">
+                    <div class="card-body">
+                        <div class="table-container">
+                            <table class="table" id="machines-table">
+                                <thead>
+                                    <tr>
+                                        <th>Modelo</th>
+                                        <th>Nro de Serie</th>
+                                        <th>Tipo</th>
+                                        <th>Cliente Asignado</th>
+                                        <th>Abono Contratado</th>
+                                        <th>Estado</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Dynamic rows -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab: Abonos (Plans) -->
+            <section id="tab-abonos" class="tab-content">
+                <div class="action-header">
+                    <p class="text-secondary">Define las plantillas de contratos de alquiler. Estos abonos podrán asociarse a las máquinas alquiladas.</p>
+                    <button class="btn btn-primary" id="btn-add-abono">
+                        + Agregar Abono
+                    </button>
+                </div>
+
+                <div class="dashboard-card mt-3">
+                    <div class="card-body">
+                        <div class="table-container">
+                            <table class="table" id="abonos-table">
+                                <thead>
+                                    <tr>
+                                        <th>Nombre del Abono</th>
+                                        <th>Copias/Impresiones Incluidas</th>
+                                        <th>Precio Mensual Base</th>
+                                        <th>Costo Excedente (p/unidad)</th>
+                                        <th>Máquinas usando este Plan</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Dynamic rows -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab: Users (Gestión de Usuarios) -->
+            <section id="tab-users" class="tab-content">
+                <div class="action-header">
+                    <p class="text-secondary">Administra los usuarios del sistema que pueden iniciar sesión en el gestor y configurar sus accesos.</p>
+                    <button class="btn btn-primary" id="btn-add-user">
+                        + Agregar Usuario
+                    </button>
+                </div>
+
+                <div class="dashboard-card mt-3">
+                    <div class="card-body">
+                        <div class="table-container">
+                            <table class="table" id="users-table">
+                                <thead>
+                                    <tr>
+                                        <th>Usuario</th>
+                                        <th>Nombre Completo</th>
+                                        <th>Email de Recuperación</th>
+                                        <th>Contraseña</th>
+                                        <th>Acciones</th>
+                                     </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Dynamic rows -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab: Data Management -->
+            <section id="tab-data-management" class="tab-content">
+                <div class="dashboard-row">
+                    <div class="dashboard-card flex-1">
+                        <div class="card-header">
+                            <h2>Copia de Seguridad y Respaldos</h2>
+                        </div>
+                        <div class="card-body">
+                            <p class="mb-4 text-secondary">
+                                La base de datos de esta aplicación se almacena a nivel local en tu navegador (`localStorage`).
+                                Para asegurar que no pierdas información en caso de limpiar el navegador o cambiar de equipo, realiza copias de seguridad de forma periódica.
+                            </p>
+                            
+                            <div class="flex-actions-column">
+                                <button class="btn btn-primary btn-block mb-3 btn-icon-large" id="btn-export-data">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                    <div>
+                                        <strong>Exportar Datos (Respaldar)</strong>
+                                        <p class="text-xs text-secondary-light">Descargar archivo .json con toda la información cargada</p>
+                                    </div>
+                                </button>
+                                
+                                <div class="import-wrapper mb-4">
+                                    <label class="btn btn-secondary btn-block btn-icon-large file-input-label">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                        <div>
+                                            <strong>Importar Datos (Restaurar)</strong>
+                                            <p class="text-xs text-secondary-light">Subir archivo .json previamente respaldado</p>
+                                        </div>
+                                        <input type="file" id="import-file-input" accept=".json" style="display:none;">
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-card flex-1">
+                        <div class="card-header">
+                            <h2>Identidad Corporativa</h2>
+                        </div>
+                        <div class="card-body">
+                            <p class="mb-3 text-secondary text-sm">
+                                Sube el logotipo de tu empresa. Se guardará localmente y se mostrará de forma destacada en la cabecera de todos los recibos y comprobantes de alquiler.
+                            </p>
+                            
+                            <div class="logo-upload-section">
+                                <div class="logo-preview-box mb-3" id="logo-preview-container" style="border: 2px dashed rgba(0,0,0,0.1); border-radius: 8px; padding: 15px; text-align: center; background: rgba(0,0,0,0.01); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100px;">
+                                    <span class="text-xs text-secondary-light" id="logo-preview-placeholder">Sin logotipo cargado</span>
+                                    <img id="logo-preview-img" src="" alt="Logotipo" style="max-height: 80px; display: none; border-radius: 4px;">
+                                </div>
+                                <div style="display:flex; gap:10px;">
+                                    <label class="btn btn-primary btn-block flex-1 text-center" style="margin-bottom:0; cursor:pointer; font-size:13px; padding: 8px 12px; display:flex; align-items:center; justify-content:center;">
+                                        Subir Logotipo
+                                        <input type="file" id="logo-upload-input" accept="image/*" style="display:none;">
+                                    </label>
+                                    <button class="btn btn-danger-outline" id="btn-remove-logo" style="display:none; padding: 8px 12px; font-size:13px;">Eliminar</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-card flex-1">
+                        <div class="card-header border-danger">
+                            <h2 class="text-danger">Zona de Peligro</h2>
+                        </div>
+                        <div class="card-body">
+                            <p class="mb-4 text-secondary">
+                                Estas acciones son destructivas y no se pueden deshacer a menos que poseas un respaldo JSON reciente.
+                            </p>
+                            
+                            <div class="danger-zone-box">
+                                <button class="btn btn-danger btn-block mb-3" id="btn-load-demo-data">
+                                    Restablecer y Cargar Datos de Demostración
+                                </button>
+                                <button class="btn btn-danger-outline btn-block" id="btn-clear-all-data">
+                                    Eliminar Todos los Datos de la Aplicación
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modals Section -->
+    
+    <!-- Modal: Client (Add/Edit) -->
+    <div id="modal-client" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-client-title">Agregar Cliente</h3>
+                <span class="close-modal">&times;</span>
+            </div>
+            <form id="form-client">
+                <input type="hidden" id="client-id">
+                <div class="form-group">
+                    <label for="client-name">Nombre / Razón Social <span class="required">*</span></label>
+                    <input type="text" id="client-name" class="form-control" required placeholder="Ej: Imprenta Rápida S.A.">
+                </div>
+                <div class="form-row">
+                    <div class="form-group col-6">
+                        <label for="client-phone">Teléfono de Contacto</label>
+                        <input type="text" id="client-phone" class="form-control" placeholder="Ej: 11 5555-1234">
+                    </div>
+                    <div class="form-group col-6">
+                        <label for="client-email">Email</label>
+                        <input type="email" id="client-email" class="form-control" placeholder="Ej: contacto@empresa.com">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="client-address">Dirección de Instalación</label>
+                    <input type="text" id="client-address" class="form-control" placeholder="Ej: Av. Rivadavia 4500, CABA">
+                </div>
+                <div class="form-group">
+                    <label for="client-notes">Notas / Observaciones</label>
+                    <textarea id="client-notes" class="form-control" rows="3" placeholder="Detalles de facturación, horarios, etc..."></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary close-modal-btn">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Machine (Add/Edit) -->
+    <div id="modal-machine" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-machine-title">Agregar Máquina</h3>
+                <span class="close-modal">&times;</span>
+            </div>
+            <form id="form-machine">
+                <input type="hidden" id="machine-id">
+                <div class="form-row">
+                    <div class="form-group col-6">
+                        <label for="machine-brand">Marca <span class="required">*</span></label>
+                        <input type="text" id="machine-brand" class="form-control" required placeholder="Ej: Ricoh">
+                    </div>
+                    <div class="form-group col-6">
+                        <label for="machine-model">Modelo <span class="required">*</span></label>
+                        <input type="text" id="machine-model" class="form-control" required placeholder="Ej: MP 301">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group col-6">
+                        <label for="machine-serial">Número de Serie <span class="required">*</span></label>
+                        <input type="text" id="machine-serial" class="form-control" required placeholder="Ej: W38484920">
+                    </div>
+                    <div class="form-group col-6">
+                        <label for="machine-type">Tipo de Equipo</label>
+                        <select id="machine-type" class="form-control">
+                            <option value="Fotocopiadora">Fotocopiadora</option>
+                            <option value="Impresora">Impresora</option>
+                            <option value="Multifunción">Multifunción (Copia/Escáner/Imp.)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group col-6">
+                        <label for="machine-status">Estado Físico / Condición <span class="required">*</span></label>
+                        <select id="machine-status" class="form-control" required>
+                            <option value="Nuevo">Nuevo</option>
+                            <option value="Usado">Usado</option>
+                            <option value="En Servicio">En Servicio (Activo)</option>
+                            <option value="Scrap">Scrap (Descarte)</option>
+                            <option value="No funciona">No funciona</option>
+                        </select>
+                    </div>
+                    <div class="form-group col-6">
+                        <label for="machine-counter">Contador de la Máquina <span class="required">*</span></label>
+                        <input type="number" id="machine-counter" class="form-control" required min="0" placeholder="Ej: 25000">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group col-12">
+                        <label for="machine-availability">Disponibilidad Comercial</label>
+                        <select id="machine-availability" class="form-control">
+                            <option value="true">Disponible para Venta o Alquiler</option>
+                            <option value="false">No Disponible</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="rental-assignment-box" id="rental-assignment-section">
+                    <h4 class="section-subtitle">Asignación de Alquiler Activo</h4>
+                    <div class="form-row">
+                        <div class="form-group col-6">
+                            <label for="machine-client-id">Cliente Asignado</label>
+                            <select id="machine-client-id" class="form-control">
+                                <option value="">-- Sin Cliente (Disponible) --</option>
+                                <!-- Dynamic options -->
+                            </select>
+                        </div>
+                        <div class="form-group col-6">
+                            <label for="machine-abono-id">Abono Mensual</label>
+                            <select id="machine-abono-id" class="form-control">
+                                <option value="">-- Sin Abono Asignado --</option>
+                                <!-- Dynamic options -->
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row mt-2">
+                        <div class="form-group col-6">
+                            <label for="machine-install-date">Fecha de Instalación</label>
+                            <input type="date" id="machine-install-date" class="form-control">
+                        </div>
+                        <div class="form-group col-6">
+                            <label for="machine-install-counter">Contador Inicial de Instalación</label>
+                            <input type="number" id="machine-install-counter" class="form-control" min="0" placeholder="Ej: 15000">
+                        </div>
+                    </div>
+                    <div class="form-group mt-2 mb-0" style="display:flex; align-items:center; gap:8px;">
+                        <input type="checkbox" id="machine-apply-iva" style="width:18px; height:18px; cursor:pointer;">
+                        <label for="machine-apply-iva" style="margin-bottom:0; cursor:pointer; font-weight:500;">
+                            Aplicar IVA en la facturación de este alquiler
+                        </label>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary close-modal-btn">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Abono (Add/Edit) -->
+    <div id="modal-abono" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-abono-title">Agregar Abono</h3>
+                <span class="close-modal">&times;</span>
+            </div>
+            <form id="form-abono">
+                <input type="hidden" id="abono-id">
+                <div class="form-group">
+                    <label for="abono-name">Nombre del Abono <span class="required">*</span></label>
+                    <input type="text" id="abono-name" class="form-control" required placeholder="Ej: Plan Comercial 3000 copias">
+                </div>
+                <div class="form-row">
+                    <div class="form-group col-12">
+                        <label for="abono-limit">Copias/Impresiones/Escaneos Incluidos <span class="required">*</span></label>
+                        <input type="number" id="abono-limit" class="form-control" required min="0" placeholder="Ej: 3000">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group col-6">
+                        <label for="abono-price">Precio Mensual Fijo (ARS $) <span class="required">*</span></label>
+                        <input type="number" id="abono-price" class="form-control" required min="0" step="0.01" placeholder="Ej: 119000">
+                    </div>
+                    <div class="form-group col-6">
+                        <label for="abono-excess-price">Precio Copia Excedente (ARS $) <span class="required">*</span></label>
+                        <input type="number" id="abono-excess-price" class="form-control" required min="0" step="0.01" placeholder="Ej: 49">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="abono-iva">Tasa de IVA del Plan (%) <span class="required">*</span></label>
+                    <select id="abono-iva" class="form-control" required>
+                        <option value="21">21% (Tasa General)</option>
+                        <option value="10.5">10.5% (Tasa Reducida)</option>
+                        <option value="0">0% (No IVA)</option>
+                    </select>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary close-modal-btn">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Reading (Add/Edit) -->
+    <div id="modal-reading" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Cargar / Editar Lectura de Contador</h3>
+                <span class="close-modal">&times;</span>
+            </div>
+            <form id="form-reading">
+                <input type="hidden" id="reading-id">
+                <input type="hidden" id="reading-machine-id">
+                <input type="hidden" id="reading-month">
+                
+                <div class="reading-info-display mb-3">
+                    <p><strong>Cliente:</strong> <span id="reading-display-client">Nombre</span></p>
+                    <p><strong>Máquina:</strong> <span id="reading-display-machine">Modelo / Serie</span></p>
+                    <p><strong>Abono:</strong> <span id="reading-display-abono">Abono 3000 ($119000 + $49/exc)</span></p>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group col-6">
+                        <label for="reading-initial">Lectura Contador Inicial <span class="required">*</span></label>
+                        <input type="number" id="reading-initial" class="form-control" required min="0" placeholder="Ej: 45200">
+                        <span class="text-xs text-secondary" id="reading-last-month-hint">Lectura final anterior: N/A</span>
+                    </div>
+                    <div class="form-group col-6">
+                        <label for="reading-final">Lectura Contador Final <span class="required">*</span></label>
+                        <input type="number" id="reading-final" class="form-control" required min="0" placeholder="Ej: 48500">
+                    </div>
+                </div>
+
+                <div class="reading-calculator-box mt-3">
+                    <h4 class="section-subtitle">Detalle del Cálculo Estimado</h4>
+                    <div class="calc-row">
+                        <span>Copias realizadas en el mes:</span>
+                        <strong id="calc-copies">0</strong>
+                    </div>
+                    <div class="calc-row">
+                        <span>Copias excedentes (Límite: <span id="calc-limit">3000</span>):</span>
+                        <strong id="calc-excess">0</strong>
+                    </div>
+                    <div class="calc-row">
+                        <span>Abono fijo mensual:</span>
+                        <strong id="calc-fixed-fee">$0,00</strong>
+                    </div>
+                    <div class="calc-row">
+                        <span>Cargo por copias excedentes (<span id="calc-excess-rate">$49</span> c/u):</span>
+                        <strong id="calc-excess-fee">$0,00</strong>
+                    </div>
+                    <hr class="calc-divider">
+                    <div class="calc-row total">
+                        <span>Total del Mes:</span>
+                        <strong id="calc-total">$0,00</strong>
+                    </div>
+                </div>
+
+                <div class="form-group mt-3">
+                    <label for="reading-status">Estado de Pago</label>
+                    <select id="reading-status" class="form-control">
+                        <option value="pending">Pendiente de Pago</option>
+                        <option value="paid">Cobrado / Pagado</option>
+                    </select>
+                </div>
+
+                <div class="modal-footer mt-4">
+                    <button type="button" class="btn btn-secondary close-modal-btn">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar Lectura</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Invoice Details / Print View -->
+    <div id="modal-invoice-detail" class="modal">
+        <div class="modal-content large">
+            <div class="modal-header no-print">
+                <h3>Detalle de Liquidación Mensual</h3>
+                <span class="close-modal">&times;</span>
+            </div>
+            
+            <!-- Receipt Design -->
+            <div class="invoice-receipt" id="invoice-receipt-print">
+                <div class="receipt-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div class="receipt-brand-wrapper" style="display: flex; align-items: center; gap: 15px;">
+                        <img id="receipt-logo-preview" src="" alt="Logo" style="max-height: 50px; display: none; border-radius: 4px;">
+                        <div class="receipt-company">
+                            <h2>M&S Tecnología Digital</h2>
+                            <p>Servicio Técnico y Alquiler de Fotocopiadoras</p>
+                        </div>
+                    </div>
+                    <div class="receipt-meta" style="text-align: right;">
+                        <h3>LIQUIDACIÓN DE ALQUILER</h3>
+                        <p><strong>Período:</strong> <span id="receipt-period">Junio 2026</span></p>
+                        <p><strong>Fecha Emisión:</strong> <span id="receipt-date">30/06/2026</span></p>
+                    </div>
+                </div>
+
+                <hr class="receipt-divider">
+
+                <div class="receipt-parties">
+                    <div class="party-box">
+                        <h4>PROVEEDOR:</h4>
+                        <p><strong>M&S Tecnología Digital</strong></p>
+                        <p>Soporte Técnico Especializado</p>
+                        <p>Buenos Aires, Argentina</p>
+                    </div>
+                    <div class="party-box">
+                        <h4>CLIENTE:</h4>
+                        <p><strong id="receipt-client-name">Nombre Cliente</strong></p>
+                        <p id="receipt-client-contact">Email / Teléfono</p>
+                        <p id="receipt-client-address">Dirección</p>
+                    </div>
+                </div>
+
+                <div class="receipt-details-box mt-4">
+                    <h4>DETALLES DEL EQUIPO ALQUILADO:</h4>
+                    <table class="receipt-specs-table">
+                        <tr>
+                            <td><strong>Máquina:</strong> <span id="receipt-machine-model">Ricoh Aficio MP 301</span></td>
+                            <td><strong>Nro. Serie:</strong> <span id="receipt-machine-serial">W34882001</span></td>
+                            <td><strong>Tipo:</strong> <span id="receipt-machine-type">Multifunción</span></td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div class="receipt-table-wrapper mt-4">
+                    <table class="receipt-items-table">
+                        <thead>
+                            <tr>
+                                <th>Concepto / Descripción</th>
+                                <th class="text-right">Detalle Contadores</th>
+                                <th class="text-right">Cantidades</th>
+                                <th class="text-right">Precio Unit.</th>
+                                <th class="text-right">Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>
+                                    <strong>Abono Mensual de Alquiler</strong><br>
+                                    <span class="text-xs text-secondary-light" id="receipt-plan-desc">Incluye hasta 3000 copias/impresiones</span>
+                                </td>
+                                <td class="text-right">-</td>
+                                <td class="text-right">1 Mes</td>
+                                <td class="text-right" id="receipt-fixed-unit-price">$119.000,00</td>
+                                <td class="text-right" id="receipt-fixed-subtotal">$119.000,00</td>
+                            </tr>
+                            <tr id="receipt-row-excess">
+                                <td>
+                                    <strong>Copias / Impresiones Excedentes</strong><br>
+                                    <span class="text-xs text-secondary-light">Lectura Inicial: <span id="receipt-counter-start">10000</span> | Final: <span id="receipt-counter-end">13500</span></span>
+                                </td>
+                                <td class="text-right"><span id="receipt-total-copies">3500</span> realizadas</td>
+                                <td class="text-right" id="receipt-excess-qty">500 exc.</td>
+                                <td class="text-right" id="receipt-excess-unit-price">$49,00</td>
+                                <td class="text-right" id="receipt-excess-subtotal">$24.500,00</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="receipt-total-section mt-4">
+                    <div class="receipt-status-stamp" id="receipt-stamp-status">PENDIENTE</div>
+                    <div class="receipt-summary-block">
+                        <div class="summary-line">
+                            <span>Subtotal Neto:</span>
+                            <span id="receipt-summary-base">$119.000,00</span>
+                        </div>
+                        <div class="summary-line">
+                            <span>IVA (<span id="receipt-iva-rate-label">21%</span>):</span>
+                            <span id="receipt-summary-iva">$0,00</span>
+                        </div>
+                        <hr class="receipt-summary-divider">
+                        <div class="summary-line total">
+                            <span>TOTAL GENERAL:</span>
+                            <span id="receipt-summary-total">$143.500,00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="receipt-footer mt-5">
+                    <p>Gracias por confiar en CopyRent. Por favor envíe el comprobante de transferencia bancaria una vez abonado.</p>
+                    <p class="text-xs text-secondary-light">Documento de control interno no válido como factura fiscal.</p>
+                </div>
+            </div>
+
+            <div class="modal-footer no-print mt-4">
+                <button type="button" class="btn btn-secondary close-modal-btn">Cerrar</button>
+                <button type="button" class="btn btn-success" id="btn-mark-paid-receipt">Marcar como Cobrado</button>
+                <button type="button" class="btn btn-primary btn-icon" id="btn-print-receipt">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                    Imprimir Comprobante
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Maintenance History -->
+    <div id="modal-maintenance-history" class="modal">
+        <div class="modal-content large">
+            <div class="modal-header">
+                <div>
+                    <h3 id="maintenance-history-title">Historial de Mantenimiento e Insumos</h3>
+                    <p class="text-xs text-secondary mt-1" id="maintenance-history-machine-desc">Cargando...</p>
+                </div>
+                <span class="close-modal">&times;</span>
+            </div>
+            
+            <div class="action-header" style="margin-bottom:15px;">
+                <p class="text-secondary text-sm">Registra cambios de tóners, tambores, rodillos y mantenimientos generales.</p>
+                <button class="btn btn-primary btn-sm" id="btn-add-maintenance-entry">+ Registrar Cambio</button>
+            </div>
+
+            <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+                <table class="table" id="maintenance-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Tipo</th>
+                            <th>Descripción / Concepto</th>
+                            <th>Contador de Copias</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Dynamic rows -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary close-modal-btn">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Add/Edit Maintenance Entry -->
+    <div id="modal-add-maintenance" class="modal" style="z-index: 1100;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-add-maintenance-title">Registrar Cambio de Insumo/Repuesto</h3>
+                <span class="close-modal" id="close-add-maintenance">&times;</span>
+            </div>
+            <form id="form-maintenance">
+                <input type="hidden" id="maintenance-entry-id">
+                <input type="hidden" id="maintenance-machine-id">
+                
+                <div class="form-row">
+                    <div class="form-group col-6">
+                        <label for="maintenance-type">Tipo de Registro <span class="required">*</span></label>
+                        <select id="maintenance-type" class="form-control" required>
+                            <option value="Insumo">Insumo (Tóner, tinta, etc.)</option>
+                            <option value="Repuesto">Repuesto (Cilindro, rodillo, etc.)</option>
+                            <option value="Servicio">Servicio Técnico</option>
+                        </select>
+                    </div>
+                    <div class="form-group col-6">
+                        <label for="maintenance-date">Fecha de Cambio <span class="required">*</span></label>
+                        <input type="date" id="maintenance-date" class="form-control" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="maintenance-description">Descripción del Cambio / Detalle <span class="required">*</span></label>
+                    <input type="text" id="maintenance-description" class="form-control" required placeholder="Ej: Cambio de Tóner Negro Ricoh">
+                </div>
+
+                <div class="form-group">
+                    <label for="maintenance-counter">Contador de Copias <span class="required">*</span></label>
+                    <div style="display:flex; gap: 8px; align-items:center;">
+                        <input type="number" id="maintenance-counter" class="form-control" required min="0" placeholder="Ej: 34500">
+                        <button type="button" class="btn btn-secondary btn-sm" id="btn-sync-maintenance-counter" style="white-space:nowrap;" title="Sincronizar con la última lectura final cargada">
+                            Sincronizar
+                        </button>
+                    </div>
+                    <span class="text-xs text-secondary-light mt-1" id="maintenance-sync-hint">Se pre-completa con la última lectura del mes más reciente.</span>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="cancel-add-maintenance">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar Registro</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <!-- Modal: Rental Expediente Detail -->
+    <div id="modal-rental-detail" class="modal">
+        <div class="modal-content large">
+            <div class="modal-header">
+                <div>
+                    <h3 id="rental-detail-title">Expediente del Alquiler</h3>
+                    <p class="text-xs text-secondary mt-1" id="rental-detail-subtitle">Cargando...</p>
+                </div>
+                <span class="close-modal">&times;</span>
+            </div>
+
+            <!-- Tab Buttons inside Modal -->
+            <div class="modal-tabs" style="display:flex; border-bottom:1px solid rgba(0,0,0,0.1); margin-bottom:15px; gap:8px;">
+                <button class="modal-tab-btn active" data-modal-tab="rent-info" style="padding: 10px 16px; border:none; background:none; border-bottom:3px solid var(--primary); cursor:pointer; font-weight:600; font-family:inherit; color:var(--text-primary);">Información General</button>
+                <button class="modal-tab-btn" data-modal-tab="rent-readings" style="padding: 10px 16px; border:none; background:none; border-bottom:3px solid transparent; cursor:pointer; font-weight:600; font-family:inherit; color:var(--text-secondary-light);">Lecturas y Recibos</button>
+                <button class="modal-tab-btn" data-modal-tab="rent-maintenance" style="padding: 10px 16px; border:none; background:none; border-bottom:3px solid transparent; cursor:pointer; font-weight:600; font-family:inherit; color:var(--text-secondary-light);">Servicio Técnico</button>
+            </div>
+
+            <!-- Modal Tab Content 1: General Info -->
+            <div id="modal-tab-rent-info" class="modal-tab-content active-content">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+                    <div class="dashboard-card" style="margin-top:0;">
+                        <div class="card-header" style="padding:10px 15px;"><h4 style="margin:0; font-size:14px; font-weight:600;">Datos del Equipo</h4></div>
+                        <div class="card-body" style="padding:12px 15px;">
+                            <table class="table-info" style="width:100%; border-collapse:collapse; font-size:13px;">
+                                <tr style="border-bottom:1px solid rgba(0,0,0,0.05);"><td style="padding:6px 0; font-weight:600; color:var(--text-secondary-light);">Marca / Modelo:</td><td id="rental-info-model" style="padding:6px 0; text-align:right; font-weight:500;">-</td></tr>
+                                <tr style="border-bottom:1px solid rgba(0,0,0,0.05);"><td style="padding:6px 0; font-weight:600; color:var(--text-secondary-light);">Número de Serie:</td><td id="rental-info-serial" style="padding:6px 0; text-align:right; font-family:monospace; font-weight:500;">-</td></tr>
+                                <tr style="border-bottom:1px solid rgba(0,0,0,0.05);"><td style="padding:6px 0; font-weight:600; color:var(--text-secondary-light);">Tipo de Equipo:</td><td id="rental-info-type" style="padding:6px 0; text-align:right; font-weight:500;">-</td></tr>
+                                <tr style="border-bottom:1px solid rgba(0,0,0,0.05);"><td style="padding:6px 0; font-weight:600; color:var(--text-secondary-light);">Estado Físico:</td><td id="rental-info-status" style="padding:6px 0; text-align:right; font-weight:500;">-</td></tr>
+                                <tr style="border-bottom:1px solid rgba(0,0,0,0.05);"><td style="padding:6px 0; font-weight:600; color:var(--text-secondary-light);">Disponibilidad Comercial:</td><td id="rental-info-availability" style="padding:6px 0; text-align:right; font-weight:500;">-</td></tr>
+                                <tr><td style="padding:6px 0; font-weight:600; color:var(--text-secondary-light);">Contador Actual:</td><td id="rental-info-counter" style="padding:6px 0; text-align:right; font-weight:600; color:var(--primary);">-</td></tr>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="dashboard-card" style="margin-top:0;">
+                        <div class="card-header" style="padding:10px 15px;"><h4 style="margin:0; font-size:14px; font-weight:600;">Condiciones de Alquiler</h4></div>
+                        <div class="card-body" style="padding:12px 15px;">
+                            <table class="table-info" style="width:100%; border-collapse:collapse; font-size:13px;">
+                                <tr style="border-bottom:1px solid rgba(0,0,0,0.05);"><td style="padding:6px 0; font-weight:600; color:var(--text-secondary-light);">Plan de Abono:</td><td id="rental-info-plan" style="padding:6px 0; text-align:right; font-weight:500;">-</td></tr>
+                                <tr style="border-bottom:1px solid rgba(0,0,0,0.05);"><td style="padding:6px 0; font-weight:600; color:var(--text-secondary-light);">Precio Fijo Mensual:</td><td id="rental-info-price" style="padding:6px 0; text-align:right; font-weight:500;">-</td></tr>
+                                <tr style="border-bottom:1px solid rgba(0,0,0,0.05);"><td style="padding:6px 0; font-weight:600; color:var(--text-secondary-light);">Copias Incluidas:</td><td id="rental-info-limit" style="padding:6px 0; text-align:right; font-weight:500;">-</td></tr>
+                                <tr style="border-bottom:1px solid rgba(0,0,0,0.05);"><td style="padding:6px 0; font-weight:600; color:var(--text-secondary-light);">Precio Copia Excedente:</td><td id="rental-info-excess" style="padding:6px 0; text-align:right; font-weight:500;">-</td></tr>
+                                <tr style="border-bottom:1px solid rgba(0,0,0,0.05);"><td style="padding:6px 0; font-weight:600; color:var(--text-secondary-light);">Condición Fiscal (IVA):</td><td id="rental-info-iva" style="padding:6px 0; text-align:right; font-weight:500;">-</td></tr>
+                                <tr style="border-bottom:1px solid rgba(0,0,0,0.05);"><td style="padding:6px 0; font-weight:600; color:var(--text-secondary-light);">Fecha de Instalación:</td><td id="rental-info-install-date" style="padding:6px 0; text-align:right; font-weight:500;">-</td></tr>
+                                <tr><td style="padding:6px 0; font-weight:600; color:var(--text-secondary-light);">Contador Inicial:</td><td id="rental-info-install-counter" style="padding:6px 0; text-align:right; font-weight:500;">-</td></tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Tab Content 2: Readings List -->
+            <div id="modal-tab-rent-readings" class="modal-tab-content" style="display:none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <h4 style="margin:0; font-size:14px; font-weight:600; color:var(--text-secondary);">Historial de Contadores</h4>
+                    <button class="btn btn-primary btn-sm" id="btn-rental-detail-add-reading">+ Cargar Lectura</button>
+                </div>
+                <div class="table-container" style="max-height: 280px; overflow-y:auto;">
+                    <table class="table" id="rental-readings-table" style="font-size:13px;">
+                        <thead>
+                            <tr>
+                                <th>Período</th>
+                                <th>L. Inicial</th>
+                                <th>L. Final</th>
+                                <th>Consumo</th>
+                                <th>Excedente</th>
+                                <th>IVA</th>
+                                <th>Total</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Dynamic rows -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Modal Tab Content 3: Maintenance log -->
+            <div id="modal-tab-rent-maintenance" class="modal-tab-content" style="display:none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <h4 style="margin:0; font-size:14px; font-weight:600; color:var(--text-secondary);">Bitácora de Servicio Técnico</h4>
+                    <button class="btn btn-primary btn-sm" id="btn-rental-detail-add-maint">+ Registrar Cambio</button>
+                </div>
+                <div class="table-container" style="max-height: 280px; overflow-y:auto;">
+                    <table class="table" id="rental-maint-table" style="font-size:13px;">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Tipo</th>
+                                <th>Descripción / Detalle</th>
+                                <th>Contador Copias</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Dynamic rows -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="modal-footer mt-4">
+                <button type="button" class="btn btn-secondary close-modal-btn">Cerrar Expediente</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: User (Add/Edit) -->
+    <div id="modal-user" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-user-title">Agregar Usuario</h3>
+                <span class="close-modal">&times;</span>
+            </div>
+            <form id="form-user">
+                <input type="hidden" id="user-id">
+                
+                <div class="form-group">
+                    <label for="user-username">Nombre de Usuario <span class="required">*</span></label>
+                    <input type="text" id="user-username" class="form-control" required placeholder="Ej: dmoyano" pattern="^[a-zA-Z0-9_.-]+$" title="Solo letras, números, guiones y puntos.">
+                </div>
+                
+                <div class="form-group" style="margin-top: 15px;">
+                    <label for="user-fullname">Nombre Completo <span class="required">*</span></label>
+                    <input type="text" id="user-fullname" class="form-control" required placeholder="Ej: Darío Moyano">
+                </div>
+                
+                <div class="form-group" style="margin-top: 15px;">
+                    <label for="user-email">Email de Recuperación <span class="required">*</span></label>
+                    <input type="email" id="user-email" class="form-control" required placeholder="Ej: dmoyano@mstecnologia.com.ar">
+                </div>
+                
+                <div class="form-group" style="margin-top: 15px;">
+                    <label for="user-password">Contraseña <span class="required">*</span></label>
+                    <input type="text" id="user-password" class="form-control" required placeholder="Contraseña de acceso">
+                </div>
+                
+                <div class="modal-footer" style="margin-top: 20px;">
+                    <button type="button" class="btn btn-secondary close-modal-btn">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar Usuario</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- JavaScript logic -->
+    <script src="app.js"></script>
+</body>
+</html>
