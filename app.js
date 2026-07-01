@@ -5040,6 +5040,244 @@ window.deleteTicketTrigger = (ticketId) => {
 // REPORTING SYSTEM FOR CLIENTS AND MACHINES
 let activeReport = { type: null, id: null };
 
+function generateClientReportPlainText(client) {
+    const assignedMachines = state.machines.filter(m => m.clientId === client.id);
+    const clientReadings = state.readings.filter(r => r.clientId === client.id);
+    clientReadings.sort((a, b) => (a.month || '').localeCompare(b.month || ''));
+
+    // Impositivos & Accounting
+    let totalNetoGravado = 0;
+    let totalIva21 = 0;
+    let totalIva105 = 0;
+    let totalCredito = 0;
+    let totalDebito = 0;
+    let totalNoOficial = 0;
+    let totalCobrado = 0;
+
+    let pendingListStr = "";
+    const pendingReadings = clientReadings.filter(r => r.status === 'pending');
+
+    clientReadings.forEach(r => {
+        const m = state.machines.find(mac => mac.id === r.machineId);
+        const abono = state.abonos.find(a => a.id === r.abonoId) || (m ? state.abonos.find(a => a.id === m.abonoId) : null);
+        const isUnofficial = r.isUnofficial || false;
+        const creditNote = r.creditNote || 0;
+        const debitNote = r.debitNote || 0;
+
+        const diff = Math.max(0, r.final - r.initial);
+        const exc = abono ? Math.max(0, diff - abono.limit) : 0;
+        const ivaRate = (!isUnofficial && m && m.applyIva && abono) ? (abono.ivaRate || 0) : 0;
+        const fixedCost = abono ? abono.price : 0;
+        const excessCost = abono ? exc * abono.excessPrice : 0;
+        const net = fixedCost + excessCost;
+        const iva = net * (ivaRate / 100);
+
+        if (isUnofficial) {
+            totalNoOficial += net;
+        } else {
+            totalNetoGravado += net;
+            if (ivaRate === 21) {
+                totalIva21 += iva;
+            } else if (ivaRate === 10.5) {
+                totalIva105 += iva;
+            }
+        }
+
+        totalCredito += creditNote;
+        totalDebito += debitNote;
+        totalCobrado += (r.partialPaid || 0);
+
+        if (r.status === 'pending') {
+            const total = net * (1 + ivaRate / 100) - creditNote + debitNote;
+            const alreadyPaid = r.partialPaid || 0;
+            const remaining = Math.max(0, total - alreadyPaid);
+            const mName = m ? `${m.brand} ${m.model}` : 'Desconocido';
+            pendingListStr += `• ${formatPeriod(r.month)}: ${mName} - Debe: ${formatCurrency(remaining)}` + (alreadyPaid > 0 ? ` (Abonado: ${formatCurrency(alreadyPaid)})` : '') + `\n`;
+        }
+    });
+
+    const totalFacturadoOfficial = totalNetoGravado + totalIva21 + totalIva105 - totalCredito + totalDebito;
+    const totalFacturadoGeneral = totalFacturadoOfficial + totalNoOficial;
+    const saldoAdeudado = Math.max(0, totalFacturadoGeneral - totalCobrado);
+
+    // Ledger Entries Generation
+    let ledgerEntries = [];
+    clientReadings.forEach(r => {
+        const m = state.machines.find(mac => mac.id === r.machineId);
+        const abono = state.abonos.find(a => a.id === r.abonoId) || (m ? state.abonos.find(a => a.id === m.abonoId) : null);
+        const isUnofficial = r.isUnofficial || false;
+        const creditNote = r.creditNote || 0;
+        const debitNote = r.debitNote || 0;
+
+        const diff = Math.max(0, r.final - r.initial);
+        const exc = abono ? Math.max(0, diff - abono.limit) : 0;
+        const ivaRate = (!isUnofficial && m && m.applyIva && abono) ? (abono.ivaRate || 0) : 0;
+        const fixedCost = abono ? abono.price : 0;
+        const excessCost = abono ? exc * abono.excessPrice : 0;
+        const net = fixedCost + excessCost;
+        const iva = net * (ivaRate / 100);
+        const baseInvoiceAmt = net + iva;
+
+        const invoiceDate = r.month + '-28';
+        const machineDesc = m ? `${m.brand} ${m.model} (${m.serial})` : 'Equipo';
+
+        ledgerEntries.push({
+            date: invoiceDate,
+            concept: `Cargo mensual ${machineDesc}`,
+            docType: isUnofficial ? 'Factura No Of.' : 'Factura',
+            docNro: r.invoiceNumber || 'Pendiente',
+            debe: baseInvoiceAmt,
+            haber: 0
+        });
+
+        if (creditNote > 0) {
+            ledgerEntries.push({
+                date: invoiceDate,
+                concept: `Nota de Crédito: ${r.creditNoteReason || 'Descuento'}`,
+                docType: 'NC',
+                docNro: r.invoiceNumber ? `NC-${r.invoiceNumber.split('-')[1] || r.invoiceNumber}` : 'S/N',
+                debe: 0,
+                haber: creditNote
+            });
+        }
+
+        if (debitNote > 0) {
+            ledgerEntries.push({
+                date: invoiceDate,
+                concept: `Nota de Débito: ${r.debitNoteReason || 'Recargo'}`,
+                docType: 'ND',
+                docNro: r.invoiceNumber ? `ND-${r.invoiceNumber.split('-')[1] || r.invoiceNumber}` : 'S/N',
+                debe: debitNote,
+                haber: 0
+            });
+        }
+
+        const alreadyPaid = r.partialPaid || 0;
+        if (alreadyPaid > 0) {
+            let payMethodLabel = r.paymentMethod || 'Efectivo';
+            ledgerEntries.push({
+                date: r.paymentDate || invoiceDate,
+                concept: `Cobro Período ${formatPeriod(r.month)} [${payMethodLabel}]`,
+                docType: 'Recibo',
+                docNro: r.paymentReference || 'S/N',
+                debe: 0,
+                haber: alreadyPaid
+            });
+        }
+    });
+
+    ledgerEntries.sort((a, b) => a.date.localeCompare(b.date));
+
+    let runningBalance = 0;
+    let ledgerStr = "";
+    ledgerEntries.forEach(entry => {
+        runningBalance += (entry.debe - entry.haber);
+        const dateFmt = entry.date.split('-').reverse().join('/');
+        ledgerStr += `${dateFmt} | ${entry.docType} [Nº ${entry.docNro}] | ${entry.concept} | Debe: ${entry.debe > 0 ? formatCurrency(entry.debe) : '-'} | Haber: ${entry.haber > 0 ? formatCurrency(entry.haber) : '-'} | Saldo: ${formatCurrency(runningBalance)}\n`;
+    });
+
+    // Machines Rented
+    let machinesStr = "";
+    assignedMachines.forEach(m => {
+        const abono = state.abonos.find(a => a.id === m.abonoId);
+        machinesStr += `• ${m.brand} ${m.model} (S/N: ${m.serial}) - Plan: ${abono ? abono.name : 'Sin plan'} | Contador: ${(m.machineCounter || 0).toLocaleString('es-AR')}\n`;
+    });
+
+    // Maintenance logs
+    const clientMachineIds = assignedMachines.map(m => m.id);
+    const clientMaintenance = state.maintenance.filter(mn => clientMachineIds.includes(mn.machineId));
+    clientMaintenance.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    let maintStr = "";
+    clientMaintenance.slice(0, 5).forEach(mn => {
+        const m = state.machines.find(mac => mac.id === mn.machineId);
+        const mName = m ? `${m.brand} ${m.model}` : 'Equipo';
+        const dateFmt = mn.date ? mn.date.split('-').reverse().join('/') : '-';
+        maintStr += `• ${dateFmt} - ${mName} (${mn.type}): ${mn.description} | Contador: ${(mn.counter || 0).toLocaleString('es-AR')}\n`;
+    });
+
+    let msg = `📊 *REPORTE CONSOLIDADO CONTABLE - M&S*\n` +
+              `*Cliente:* ${client.name}\n` +
+              `*Dirección:* ${client.address || '-'}\n` +
+              `*Fecha Emisión:* ${new Date().toLocaleDateString('es-AR')}\n\n` +
+              `----------------------------------\n` +
+              `📋 *DATOS DE CONTACTO*\n` +
+              `• Razón Social: ${client.name}\n` +
+              `• Teléfono: ${client.phone || '-'}\n` +
+              `• Email: ${client.email || '-'}\n\n` +
+              `----------------------------------\n` +
+              `⚖️ *CONCILIACIÓN IMPOSITIVA (IVA)*\n` +
+              `• Neto Gravado (Oficial): ${formatCurrency(totalNetoGravado)}\n` +
+              `• IVA 21% Facturado: ${formatCurrency(totalIva21)}\n` +
+              `• IVA 10.5% Facturado: ${formatCurrency(totalIva105)}\n` +
+              `• Notas de Crédito (Desc.): -${formatCurrency(totalCredito)}\n` +
+              `• Notas de Débito (Rec.): +${formatCurrency(totalDebito)}\n` +
+              `• Subtotal Oficial: ${formatCurrency(totalFacturadoOfficial)}\n` +
+              `• Operaciones No Oficiales (Negro): ${formatCurrency(totalNoOficial)}\n` +
+              `*• TOTAL FACTURADO HISTÓRICO: ${formatCurrency(totalFacturadoGeneral)}*\n\n` +
+              `----------------------------------\n` +
+              `💳 *ESTADO FINANCIERO DE CUENTA*\n` +
+              `• Facturado General: ${formatCurrency(totalFacturadoGeneral)}\n` +
+              `• Total Cobrado (Ingresos): ${formatCurrency(totalCobrado)}\n` +
+              `*• SALDO EXIGIBLE PENDIENTE: ${formatCurrency(saldoAdeudado)}*\n\n` +
+              (pendingListStr ? `*Detalle de Comprobantes Impagos:*\n${pendingListStr}\n` : `🎉 El cliente no posee saldo deudor pendiente.\n\n`) +
+              `----------------------------------\n` +
+              `📖 *LIBRO MAYOR DE CUENTA CORRIENTE*\n` +
+              (ledgerStr || 'No se registran movimientos.\n') +
+              `\n----------------------------------\n` +
+              `🖨️ *EQUIPOS EN ALQUILER (${assignedMachines.length})*\n` +
+              (machinesStr || 'Sin equipos asignados.\n') +
+              `\n----------------------------------\n` +
+              `🔧 *BITÁCORA TÉCNICA RECIENTE (Últimos 5 registros)*\n` +
+              (maintStr || 'Sin intervenciones registradas.\n') +
+              `\n----------------------------------\n` +
+              `🌐 Acceder a la plataforma:\nhttps://dashboard-mys.netlify.app/`;
+    return msg;
+}
+
+function generateMachineReportPlainText(machine) {
+    const client = state.clients.find(c => c.id === machine.clientId);
+    const abono = state.abonos.find(a => a.id === machine.abonoId);
+    const abonoName = abono ? abono.name : 'Sin plan';
+
+    // Readings for this machine
+    const machineReadings = state.readings.filter(r => r.machineId === machine.id);
+    machineReadings.sort((a, b) => (b.month || '').localeCompare(a.month || ''));
+
+    let readingsStr = "";
+    machineReadings.forEach(r => {
+        const diff = Math.max(0, r.final - r.initial);
+        const statusLabel = r.status === 'paid' ? 'Cobrado' : 'Pendiente';
+        readingsStr += `• Período ${formatPeriod(r.month)}: Cont. ${r.initial.toLocaleString('es-AR')} a ${r.final.toLocaleString('es-AR')} | Consumo: ${diff.toLocaleString('es-AR')} | Estado: ${statusLabel}\n`;
+    });
+
+    // Maintenance logs for this machine
+    const machineMaintenance = state.maintenance.filter(mn => mn.machineId === machine.id);
+    machineMaintenance.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+    let maintStr = "";
+    machineMaintenance.forEach(mn => {
+        const dateFmt = mn.date ? mn.date.split('-').reverse().join('/') : '-';
+        maintStr += `• ${dateFmt} (${mn.type}): ${mn.description} | Contador: ${(mn.counter || 0).toLocaleString('es-AR')}\n`;
+    });
+
+    let msg = `📊 *REPORTE TÉCNICO DE EQUIPO - M&S*\n` +
+              `*Equipo:* ${machine.brand} ${machine.model}\n` +
+              `*Número de Serie:* ${machine.serial}\n` +
+              `*Contador Actual:* ${(machine.machineCounter || 0).toLocaleString('es-AR')} copias\n` +
+              `*Cliente Asignado:* ${client ? client.name : 'Disponible en Stock'}\n` +
+              `*Plan Asignado:* ${abonoName}\n` +
+              `*Fecha Emisión:* ${new Date().toLocaleDateString('es-AR')}\n\n` +
+              `----------------------------------\n` +
+              `📈 *HISTORIAL DE LECTURAS Y CONSUMOS*\n` +
+              (readingsStr || 'No se registran lecturas para este equipo.\n') +
+              `\n----------------------------------\n` +
+              `🔧 *BITÁCORA TÉCNICA Y REPUESTOS (${machineMaintenance.length})*\n` +
+              (maintStr || 'No se registran reparaciones técnicas para este equipo.\n') +
+              `\n----------------------------------\n` +
+              `🌐 Acceder a la plataforma:\nhttps://dashboard-mys.netlify.app/`;
+    return msg;
+}
+
 function setupReports() {
     // Print button
     const printBtn = document.getElementById('btn-report-print');
@@ -5057,22 +5295,11 @@ function setupReports() {
             if (activeReport.type === 'client') {
                 const client = state.clients.find(c => c.id === activeReport.id);
                 if (!client) return;
-                const machines = state.machines.filter(m => m.clientId === client.id);
-                msg = `📋 *REPORTE DE CLIENTE - M&S*\n\n` +
-                      `*Cliente:* ${client.name}\n` +
-                      `*Teléfono:* ${client.phone || '-'}\n` +
-                      `*Equipos Rentados:* ${machines.length}\n\n` +
-                      `Consolidado completo disponible en el sistema M&S: https://dashboard-mys.netlify.app/`;
+                msg = generateClientReportPlainText(client);
             } else if (activeReport.type === 'machine') {
                 const machine = state.machines.find(m => m.id === activeReport.id);
                 if (!machine) return;
-                const client = state.clients.find(c => c.id === machine.clientId);
-                msg = `📋 *REPORTE DE EQUIPO - M&S*\n\n` +
-                      `*Equipo:* ${machine.brand} ${machine.model}\n` +
-                      `*Nº de Serie:* ${machine.serial}\n` +
-                      `*Contador:* ${(machine.machineCounter || 0).toLocaleString('es-AR')} copias\n` +
-                      `*Cliente:* ${client ? client.name : 'Disponible'}\n\n` +
-                      `Consolidado completo disponible en el sistema M&S: https://dashboard-mys.netlify.app/`;
+                msg = generateMachineReportPlainText(machine);
             }
             window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
         };
@@ -5088,12 +5315,12 @@ function setupReports() {
                 const client = state.clients.find(c => c.id === activeReport.id);
                 if (!client) return;
                 subject = `Reporte Consolidado de Cliente - ${client.name}`;
-                body = `Hola,\n\nAdjuntamos el reporte de cliente del sistema M&S.\n\nCliente: ${client.name}\nDirección: ${client.address || '-'}\n\nPuede ver todo el historial de lecturas, facturación y bitácora técnica ingresando a la plataforma:\nhttps://dashboard-mys.netlify.app/\n\nSaludos.`;
+                body = generateClientReportPlainText(client);
             } else if (activeReport.type === 'machine') {
                 const machine = state.machines.find(m => m.id === activeReport.id);
                 if (!machine) return;
                 subject = `Reporte Técnico de Equipo - S/N ${machine.serial}`;
-                body = `Hola,\n\nAdjuntamos el reporte técnico de equipo del sistema M&S.\n\nEquipo: ${machine.brand} ${machine.model}\nNº de Serie: ${machine.serial}\nContador Actual: ${(machine.machineCounter || 0).toLocaleString('es-AR')} copias\n\nPuede ver la bitácora técnica completa y el historial de lecturas ingresando a la plataforma:\nhttps://dashboard-mys.netlify.app/\n\nSaludos.`;
+                body = generateMachineReportPlainText(machine);
             }
             window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank');
         };
