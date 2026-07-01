@@ -1201,14 +1201,32 @@ textarea.form-control {
         border-right: none;
         border-bottom: 1px solid var(--border-color);
     }
+    .logo-container {
+        padding: 16px 20px;
+        justify-content: space-between;
+    }
     .nav-menu {
         flex-direction: row;
         overflow-x: auto;
-        padding: 10px;
+        padding: 8px 12px;
+        gap: 6px;
+        scrollbar-width: none; /* Firefox */
+    }
+    .nav-menu::-webkit-scrollbar {
+        display: none; /* Chrome/Safari */
     }
     .nav-item {
         white-space: nowrap;
         padding: 8px 12px;
+        font-size: 0.85rem;
+    }
+    .sidebar-footer {
+        display: none; /* Save space on mobile */
+    }
+    .sidebar-user-card {
+        padding: 12px 20px !important;
+        border-top: 1px solid var(--border-color);
+        background: rgba(0, 0, 0, 0.15);
     }
     .main-content {
         margin-left: 0;
@@ -1225,6 +1243,95 @@ textarea.form-control {
     .month-selector-wrapper {
         width: 100%;
         justify-content: space-between;
+    }
+    .action-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+    .search-wrapper {
+        max-width: 100%;
+        width: 100%;
+    }
+    .filter-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+    .filter-group-inline {
+        max-width: 100%;
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .metrics-grid {
+        grid-template-columns: 1fr;
+    }
+    .modal-content {
+        margin: 20px auto;
+        padding: 20px;
+        width: 95%;
+    }
+    .modal-content.large {
+        margin: 20px auto;
+    }
+    .form-row {
+        flex-direction: column;
+        gap: 0;
+    }
+    .col-6 {
+        flex: 0 0 100%;
+        max-width: 100%;
+    }
+    
+    /* Invoice receipt details on mobile */
+    .invoice-receipt {
+        padding: 20px;
+    }
+    .receipt-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 16px;
+    }
+    .receipt-meta {
+        text-align: left;
+    }
+    .receipt-parties {
+        flex-direction: column;
+        gap: 16px;
+    }
+    .receipt-total-section {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 20px;
+    }
+    .receipt-summary-block {
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .logo-container h2 {
+        font-size: 1.15rem;
+    }
+    .metric-card {
+        padding: 16px;
+        gap: 12px;
+    }
+    .metric-value {
+        font-size: 1.5rem;
+    }
+    .btn {
+        width: 100%;
+        justify-content: center;
+    }
+    .flex-actions-row {
+        flex-direction: column;
+        width: 100%;
+        align-items: stretch;
+    }
+    .flex-actions-row .btn {
+        width: 100%;
     }
 }
 
