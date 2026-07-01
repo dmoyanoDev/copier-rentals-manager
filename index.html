@@ -1106,6 +1106,46 @@
                     </div>
                 </div>
 
+                <div class="form-row" style="margin-top: 15px;">
+                    <div class="form-group col-6">
+                        <label for="reading-invoice-number">Número de Factura</label>
+                        <input type="text" id="reading-invoice-number" class="form-control" placeholder="Ej: A-0001-00001234">
+                    </div>
+                    <div class="form-group col-6">
+                        <label for="reading-invoice-file">Subir Factura (PDF/JPG)</label>
+                        <input type="file" id="reading-invoice-file" class="form-control" accept=".pdf, .jpg, .jpeg, .png" style="font-size:11px; padding:4px;">
+                        <span class="text-xs text-secondary-light" id="reading-invoice-file-preview" style="display:none; margin-top:2px; font-weight:600; color:var(--emerald);">📄 Factura adjunta cargada</span>
+                    </div>
+                </div>
+
+                <div class="form-group mt-3" style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="reading-is-unofficial" style="width:18px; height:18px; cursor:pointer;">
+                    <label for="reading-is-unofficial" style="margin-bottom:0; cursor:pointer; font-weight:500;">
+                        Facturación No Oficial / En Negro (Sin IVA y en Efectivo)
+                    </label>
+                </div>
+
+                <div class="form-row" style="margin-top: 15px;">
+                    <div class="form-group col-6">
+                        <label for="reading-credit-note">Nota de Crédito (Descuento $)</label>
+                        <input type="number" id="reading-credit-note" class="form-control" min="0" step="0.01" placeholder="Ej: 5000">
+                    </div>
+                    <div class="form-group col-6">
+                        <label for="reading-credit-note-reason">Motivo Descuento</label>
+                        <input type="text" id="reading-credit-note-reason" class="form-control" placeholder="Ej: Bonificación">
+                    </div>
+                </div>
+                <div class="form-row" style="margin-top: 10px;">
+                    <div class="form-group col-6">
+                        <label for="reading-debit-note">Nota de Débito (Recargo $)</label>
+                        <input type="number" id="reading-debit-note" class="form-control" min="0" step="0.01" placeholder="Ej: 2000">
+                    </div>
+                    <div class="form-group col-6">
+                        <label for="reading-debit-note-reason">Motivo Recargo</label>
+                        <input type="text" id="reading-debit-note-reason" class="form-control" placeholder="Ej: Intereses">
+                    </div>
+                </div>
+
                 <div class="reading-calculator-box mt-3">
                     <h4 class="section-subtitle">Detalle del Cálculo Estimado</h4>
                     <div class="calc-row">
@@ -1169,6 +1209,8 @@
                         <h3>LIQUIDACIÓN DE ALQUILER</h3>
                         <p><strong>Período:</strong> <span id="receipt-period">Junio 2026</span></p>
                         <p><strong>Fecha Emisión:</strong> <span id="receipt-date">30/06/2026</span></p>
+                        <p id="receipt-invoice-number-container" style="display:none; margin-top:2px;"><strong>Factura Nro:</strong> <span id="receipt-invoice-number">A-0001-00001234</span></p>
+                        <p id="receipt-invoice-download-container" style="display:none; margin-top:4px;"><a id="receipt-invoice-download" href="#" class="badge success" style="text-decoration:none; display:inline-flex; align-items:center; gap:4px; font-size:10px;" download="factura.pdf"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px; height:12px; flex-shrink:0;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Descargar Factura Adjunta</a></p>
                     </div>
                 </div>
 
@@ -1247,11 +1289,34 @@
                             <span>IVA (<span id="receipt-iva-rate-label">21%</span>):</span>
                             <span id="receipt-summary-iva">$0,00</span>
                         </div>
+                        <div class="summary-line text-xs" id="receipt-row-credit-note" style="display:none; color:var(--emerald);">
+                            <span id="receipt-credit-reason-label">Nota de Crédito (Desc.):</span>
+                            <span id="receipt-summary-credit">-$0,00</span>
+                        </div>
+                        <div class="summary-line text-xs" id="receipt-row-debit-note" style="display:none; color:#dc2626;">
+                            <span id="receipt-debit-reason-label">Nota de Débito (Recargo):</span>
+                            <span id="receipt-summary-debit">+$0,00</span>
+                        </div>
                         <hr class="receipt-summary-divider">
                         <div class="summary-line total">
                             <span>TOTAL GENERAL:</span>
                             <span id="receipt-summary-total">$143.500,00</span>
                         </div>
+                    </div>
+                </div>
+
+                <div class="receipt-payment-info mt-4" id="receipt-payment-info-box" style="display:none; background-color:rgba(0,0,0,0.015); border:1px solid var(--border-color); border-radius:8px; padding:12px; font-size:12px;">
+                    <h4 style="margin:0 0 8px 0; font-size:12px; font-weight:700; color:var(--text-secondary); border-bottom:1px solid rgba(0,0,0,0.05); padding-bottom:4px;">💳 INFORMACIÓN DE PAGO Y CONCILIACIÓN</h4>
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px;">
+                        <div><strong>Forma de Pago:</strong> <span id="receipt-payment-method-val">Efectivo</span></div>
+                        <div><strong>Referencia / Transacción:</strong> <span id="receipt-payment-ref-val">-</span></div>
+                        <div><strong>Fecha Acreditación:</strong> <span id="receipt-payment-date-val">-</span></div>
+                        <div><strong>Estado Conciliación:</strong> <span id="receipt-bank-reconciled-val">Pendiente</span></div>
+                    </div>
+                    <div style="margin-top:10px; text-align:right;" class="no-print" id="receipt-reconcile-actions">
+                        <button type="button" class="btn btn-secondary btn-sm" id="btn-reconcile-toggle" style="font-size:11px; padding:4px 10px; font-weight:600;">
+                            🔄 Alternar Conciliación Bancaria
+                        </button>
                     </div>
                 </div>
 
@@ -1918,6 +1983,39 @@
                 <div class="form-group" style="margin-top:15px;">
                     <label for="settle-amount">Monto Recibido (ARS) <span class="required">*</span></label>
                     <input type="number" id="settle-amount" class="form-control" step="0.01" min="0.01" required placeholder="Ej: 50000">
+                </div>
+
+                <div class="form-group" style="margin-top:15px;">
+                    <label for="settle-payment-method">Método de Pago <span class="required">*</span></label>
+                    <select id="settle-payment-method" class="form-control" required>
+                        <option value="Efectivo">💵 Efectivo</option>
+                        <option value="Transferencia Bancaria">🏦 Transferencia Bancaria</option>
+                        <option value="Tarjeta de Débito">💳 Tarjeta de Débito</option>
+                        <option value="Tarjeta de Crédito">💳 Tarjeta de Crédito</option>
+                        <option value="Cheque">📄 Cheque</option>
+                        <option value="En Negro (Efectivo)">⚫ Pago No Oficial (En Negro - Efectivo)</option>
+                    </select>
+                </div>
+
+                <div id="settle-bank-details" style="display:none; border-top:1px dashed var(--border-color); margin-top:15px; padding-top:15px;">
+                    <div class="form-group">
+                        <label for="settle-payment-ref">Referencia de Transacción / ID Pago</label>
+                        <input type="text" id="settle-payment-ref" class="form-control" placeholder="Ej: Nro Transferencia, ID Operación">
+                    </div>
+                    <div class="form-row" style="margin-top:12px;">
+                        <div class="form-group col-6">
+                            <label for="settle-payment-date">Fecha de Acreditación</label>
+                            <input type="date" id="settle-payment-date" class="form-control">
+                        </div>
+                        <div class="form-group col-6" style="display:flex; align-items:center; gap:6px; margin-top:25px;">
+                            <input type="checkbox" id="settle-bank-reconciled" style="width:18px; height:18px; cursor:pointer;">
+                            <label for="settle-bank-reconciled" style="margin-bottom:0; cursor:pointer; font-weight:600; font-size:12px;">Conciliado con Banco</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="settle-negro-warning" style="display:none; background-color:rgba(0,0,0,0.03); border:1px solid rgba(0,0,0,0.1); border-radius:8px; padding:10px; font-size:11px; color:var(--text-secondary); margin-top:15px; line-height:1.4;">
+                    ⚠️ <strong>Nota:</strong> Este pago se registrará de forma no bancarizada ("En Negro") y no generará IVA ni requerirá conciliación bancaria.
                 </div>
 
                 <div class="modal-footer" style="margin-top: 20px;">

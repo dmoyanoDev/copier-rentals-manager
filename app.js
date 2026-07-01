@@ -1237,6 +1237,21 @@ function setupForms() {
             resolvedAbonoId = machine.abonoId || '';
         }
 
+        const invoiceNumber = document.getElementById('reading-invoice-number').value.trim();
+        const isUnofficial = document.getElementById('reading-is-unofficial').checked;
+        const creditNote = parseFloat(document.getElementById('reading-credit-note').value) || 0;
+        const creditNoteReason = document.getElementById('reading-credit-note-reason').value.trim();
+        const debitNote = parseFloat(document.getElementById('reading-debit-note').value) || 0;
+        const debitNoteReason = document.getElementById('reading-debit-note-reason').value.trim();
+        
+        let invoiceFile = window.tempReadingFileBase64 || '';
+        if (id && !invoiceFile) {
+            const existingReading = state.readings.find(r => r.id === id);
+            if (existingReading && existingReading.invoiceFile) {
+                invoiceFile = existingReading.invoiceFile;
+            }
+        }
+
         const readingData = {
             id: id || ('read-' + Date.now()),
             machineId,
@@ -1245,8 +1260,28 @@ function setupForms() {
             month,
             initial,
             final,
-            status
+            status,
+            invoiceNumber,
+            isUnofficial,
+            creditNote,
+            creditNoteReason,
+            debitNote,
+            debitNoteReason,
+            invoiceFile
         };
+
+        if (id) {
+            const existingReading = state.readings.find(r => r.id === id);
+            if (existingReading) {
+                readingData.partialPaid = existingReading.partialPaid || 0;
+                readingData.paymentMethod = existingReading.paymentMethod || '';
+                readingData.paymentReference = existingReading.paymentReference || '';
+                readingData.paymentDate = existingReading.paymentDate || '';
+                readingData.bankReconciled = existingReading.bankReconciled || false;
+                readingData.bankReconciliationDate = existingReading.bankReconciliationDate || '';
+            }
+        }
+        window.tempReadingFileBase64 = '';
 
         if (id) {
             const idx = state.readings.findIndex(r => r.id === id);
@@ -1291,14 +1326,18 @@ function setupForms() {
         const abono = state.abonos.find(a => a.id === machine.abonoId);
         if (!abono) return;
 
+        const isUnofficial = document.getElementById('reading-is-unofficial').checked;
+        const creditNote = parseFloat(document.getElementById('reading-credit-note').value) || 0;
+        const debitNote = parseFloat(document.getElementById('reading-debit-note').value) || 0;
+
         const copies = Math.max(0, final - initial);
         const excess = Math.max(0, copies - abono.limit);
         const fixedFee = abono.price;
         const excessFee = excess * abono.excessPrice;
         const netCost = fixedFee + excessFee;
-        const ivaRate = machine.applyIva ? (abono.ivaRate || 0) : 0;
+        const ivaRate = (!isUnofficial && machine.applyIva) ? (abono.ivaRate || 0) : 0;
         const ivaCost = netCost * (ivaRate / 100);
-        const total = netCost + ivaCost;
+        const total = netCost + ivaCost - creditNote + debitNote;
 
         document.getElementById('calc-copies').textContent = copies.toLocaleString('es-AR');
         document.getElementById('calc-excess').textContent = excess.toLocaleString('es-AR');
@@ -1311,6 +1350,27 @@ function setupForms() {
 
     initialInput.addEventListener('input', calculateModalValues);
     finalInput.addEventListener('input', calculateModalValues);
+    document.getElementById('reading-is-unofficial').addEventListener('change', calculateModalValues);
+    document.getElementById('reading-credit-note').addEventListener('input', calculateModalValues);
+    document.getElementById('reading-debit-note').addEventListener('input', calculateModalValues);
+
+    const fileInput = document.getElementById('reading-invoice-file');
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) {
+                window.tempReadingFileBase64 = '';
+                document.getElementById('reading-invoice-file-preview').style.display = 'none';
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                window.tempReadingFileBase64 = event.target.result;
+                document.getElementById('reading-invoice-file-preview').style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        });
+    }
 
     // Form: Maintenance Submit
     document.getElementById('form-maintenance').addEventListener('submit', (e) => {
@@ -2175,16 +2235,39 @@ function openReadingModal(machineId, month, reading = null) {
         }
     }
 
+    // Reset file preview indicator
+    document.getElementById('reading-invoice-file-preview').style.display = 'none';
+    window.tempReadingFileBase64 = '';
+    document.getElementById('reading-invoice-file').value = '';
+
     if (reading) {
         document.getElementById('reading-id').value = reading.id;
         document.getElementById('reading-initial').value = reading.initial;
         document.getElementById('reading-final').value = reading.final;
         document.getElementById('reading-status').value = reading.status;
+
+        document.getElementById('reading-invoice-number').value = reading.invoiceNumber || '';
+        document.getElementById('reading-is-unofficial').checked = reading.isUnofficial || false;
+        document.getElementById('reading-credit-note').value = reading.creditNote || '';
+        document.getElementById('reading-credit-note-reason').value = reading.creditNoteReason || '';
+        document.getElementById('reading-debit-note').value = reading.debitNote || '';
+        document.getElementById('reading-debit-note-reason').value = reading.debitNoteReason || '';
+        
+        if (reading.invoiceFile) {
+            document.getElementById('reading-invoice-file-preview').style.display = 'block';
+        }
     } else {
         document.getElementById('reading-id').value = '';
         document.getElementById('reading-initial').value = defaultInitial;
         document.getElementById('reading-final').value = defaultInitial; // default matching
         document.getElementById('reading-status').value = 'pending';
+
+        document.getElementById('reading-invoice-number').value = '';
+        document.getElementById('reading-is-unofficial').checked = false;
+        document.getElementById('reading-credit-note').value = '';
+        document.getElementById('reading-credit-note-reason').value = '';
+        document.getElementById('reading-debit-note').value = '';
+        document.getElementById('reading-debit-note-reason').value = '';
     }
 
     // Lock initial input to prevent altering carry-over integrity
@@ -2234,9 +2317,14 @@ function openInvoiceModal(reading) {
     const fixedFee = abono.price;
     const excessFee = excess * abono.excessPrice;
     const netSubtotal = fixedFee + excessFee;
-    const ivaRate = machine.applyIva ? (abono.ivaRate || 0) : 0;
+    
+    const isUnofficial = reading.isUnofficial || false;
+    const ivaRate = (!isUnofficial && machine.applyIva) ? (abono.ivaRate || 0) : 0;
     const ivaCost = netSubtotal * (ivaRate / 100);
-    const totalGeneral = netSubtotal + ivaCost;
+    
+    const creditNote = reading.creditNote || 0;
+    const debitNote = reading.debitNote || 0;
+    const totalGeneral = netSubtotal + ivaCost - creditNote + debitNote;
 
     // Receipt header
     document.getElementById('receipt-period').textContent = formatPeriod(reading.month);
@@ -2244,6 +2332,31 @@ function openInvoiceModal(reading) {
     // Date of receipt is today
     const today = new Date();
     document.getElementById('receipt-date').textContent = today.toLocaleDateString('es-AR');
+
+    // Invoice Number and File Download container
+    const invNumContainer = document.getElementById('receipt-invoice-number-container');
+    const invNumSpan = document.getElementById('receipt-invoice-number');
+    if (reading.invoiceNumber) {
+        invNumSpan.textContent = reading.invoiceNumber;
+        invNumContainer.style.display = 'block';
+    } else {
+        invNumContainer.style.display = 'none';
+    }
+
+    const fileContainer = document.getElementById('receipt-invoice-download-container');
+    const fileLink = document.getElementById('receipt-invoice-download');
+    if (reading.invoiceFile) {
+        fileLink.href = reading.invoiceFile;
+        let filename = 'factura_' + reading.month + '.pdf';
+        if (reading.invoiceFile.startsWith('data:image/')) {
+            const ext = reading.invoiceFile.split(';')[0].split('/')[1] || 'jpg';
+            filename = 'factura_' + reading.month + '.' + ext;
+        }
+        fileLink.setAttribute('download', filename);
+        fileContainer.style.display = 'block';
+    } else {
+        fileContainer.style.display = 'none';
+    }
 
     // Parties
     document.getElementById('receipt-client-name').textContent = client.name;
@@ -2270,7 +2383,6 @@ function openInvoiceModal(reading) {
         document.getElementById('receipt-excess-unit-price').textContent = formatCurrency(abono.excessPrice);
         document.getElementById('receipt-excess-subtotal').textContent = formatCurrency(excessFee);
     } else {
-        // If no excess, we can either hide the details or show them as zero excess
         excessRow.style.display = 'table-row';
         document.getElementById('receipt-counter-start').textContent = reading.initial.toLocaleString('es-AR');
         document.getElementById('receipt-counter-end').textContent = reading.final.toLocaleString('es-AR');
@@ -2280,11 +2392,82 @@ function openInvoiceModal(reading) {
         document.getElementById('receipt-excess-subtotal').textContent = formatCurrency(0);
     }
 
-    // Totals Block
+    // Totals Block with Credit/Debit Notes
     document.getElementById('receipt-summary-base').textContent = formatCurrency(netSubtotal);
-    document.getElementById('receipt-iva-rate-label').textContent = machine.applyIva && ivaRate > 0 ? `${ivaRate}%` : 'No IVA';
+    document.getElementById('receipt-iva-rate-label').textContent = (!isUnofficial && machine.applyIva && ivaRate > 0) ? `${ivaRate}%` : 'No IVA';
     document.getElementById('receipt-summary-iva').textContent = formatCurrency(ivaCost);
+
+    const crRow = document.getElementById('receipt-row-credit-note');
+    const dbRow = document.getElementById('receipt-row-debit-note');
+    if (creditNote > 0) {
+        document.getElementById('receipt-credit-reason-label').textContent = `Nota de Crédito (${reading.creditNoteReason || 'Descuento'}):`;
+        document.getElementById('receipt-summary-credit').textContent = `-${formatCurrency(creditNote)}`;
+        crRow.style.display = 'flex';
+    } else {
+        crRow.style.display = 'none';
+    }
+    if (debitNote > 0) {
+        document.getElementById('receipt-debit-reason-label').textContent = `Nota de Débito (${reading.debitNoteReason || 'Recargo'}):`;
+        document.getElementById('receipt-summary-debit').textContent = `+${formatCurrency(debitNote)}`;
+        dbRow.style.display = 'flex';
+    } else {
+        dbRow.style.display = 'none';
+    }
+
     document.getElementById('receipt-summary-total').textContent = formatCurrency(totalGeneral);
+
+    // Payment details box
+    const payInfoBox = document.getElementById('receipt-payment-info-box');
+    const payMethodVal = document.getElementById('receipt-payment-method-val');
+    const payRefVal = document.getElementById('receipt-payment-ref-val');
+    const payDateVal = document.getElementById('receipt-payment-date-val');
+    const bankReconciledVal = document.getElementById('receipt-bank-reconciled-val');
+    const reconcileBtn = document.getElementById('btn-reconcile-toggle');
+    
+    if (reading.paymentMethod || reading.partialPaid > 0 || reading.status === 'paid' || isUnofficial) {
+        payInfoBox.style.display = 'block';
+        payMethodVal.innerHTML = isUnofficial ? '<span class="badge danger">⚫ No Oficial / Negro</span>' : (reading.paymentMethod || '💵 Efectivo');
+        payRefVal.textContent = reading.paymentReference || 'Sin referencia';
+        
+        let pDate = reading.paymentDate;
+        if (pDate) {
+            pDate = pDate.split('-').reverse().join('/');
+        } else {
+            pDate = 'N/A';
+        }
+        payDateVal.textContent = pDate;
+        
+        if (isUnofficial) {
+            bankReconciledVal.innerHTML = '<span class="badge danger" style="padding: 2px 6px;">Exento (Negro)</span>';
+            reconcileBtn.style.display = 'none';
+        } else {
+            reconcileBtn.style.display = 'inline-block';
+            if (reading.bankReconciled) {
+                let recDateStr = '';
+                if (reading.bankReconciliationDate) {
+                    recDateStr = ' (' + reading.bankReconciliationDate.split('-').reverse().join('/') + ')';
+                }
+                bankReconciledVal.innerHTML = `<span class="badge success" style="font-weight:700; padding: 2px 6px;">🟢 Conciliado${recDateStr}</span>`;
+            } else {
+                bankReconciledVal.innerHTML = '<span class="badge warning" style="font-weight:700; padding: 2px 6px;">🟡 Pendiente</span>';
+            }
+        }
+        
+        reconcileBtn.onclick = async () => {
+            const idx = state.readings.findIndex(r => r.id === reading.id);
+            if (idx !== -1) {
+                const curRec = !state.readings[idx].bankReconciled;
+                state.readings[idx].bankReconciled = curRec;
+                state.readings[idx].bankReconciliationDate = curRec ? new Date().toISOString().split('T')[0] : '';
+                await dbSet('readings', reading.id, state.readings[idx]);
+                renderApp();
+                showToast(curRec ? 'Factura conciliada con el banco' : 'Factura marcada como pendiente de conciliación', 'info');
+                openInvoiceModal(state.readings[idx]);
+            }
+        };
+    } else {
+        payInfoBox.style.display = 'none';
+    }
 
     // Status Stamp
     const stamp = document.getElementById('receipt-stamp-status');
@@ -2304,10 +2487,16 @@ function openInvoiceModal(reading) {
             const idx = state.readings.findIndex(r => r.id === reading.id);
             if (idx !== -1) {
                 state.readings[idx].status = 'paid';
+                state.readings[idx].paymentMethod = isUnofficial ? 'En Negro (Efectivo)' : 'Efectivo';
+                state.readings[idx].paymentDate = new Date().toISOString().split('T')[0];
+                state.readings[idx].bankReconciled = !isUnofficial;
+                if (!isUnofficial) {
+                    state.readings[idx].bankReconciliationDate = new Date().toISOString().split('T')[0];
+                }
                 await dbSet('readings', reading.id, state.readings[idx]);
                 renderApp();
                 showToast('Comprobante marcado como cobrado', 'success');
-                openInvoiceModal(state.readings[idx]); // refresh modal
+                openInvoiceModal(state.readings[idx]);
             }
         };
     }
@@ -2322,16 +2511,19 @@ function openInvoiceModal(reading) {
             const excessStr = excess > 0 
                 ? `\n*Copias Excedentes:* ${excess.toLocaleString('es-AR')} (${formatCurrency(abono.excessPrice)}/copia) -> *Subtotal exc:* ${formatCurrency(excessFee)}`
                 : '';
-            const ivaStr = machine.applyIva && ivaRate > 0 
+            const ivaStr = (!isUnofficial && machine.applyIva && ivaRate > 0)
                 ? `\n*Subtotal Neto:* ${formatCurrency(netSubtotal)}\n*IVA (${ivaRate}%):* ${formatCurrency(ivaCost)}`
                 : '';
+            const adjustStr = (creditNote > 0 ? `\n*Nota de Crédito:* -${formatCurrency(creditNote)} (${reading.creditNoteReason || 'Descuento'})` : '') +
+                              (debitNote > 0 ? `\n*Nota de Débito:* +${formatCurrency(debitNote)} (${reading.debitNoteReason || 'Recargo'})` : '');
 
             const msg = `Estimado *${client.name}*,\nLe compartimos el resumen de cobro de alquiler para el período *${periodStr}*:\n\n` +
+                (reading.invoiceNumber ? `*Factura Nro:* ${reading.invoiceNumber}\n` : '') +
                 `*Equipo:* ${machineName} (S/N: ${machine.serial})\n` +
                 `*Lectura Inicial:* ${reading.initial.toLocaleString('es-AR')}\n` +
                 `*Lectura Final:* ${reading.final.toLocaleString('es-AR')}\n` +
                 `*Consumo del Mes:* ${copies.toLocaleString('es-AR')} copias\n\n` +
-                `*Abono Fijo:* ${formatCurrency(abono.price)} (Incluye ${abono.limit.toLocaleString('es-AR')} copias)${excessStr}${ivaStr}\n` +
+                `*Abono Fijo:* ${formatCurrency(abono.price)} (Incluye ${abono.limit.toLocaleString('es-AR')} copias)${excessStr}${ivaStr}${adjustStr}\n` +
                 `-----------------------------------------\n` +
                 `*TOTAL A ABONAR:* ${formatCurrency(totalGeneral)}\n\n` +
                 `Por favor, envíe el comprobante de transferencia bancaria una vez realizado el pago. ¡Muchas gracias por su confianza!\n_M&S Tecnología Digital_`;
@@ -2516,17 +2708,24 @@ function renderDashboardTab() {
                 const fixedCost = abono.price;
                 const excessCost = excess * abono.excessPrice;
                 
+                const isUnofficial = reading.isUnofficial || false;
+                const creditNote = reading.creditNote || 0;
+                const debitNote = reading.debitNote || 0;
+
                 const netCost = fixedCost + excessCost;
-                const ivaCost = netCost * (ivaRate / 100);
-                const totalCost = netCost + ivaCost;
+                const calculatedIvaRate = (!isUnofficial && machine.applyIva) ? (abono.ivaRate || 0) : 0;
+                const ivaCost = netCost * (calculatedIvaRate / 100);
+                const totalCost = netCost + ivaCost - creditNote + debitNote;
 
                 totalInvoiced += totalCost;
-                excessInvoiced += excessCost * (1 + ivaRate / 100); // excess with IVA
+                excessInvoiced += excessCost * (1 + calculatedIvaRate / 100);
 
+                const alreadyPaid = reading.partialPaid || 0;
                 if (reading.status === 'paid') {
                     paidAmt += totalCost;
                 } else {
-                    pendingAmt += totalCost;
+                    paidAmt += alreadyPaid;
+                    pendingAmt += Math.max(0, totalCost - alreadyPaid);
                 }
             } else {
                 // If no reading loaded, we project the fixed fee with IVA as pending
@@ -4936,13 +5135,18 @@ function generateClientReportHtml(client) {
             const m = state.machines.find(mac => mac.id === r.machineId);
             const mName = m ? `${m.brand} ${m.model}` : 'Desconocido';
             const abono = state.abonos.find(a => a.id === r.abonoId) || (m ? state.abonos.find(a => a.id === m.abonoId) : null);
+            
+            const isUnofficial = r.isUnofficial || false;
+            const creditNote = r.creditNote || 0;
+            const debitNote = r.debitNote || 0;
+
             const diff = Math.max(0, r.final - r.initial);
             const exc = abono ? Math.max(0, diff - abono.limit) : 0;
-            const ivaRate = (m && m.applyIva && abono) ? (abono.ivaRate || 0) : 0;
+            const ivaRate = (!isUnofficial && m && m.applyIva && abono) ? (abono.ivaRate || 0) : 0;
             const fixedCost = abono ? abono.price : 0;
             const excessCost = abono ? exc * abono.excessPrice : 0;
             const net = fixedCost + excessCost;
-            const total = net * (1 + ivaRate / 100);
+            const total = net * (1 + ivaRate / 100) - creditNote + debitNote;
 
             const alreadyPaid = r.partialPaid || 0;
             const remaining = Math.max(0, total - alreadyPaid);
@@ -4964,22 +5168,53 @@ function generateClientReportHtml(client) {
         const m = state.machines.find(mac => mac.id === r.machineId);
         const mName = m ? `${m.brand} ${m.model}` : 'Desconocido';
         const abono = state.abonos.find(a => a.id === r.abonoId) || (m ? state.abonos.find(a => a.id === m.abonoId) : null);
+        
+        const isUnofficial = r.isUnofficial || false;
+        const creditNote = r.creditNote || 0;
+        const debitNote = r.debitNote || 0;
+
         const diff = Math.max(0, r.final - r.initial);
         const exc = abono ? Math.max(0, diff - abono.limit) : 0;
-        const ivaRate = (m && m.applyIva && abono) ? (abono.ivaRate || 0) : 0;
+        const ivaRate = (!isUnofficial && m && m.applyIva && abono) ? (abono.ivaRate || 0) : 0;
         const fixedCost = abono ? abono.price : 0;
         const excessCost = abono ? exc * abono.excessPrice : 0;
         const net = fixedCost + excessCost;
-        const total = net * (1 + ivaRate / 100);
+        const total = net * (1 + ivaRate / 100) - creditNote + debitNote;
 
         const alreadyPaid = r.partialPaid || 0;
         let statusBadgeText = "";
+        
+        let methodLabel = "";
+        if (r.paymentMethod) {
+            methodLabel = ` (${r.paymentMethod})`;
+        }
+
         if (r.status === 'paid') {
-            statusBadgeText = `<span class="badge success" style="font-size:9px; padding:2px 4px;">Cobrado</span>`;
+            if (isUnofficial) {
+                statusBadgeText = `<span class="badge" style="font-size:9px; padding:2px 4px; background-color:rgba(17,24,39,0.08); color:var(--text-primary); border: 1px solid rgba(17,24,39,0.2);">⚫ Negro (Cobrado)</span>`;
+            } else {
+                let reconTag = "";
+                if (r.paymentMethod === 'Transferencia Bancaria' || r.paymentMethod === 'Tarjeta de Débito' || r.paymentMethod === 'Tarjeta de Crédito' || r.paymentMethod === 'Cheque') {
+                    reconTag = r.bankReconciled 
+                        ? ` <span class="badge success" style="font-size:8px; padding:1px 3px; font-weight:700;">🟢 Conciliado</span>` 
+                        : ` <span class="badge warning" style="font-size:8px; padding:1px 3px; font-weight:700;">🟡 Sin Conciliar</span>`;
+                }
+                statusBadgeText = `<span class="badge success" style="font-size:9px; padding:2px 4px;">Cobrado${methodLabel}</span>${reconTag}`;
+            }
         } else if (alreadyPaid > 0) {
-            statusBadgeText = `<span class="badge warning" style="font-size:9px; padding:2px 4px; background-color:rgba(245,158,11,0.12); color:#d97706; border-color:rgba(245,158,11,0.25);">Pago Parcial (${formatCurrency(alreadyPaid)})</span>`;
+            let reconTag = "";
+            if (!isUnofficial && (r.paymentMethod === 'Transferencia Bancaria' || r.paymentMethod === 'Tarjeta de Débito' || r.paymentMethod === 'Tarjeta de Crédito' || r.paymentMethod === 'Cheque')) {
+                reconTag = r.bankReconciled 
+                    ? ` <span class="badge success" style="font-size:8px; padding:1px 3px; font-weight:700;">🟢 Conciliado</span>` 
+                    : ` <span class="badge warning" style="font-size:8px; padding:1px 3px; font-weight:700;">🟡 Sin Conciliar</span>`;
+            }
+            statusBadgeText = `<span class="badge warning" style="font-size:9px; padding:2px 4px; background-color:rgba(245,158,11,0.12); color:#d97706; border-color:rgba(245,158,11,0.25);">Pago Parcial (${formatCurrency(alreadyPaid)})${methodLabel}</span>${reconTag}`;
         } else {
-            statusBadgeText = `<span class="badge warning" style="font-size:9px; padding:2px 4px;">Pendiente</span>`;
+            if (isUnofficial) {
+                statusBadgeText = `<span class="badge" style="font-size:9px; padding:2px 4px; background-color:rgba(17,24,39,0.03); color:var(--text-secondary); border: 1px dashed rgba(17,24,39,0.25);">⚫ Negro (Pendiente)</span>`;
+            } else {
+                statusBadgeText = `<span class="badge warning" style="font-size:9px; padding:2px 4px;">Pendiente</span>`;
+            }
         }
 
         return `
@@ -5253,16 +5488,25 @@ function exportClientToCsv(client) {
     csvContent += `\n`;
 
     csvContent += `HISTORIAL DE LECTURAS Y FACTURACION\n`;
-    csvContent += `Periodo;Equipo;N Serie;Rango Contadores;Consumo;Monto Total\n`;
+    csvContent += `Periodo;Equipo;N Serie;Rango Contadores;Consumo;Monto Total;Factura Nro;Nota Credito;Nota Debito;Es Oficial;Estado Pago;Metodo Pago;Ref Pago;Conciliado\n`;
     clientReadings.forEach(r => {
         const m = state.machines.find(mac => mac.id === r.machineId);
         const abono = state.abonos.find(a => a.id === r.abonoId) || (m ? state.abonos.find(a => a.id === m.abonoId) : null);
+        
+        const isUnofficial = r.isUnofficial || false;
+        const creditNote = r.creditNote || 0;
+        const debitNote = r.debitNote || 0;
+
         const diff = Math.max(0, r.final - r.initial);
         const exc = abono ? Math.max(0, diff - abono.limit) : 0;
-        const ivaRate = (m && m.applyIva && abono) ? (abono.ivaRate || 0) : 0;
+        const ivaRate = (!isUnofficial && m && m.applyIva && abono) ? (abono.ivaRate || 0) : 0;
         const net = (abono ? abono.price : 0) + (abono ? exc * abono.excessPrice : 0);
-        const total = net * (1 + ivaRate / 100);
-        csvContent += `"${r.month}";"${m ? m.brand + ' ' + m.model : ''}";"${m ? m.serial : ''}";"${r.initial}-${r.final}";${diff};${total.toFixed(2)}\n`;
+        const total = net * (1 + ivaRate / 100) - creditNote + debitNote;
+        
+        const statusLabel = r.status === 'paid' ? 'Cobrado' : ((r.partialPaid || 0) > 0 ? `Parcial (${r.partialPaid})` : 'Pendiente');
+        const concLabel = isUnofficial ? 'Exento' : (r.bankReconciled ? 'Conciliado' : 'Pendiente');
+
+        csvContent += `"${r.month}";"${m ? m.brand + ' ' + m.model : ''}";"${m ? m.serial : ''}";"${r.initial}-${r.final}";${diff};${total.toFixed(2)};"${r.invoiceNumber || ''}";${creditNote};${debitNote};"${isUnofficial ? 'No (Negro)' : 'Si'}";"${statusLabel}";"${r.paymentMethod || ''}";"${r.paymentReference || ''}";"${concLabel}"\n`;
     });
     csvContent += `\n`;
 
@@ -5631,6 +5875,32 @@ window.openSettleDebtModal = (clientId) => {
     amountInput.max = totalDebt.toFixed(2);
     amountInput.placeholder = `Ej: ${totalDebt.toFixed(2)}`;
 
+    // Reset settle modal inputs
+    document.getElementById('settle-payment-method').value = 'Efectivo';
+    document.getElementById('settle-payment-ref').value = '';
+    document.getElementById('settle-payment-date').value = new Date().toISOString().split('T')[0];
+    document.getElementById('settle-bank-reconciled').checked = false;
+    document.getElementById('settle-bank-details').style.display = 'none';
+    document.getElementById('settle-negro-warning').style.display = 'none';
+
+    // Wire payment method selection handler
+    const methodSelect = document.getElementById('settle-payment-method');
+    methodSelect.onchange = (e) => {
+        const val = e.target.value;
+        const bankDetails = document.getElementById('settle-bank-details');
+        const negroWarning = document.getElementById('settle-negro-warning');
+        if (val === 'Transferencia Bancaria' || val === 'Tarjeta de Débito' || val === 'Tarjeta de Crédito' || val === 'Cheque') {
+            bankDetails.style.display = 'block';
+            negroWarning.style.display = 'none';
+        } else if (val === 'En Negro (Efectivo)') {
+            bankDetails.style.display = 'none';
+            negroWarning.style.display = 'block';
+        } else {
+            bankDetails.style.display = 'none';
+            negroWarning.style.display = 'none';
+        }
+    };
+
     document.getElementById('modal-settle-debt').style.display = 'block';
 };
 
@@ -5646,6 +5916,12 @@ async function submitSettleDebt(e) {
 
     const client = state.clients.find(c => c.id === clientId);
     if (!client) return;
+
+    const paymentMethod = document.getElementById('settle-payment-method').value;
+    const paymentReference = document.getElementById('settle-payment-ref').value.trim();
+    const paymentDate = document.getElementById('settle-payment-date').value;
+    const bankReconciled = document.getElementById('settle-bank-reconciled').checked;
+    const isEnNegro = (paymentMethod === 'En Negro (Efectivo)');
 
     let amountToDistribute = amountPaidInput;
 
@@ -5676,6 +5952,20 @@ async function submitSettleDebt(e) {
 
         const alreadyPaid = r.partialPaid || 0;
         const remaining = Math.max(0, total - alreadyPaid);
+
+        r.paymentMethod = paymentMethod;
+        r.paymentReference = paymentReference;
+        r.paymentDate = paymentDate || new Date().toISOString().split('T')[0];
+        
+        if (isEnNegro) {
+            r.isUnofficial = true;
+            r.bankReconciled = false;
+        } else {
+            r.bankReconciled = bankReconciled;
+            if (bankReconciled) {
+                r.bankReconciliationDate = paymentDate || new Date().toISOString().split('T')[0];
+            }
+        }
 
         if (amountToDistribute >= remaining) {
             // Settle this reading completely
