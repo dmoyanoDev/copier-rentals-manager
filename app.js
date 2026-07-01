@@ -68,6 +68,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Wire up Firebase controls
     setupFirebaseControls();
+
+    // Wire up Reports actions
+    setupReports();
 });
 
 // Async function to load either from Firebase or LocalStorage
@@ -3340,6 +3343,7 @@ function renderClientsTab() {
             <td class="text-xs italic">${client.notes || '-'}</td>
             <td>
                 <div class="flex-actions-row">
+                    <button class="btn btn-secondary btn-sm" onclick="openClientReportTrigger('${client.id}')">📋 Reporte</button>
                     <button class="btn btn-secondary btn-sm" onclick="editClientTrigger('${client.id}')">Editar</button>
                     <button class="btn btn-danger-outline btn-sm" onclick="deleteClientTrigger('${client.id}')">Eliminar</button>
                 </div>
@@ -3439,6 +3443,7 @@ function renderMachinesTab() {
             </td>
             <td>
                 <div class="flex-actions-row">
+                    <button class="btn btn-secondary btn-sm" onclick="openMachineReportTrigger('${machine.id}')">📋 Reporte</button>
                     <button class="btn btn-secondary btn-sm" onclick="editMachineTrigger('${machine.id}')">${state.currentUser?.role === 'tecnico' ? 'Ver Detalle' : 'Editar'}</button>
                     ${machine.clientId ? `<button class="btn btn-secondary btn-sm" onclick="openMaintenanceHistoryTrigger('${machine.id}')">Historial</button>` : ''}
                     ${state.currentUser?.role !== 'tecnico' ? `<button class="btn btn-danger-outline btn-sm" onclick="deleteMachineTrigger('${machine.id}')">Eliminar</button>` : ''}
@@ -4704,5 +4709,450 @@ window.deleteTicketTrigger = (ticketId) => {
         showToast('Pedido eliminado de la base de datos', 'warning');
         renderTechnicalAreaTab();
     }
+};
+
+// REPORTING SYSTEM FOR CLIENTS AND MACHINES
+let activeReport = { type: null, id: null };
+
+function setupReports() {
+    // Print button
+    const printBtn = document.getElementById('btn-report-print');
+    if (printBtn) {
+        printBtn.onclick = () => {
+            window.print();
+        };
+    }
+
+    // WhatsApp share button
+    const waBtn = document.getElementById('btn-report-whatsapp');
+    if (waBtn) {
+        waBtn.onclick = () => {
+            let msg = "";
+            if (activeReport.type === 'client') {
+                const client = state.clients.find(c => c.id === activeReport.id);
+                if (!client) return;
+                const machines = state.machines.filter(m => m.clientId === client.id);
+                msg = `📋 *REPORTE DE CLIENTE - M&S*\n\n` +
+                      `*Cliente:* ${client.name}\n` +
+                      `*Teléfono:* ${client.phone || '-'}\n` +
+                      `*Equipos Rentados:* ${machines.length}\n\n` +
+                      `Consolidado completo disponible en el sistema M&S: https://dashboard-mys.netlify.app/`;
+            } else if (activeReport.type === 'machine') {
+                const machine = state.machines.find(m => m.id === activeReport.id);
+                if (!machine) return;
+                const client = state.clients.find(c => c.id === machine.clientId);
+                msg = `📋 *REPORTE DE EQUIPO - M&S*\n\n` +
+                      `*Equipo:* ${machine.brand} ${machine.model}\n` +
+                      `*Nº de Serie:* ${machine.serial}\n` +
+                      `*Contador:* ${(machine.machineCounter || 0).toLocaleString('es-AR')} copias\n` +
+                      `*Cliente:* ${client ? client.name : 'Disponible'}\n\n` +
+                      `Consolidado completo disponible en el sistema M&S: https://dashboard-mys.netlify.app/`;
+            }
+            window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
+        };
+    }
+
+    // Email share button
+    const emailBtn = document.getElementById('btn-report-email');
+    if (emailBtn) {
+        emailBtn.onclick = () => {
+            let subject = "";
+            let body = "";
+            if (activeReport.type === 'client') {
+                const client = state.clients.find(c => c.id === activeReport.id);
+                if (!client) return;
+                subject = `Reporte Consolidado de Cliente - ${client.name}`;
+                body = `Hola,\n\nAdjuntamos el reporte de cliente del sistema M&S.\n\nCliente: ${client.name}\nDirección: ${client.address || '-'}\n\nPuede ver todo el historial de lecturas, facturación y bitácora técnica ingresando a la plataforma:\nhttps://dashboard-mys.netlify.app/\n\nSaludos.`;
+            } else if (activeReport.type === 'machine') {
+                const machine = state.machines.find(m => m.id === activeReport.id);
+                if (!machine) return;
+                subject = `Reporte Técnico de Equipo - S/N ${machine.serial}`;
+                body = `Hola,\n\nAdjuntamos el reporte técnico de equipo del sistema M&S.\n\nEquipo: ${machine.brand} ${machine.model}\nNº de Serie: ${machine.serial}\nContador Actual: ${(machine.machineCounter || 0).toLocaleString('es-AR')} copias\n\nPuede ver la bitácora técnica completa y el historial de lecturas ingresando a la plataforma:\nhttps://dashboard-mys.netlify.app/\n\nSaludos.`;
+            }
+            window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank');
+        };
+    }
+
+    // Excel export button
+    const excelBtn = document.getElementById('btn-report-excel');
+    if (excelBtn) {
+        excelBtn.onclick = () => {
+            if (activeReport.type === 'client') {
+                const client = state.clients.find(c => c.id === activeReport.id);
+                if (client) exportClientToCsv(client);
+            } else if (activeReport.type === 'machine') {
+                const machine = state.machines.find(m => m.id === activeReport.id);
+                if (machine) exportMachineToCsv(machine);
+            }
+        };
+    }
+}
+
+function generateClientReportHtml(client) {
+    const assignedMachines = state.machines.filter(m => m.clientId === client.id);
+    const machinesTableRows = assignedMachines.map(m => {
+        const abono = state.abonos.find(a => a.id === m.abonoId);
+        const abonoName = abono ? abono.name : 'Sin abono';
+        return `
+            <tr>
+                <td><strong>${m.brand} ${m.model}</strong></td>
+                <td><code>${m.serial}</code></td>
+                <td>${m.type}</td>
+                <td>${abonoName}</td>
+                <td>${m.installationDate ? m.installationDate.split('-').reverse().join('/') : '-'}</td>
+                <td style="text-align:right;"><strong>${(m.machineCounter || 0).toLocaleString('es-AR')}</strong></td>
+            </tr>
+        `;
+    }).join('');
+
+    // Readings for all client machines
+    const clientMachineIds = assignedMachines.map(m => m.id);
+    const clientReadings = state.readings.filter(r => clientMachineIds.includes(r.machineId));
+    clientReadings.sort((a, b) => b.month.localeCompare(a.month));
+    const readingsTableRows = clientReadings.map(r => {
+        const m = state.machines.find(mac => mac.id === r.machineId);
+        const mName = m ? `${m.brand} ${m.model}` : 'Desconocido';
+        const abono = m ? state.abonos.find(a => a.id === m.abonoId) : null;
+        const diff = Math.max(0, r.final - r.initial);
+        const exc = abono ? Math.max(0, diff - abono.limit) : 0;
+        const ivaRate = (m && m.applyIva && abono) ? (abono.ivaRate || 0) : 0;
+        const fixedCost = abono ? abono.price : 0;
+        const excessCost = abono ? exc * abono.excessPrice : 0;
+        const net = fixedCost + excessCost;
+        const total = net * (1 + ivaRate / 100);
+
+        return `
+            <tr>
+                <td><strong>${formatPeriod(r.month)}</strong></td>
+                <td>${mName} (<code>${m ? m.serial : ''}</code>)</td>
+                <td>${r.initial.toLocaleString('es-AR')} - ${r.final.toLocaleString('es-AR')}</td>
+                <td><strong>${diff.toLocaleString('es-AR')}</strong></td>
+                <td style="text-align:right;"><strong class="text-indigo">${formatCurrency(total)}</strong></td>
+            </tr>
+        `;
+    }).join('');
+
+    // Maintenance logs for all client machines
+    const clientMaintenance = state.maintenance.filter(mn => clientMachineIds.includes(mn.machineId));
+    clientMaintenance.sort((a, b) => b.date.localeCompare(a.date));
+    const maintTableRows = clientMaintenance.map(mn => {
+        const m = state.machines.find(mac => mac.id === mn.machineId);
+        const mName = m ? `${m.brand} ${m.model}` : 'Desconocido';
+        const dateFmt = mn.date ? mn.date.split('-').reverse().join('/') : '-';
+        return `
+            <tr>
+                <td><strong>${dateFmt}</strong></td>
+                <td>${mName} (<code>${m ? m.serial : ''}</code>)</td>
+                <td><span class="badge ${mn.type === 'Repuesto' ? 'danger' : 'warning'}" style="font-size:10px; padding:1px 4px;">${mn.type}</span></td>
+                <td>${mn.description}</td>
+                <td style="text-align:right;"><strong>${mn.counter.toLocaleString('es-AR')}</strong></td>
+            </tr>
+        `;
+    }).join('');
+
+    return `
+        <div style="margin-bottom: 20px; background: rgba(0,0,0,0.015); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px;">
+            <h4 style="margin:0 0 10px 0; font-size:13px; font-weight:700; color:var(--indigo); border-bottom: 1px solid rgba(0,0,0,0.05); padding-bottom:5px;">📋 DATOS GENERALES DEL CLIENTE</h4>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size:12px;">
+                <div><strong>Razón Social:</strong> ${client.name}</div>
+                <div><strong>Teléfono:</strong> ${client.phone || '-'}</div>
+                <div><strong>Email:</strong> ${client.email || '-'}</div>
+                <div><strong>Dirección:</strong> ${client.address || '-'}</div>
+            </div>
+            ${client.notes ? `<div style="margin-top:10px; font-size:11px; border-top:1px dashed rgba(0,0,0,0.05); padding-top:8px;"><strong>Notas internas:</strong> <span style="font-style:italic;">${client.notes}</span></div>` : ''}
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <h4 style="margin:0 0 10px 0; font-size:13px; font-weight:700; color:var(--text-primary);">🖨️ EQUIPOS EN ALQUILER (${assignedMachines.length})</h4>
+            <div class="table-container">
+                <table class="table" style="font-size:11px;">
+                    <thead>
+                        <tr>
+                            <th>Marca y Modelo</th>
+                            <th>Nº Serie</th>
+                            <th>Tipo</th>
+                            <th>Plan Asignado</th>
+                            <th>Fecha Inst.</th>
+                            <th style="text-align:right;">Contador Actual</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${machinesTableRows || '<tr><td colspan="6" class="text-center py-3 text-secondary-light">El cliente no tiene equipos en alquiler actualmente.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <h4 style="margin:0 0 10px 0; font-size:13px; font-weight:700; color:var(--text-primary);">📊 HISTORIAL DE LECTURAS Y FACTURACIÓN (${clientReadings.length})</h4>
+            <div class="table-container">
+                <table class="table" style="font-size:11px;">
+                    <thead>
+                        <tr>
+                            <th>Mes</th>
+                            <th>Equipo</th>
+                            <th>Rango Cont.</th>
+                            <th>Copias Cons.</th>
+                            <th style="text-align:right;">Monto Cobrado (c/IVA)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${readingsTableRows || '<tr><td colspan="5" class="text-center py-3 text-secondary-light">No hay lecturas cargadas para este cliente.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <h4 style="margin:0 0 10px 0; font-size:13px; font-weight:700; color:var(--text-primary);">🔧 BITÁCORA DE SERVICIO TÉCNICO Y REPUESTOS (${clientMaintenance.length})</h4>
+            <div class="table-container">
+                <table class="table" style="font-size:11px;">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Equipo</th>
+                            <th>Tipo</th>
+                            <th>Descripción del Trabajo</th>
+                            <th style="text-align:right;">Contador</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${maintTableRows || '<tr><td colspan="5" class="text-center py-3 text-secondary-light">No se registran intervenciones técnicas para este cliente.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+function generateMachineReportHtml(machine) {
+    const client = state.clients.find(c => c.id === machine.clientId);
+    const abono = state.abonos.find(a => a.id === machine.abonoId);
+    const abonoName = abono ? abono.name : 'Sin plan';
+
+    // Readings for this machine
+    const machineReadings = state.readings.filter(r => r.machineId === machine.id);
+    machineReadings.sort((a, b) => b.month.localeCompare(a.month));
+    const readingsTableRows = machineReadings.map(r => {
+        const diff = Math.max(0, r.final - r.initial);
+        const exc = abono ? Math.max(0, diff - abono.limit) : 0;
+        const ivaRate = (machine.applyIva && abono) ? (abono.ivaRate || 0) : 0;
+        const fixedCost = abono ? abono.price : 0;
+        const excessCost = abono ? exc * abono.excessPrice : 0;
+        const net = fixedCost + excessCost;
+        const total = net * (1 + ivaRate / 100);
+
+        return `
+            <tr>
+                <td><strong>${formatPeriod(r.month)}</strong></td>
+                <td>${r.initial.toLocaleString('es-AR')} - ${r.final.toLocaleString('es-AR')}</td>
+                <td><strong>${diff.toLocaleString('es-AR')}</strong></td>
+                <td style="text-align:right;"><strong class="text-indigo">${formatCurrency(total)}</strong></td>
+            </tr>
+        `;
+    }).join('');
+
+    // Maintenance log for this machine
+    const machineMaintenance = state.maintenance.filter(mn => mn.machineId === machine.id);
+    machineMaintenance.sort((a, b) => b.date.localeCompare(a.date));
+    const maintTableRows = machineMaintenance.map(mn => {
+        const dateFmt = mn.date ? mn.date.split('-').reverse().join('/') : '-';
+        return `
+            <tr>
+                <td><strong>${dateFmt}</strong></td>
+                <td><span class="badge ${mn.type === 'Repuesto' ? 'danger' : 'warning'}" style="font-size:10px; padding:1px 4px;">${mn.type}</span></td>
+                <td>${mn.description}</td>
+                <td style="text-align:right;"><strong>${mn.counter.toLocaleString('es-AR')}</strong></td>
+            </tr>
+        `;
+    }).join('');
+
+    return `
+        <div style="margin-bottom: 20px; background: rgba(0,0,0,0.015); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px;">
+            <h4 style="margin:0 0 10px 0; font-size:13px; font-weight:700; color:var(--indigo); border-bottom: 1px solid rgba(0,0,0,0.05); padding-bottom:5px;">📋 ESPECIFICACIONES TÉCNICAS DEL EQUIPO</h4>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size:12px;">
+                <div><strong>Modelo:</strong> ${machine.brand || ''} ${machine.model || ''}</div>
+                <div><strong>Nº de Serie:</strong> <code>${machine.serial}</code></div>
+                <div><strong>Tipo:</strong> ${machine.type}</div>
+                <div><strong>Estado Físico:</strong> ${machine.status}</div>
+                <div><strong>Disponibilidad:</strong> ${machine.isAvailable !== false ? 'Apto Alquiler/Venta' : 'No Disponible'}</div>
+                <div><strong>Contador Total:</strong> <strong>${(machine.machineCounter || 0).toLocaleString('es-AR')}</strong> copias</div>
+            </div>
+        </div>
+
+        <div style="margin-bottom: 20px; background: rgba(0,0,0,0.015); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px;">
+            <h4 style="margin:0 0 10px 0; font-size:13px; font-weight:700; color:var(--primary); border-bottom: 1px solid rgba(0,0,0,0.05); padding-bottom:5px;">👥 ALQUILER VIGENTE Y CLIENTE</h4>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size:12px;">
+                <div><strong>Cliente Asignado:</strong> ${client ? client.name : '<em>Sin cliente (Disponible)</em>'}</div>
+                <div><strong>Plan Tarifario:</strong> ${abonoName}</div>
+                <div><strong>Fecha Instalación:</strong> ${machine.installationDate ? machine.installationDate.split('-').reverse().join('/') : '-'}</div>
+                <div><strong>Contador Inicial:</strong> ${machine.initialCounter ? machine.initialCounter.toLocaleString('es-AR') : '0'} copias</div>
+            </div>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <h4 style="margin:0 0 10px 0; font-size:13px; font-weight:700; color:var(--text-primary);">📊 HISTORIAL DE LECTURAS MENSUALES (${machineReadings.length})</h4>
+            <div class="table-container">
+                <table class="table" style="font-size:11px;">
+                    <thead>
+                        <tr>
+                            <th>Período</th>
+                            <th>Rango Contadores</th>
+                            <th>Copias Consumidas</th>
+                            <th style="text-align:right;">Monto Cobrado (c/IVA)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${readingsTableRows || '<tr><td colspan="4" class="text-center py-3 text-secondary-light">No hay lecturas registradas para esta máquina.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <h4 style="margin:0 0 10px 0; font-size:13px; font-weight:700; color:var(--text-primary);">🔧 BITÁCORA TÉCNICA E INTERVENCIONES (${machineMaintenance.length})</h4>
+            <div class="table-container">
+                <table class="table" style="font-size:11px;">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Tipo Servicio</th>
+                            <th>Descripción del Trabajo</th>
+                            <th style="text-align:right;">Contador en Servicio</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${maintTableRows || '<tr><td colspan="4" class="text-center py-3 text-secondary-light">No se registran intervenciones técnicas para esta máquina.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+function downloadCsvFile(content, filename) {
+    const blob = new Blob(["\ufeff" + content], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function exportClientToCsv(client) {
+    const assignedMachines = state.machines.filter(m => m.clientId === client.id);
+    const clientMachineIds = assignedMachines.map(m => m.id);
+    const clientReadings = state.readings.filter(r => clientMachineIds.includes(r.machineId));
+    const clientMaintenance = state.maintenance.filter(mn => clientMachineIds.includes(mn.machineId));
+
+    let csvContent = "";
+    csvContent += `REPORTE CONSOLIDADO DE CLIENTE\n`;
+    csvContent += `Cliente;${client.name}\n`;
+    csvContent += `Telefono;${client.phone || '-'}\n`;
+    csvContent += `Email;${client.email || '-'}\n`;
+    csvContent += `Direccion;${client.address || '-'}\n\n`;
+
+    csvContent += `EQUIPOS EN ALQUILER\n`;
+    csvContent += `Modelo;N Serie;Tipo;Plan;Fecha Inst;Contador Actual\n`;
+    assignedMachines.forEach(m => {
+        const abono = state.abonos.find(a => a.id === m.abonoId);
+        csvContent += `"${m.brand} ${m.model}";"${m.serial}";"${m.type}";"${abono ? abono.name : ''}";"${m.installationDate || ''}";${m.machineCounter || 0}\n`;
+    });
+    csvContent += `\n`;
+
+    csvContent += `HISTORIAL DE LECTURAS Y FACTURACION\n`;
+    csvContent += `Periodo;Equipo;N Serie;Rango Contadores;Consumo;Monto Total\n`;
+    clientReadings.forEach(r => {
+        const m = state.machines.find(mac => mac.id === r.machineId);
+        const abono = m ? state.abonos.find(a => a.id === m.abonoId) : null;
+        const diff = Math.max(0, r.final - r.initial);
+        const exc = abono ? Math.max(0, diff - abono.limit) : 0;
+        const ivaRate = (m && m.applyIva && abono) ? (abono.ivaRate || 0) : 0;
+        const net = (abono ? abono.price : 0) + (abono ? exc * abono.excessPrice : 0);
+        const total = net * (1 + ivaRate / 100);
+        csvContent += `"${r.month}";"${m ? m.brand + ' ' + m.model : ''}";"${m ? m.serial : ''}";"${r.initial}-${r.final}";${diff};${total.toFixed(2)}\n`;
+    });
+    csvContent += `\n`;
+
+    csvContent += `BITACORA DE SOPORTE TECNICO\n`;
+    csvContent += `Fecha;Equipo;Tipo;Trabajo Realizado;Contador\n`;
+    clientMaintenance.forEach(mn => {
+        const m = state.machines.find(mac => mac.id === mn.machineId);
+        csvContent += `"${mn.date}";"${m ? m.brand + ' ' + m.model : ''}";"${mn.type}";"${mn.description}";${mn.counter}\n`;
+    });
+
+    downloadCsvFile(csvContent, `Reporte_Cliente_${client.name.replace(/\s+/g, '_')}.csv`);
+}
+
+function exportMachineToCsv(machine) {
+    const client = state.clients.find(c => c.id === machine.clientId);
+    const abono = state.abonos.find(a => a.id === machine.abonoId);
+    const machineReadings = state.readings.filter(r => r.machineId === machine.id);
+    const machineMaintenance = state.maintenance.filter(mn => mn.machineId === machine.id);
+
+    let csvContent = "";
+    csvContent += `REPORTE CONSOLIDADO DE EQUIPO\n`;
+    csvContent += `Modelo;${machine.brand} ${machine.model}\n`;
+    csvContent += `N Serie;${machine.serial}\n`;
+    csvContent += `Tipo;${machine.type}\n`;
+    csvContent += `Estado;${machine.status}\n`;
+    csvContent += `Contador Total;${machine.machineCounter || 0}\n`;
+    csvContent += `Cliente;${client ? client.name : 'Disponible'}\n`;
+    csvContent += `Plan;${abono ? abono.name : 'Sin plan'}\n\n`;
+
+    csvContent += `HISTORIAL DE LECTURAS MENSUALES\n`;
+    csvContent += `Periodo;Rango Contadores;Consumo;Monto Facturado\n`;
+    machineReadings.forEach(r => {
+        const diff = Math.max(0, r.final - r.initial);
+        const exc = abono ? Math.max(0, diff - abono.limit) : 0;
+        const ivaRate = (machine.applyIva && abono) ? (abono.ivaRate || 0) : 0;
+        const net = (abono ? abono.price : 0) + (abono ? exc * abono.excessPrice : 0);
+        const total = net * (1 + ivaRate / 100);
+        csvContent += `"${r.month}";"${r.initial}-${r.final}";${diff};${total.toFixed(2)}\n`;
+    });
+    csvContent += `\n`;
+
+    csvContent += `BITACORA TECNICA E INTERVENCIONES\n`;
+    csvContent += `Fecha;Tipo Servicio;Trabajo Realizado;Contador en Servicio\n`;
+    machineMaintenance.forEach(mn => {
+        csvContent += `"${mn.date}";"${mn.type}";"${mn.description}";${mn.counter}\n`;
+    });
+
+    downloadCsvFile(csvContent, `Reporte_Equipo_${machine.serial}.csv`);
+}
+
+window.openClientReportTrigger = (clientId) => {
+    closeAllModals();
+    const client = state.clients.find(c => c.id === clientId);
+    if (!client) return;
+
+    activeReport = { type: 'client', id: clientId };
+
+    document.getElementById('modal-report-title').textContent = `Reporte de Historial - Cliente: ${client.name}`;
+    document.getElementById('report-doc-type').textContent = `HISTORIAL CONSOLIDADO DE CLIENTE`;
+    document.getElementById('report-doc-date').textContent = `Fecha de Emisión: ${new Date().toLocaleDateString('es-AR')}`;
+    
+    const html = generateClientReportHtml(client);
+    document.getElementById('report-dynamic-content').innerHTML = html;
+
+    document.getElementById('modal-report').style.display = 'block';
+};
+
+window.openMachineReportTrigger = (machineId) => {
+    closeAllModals();
+    const machine = state.machines.find(m => m.id === machineId);
+    if (!machine) return;
+
+    activeReport = { type: 'machine', id: machineId };
+
+    document.getElementById('modal-report-title').textContent = `Reporte de Historial - Equipo: ${machine.brand || ''} ${machine.model} (${machine.serial})`;
+    document.getElementById('report-doc-type').textContent = `HISTORIAL CONSOLIDADO DE EQUIPO`;
+    document.getElementById('report-doc-date').textContent = `Fecha de Emisión: ${new Date().toLocaleDateString('es-AR')}`;
+    
+    const html = generateMachineReportHtml(machine);
+    document.getElementById('report-dynamic-content').innerHTML = html;
+
+    document.getElementById('modal-report').style.display = 'block';
 };
 
