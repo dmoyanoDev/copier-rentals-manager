@@ -23,13 +23,17 @@ const monthSelector = document.getElementById('global-month-select');
 
 let recoveryUser = null; // Temp holder for password recovery
 
+// Firebase Cloud variables
+let db = null;
+let firebaseActive = false;
+
 // Initialize Application
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     // Set default month selector value
     monthSelector.value = currentMonth;
     
-    // Load data
-    loadFromLocalStorage();
+    // Load Firebase if credentials exist, otherwise load from localStorage
+    await loadDatabase();
 
     // Init security gate
     checkAuthSession();
@@ -41,7 +45,149 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Update logo preview in Data Management tab
     updateLogoPreview();
+    
+    // Wire up Firebase controls
+    setupFirebaseControls();
 });
+
+// Async function to load either from Firebase or LocalStorage
+async function loadDatabase() {
+    const savedConfig = localStorage.getItem('firebase_config');
+    if (savedConfig) {
+        try {
+            const config = JSON.parse(savedConfig);
+            // Check if Firebase is loaded via SDK script
+            if (typeof firebase !== 'undefined') {
+                // Initialize app if not already initialized
+                if (firebase.apps.length === 0) {
+                    firebase.initializeApp(config);
+                }
+                db = firebase.firestore();
+                firebaseActive = true;
+                
+                // Fetch state collections from Firestore
+                await fetchCloudData();
+                
+                // Update UI badge & disconnect button
+                updateFirebaseUI(true, config);
+                return;
+            }
+        } catch (err) {
+            console.error("Error al inicializar Firebase en el arranque:", err);
+            showToast("Error de conexión con Firebase. Cargando base de datos local.", "error");
+        }
+    }
+    
+    // Fallback to localStorage
+    firebaseActive = false;
+    loadFromLocalStorage();
+    updateFirebaseUI(false);
+}
+
+// Function to fetch all collections from Firestore
+async function fetchCloudData() {
+    try {
+        state.clients = await fetchCollection('clients');
+        state.machines = await fetchCollection('machines');
+        state.abonos = await fetchCollection('abonos');
+        state.readings = await fetchCollection('readings');
+        state.maintenance = await fetchCollection('maintenance') || [];
+        state.users = await fetchCollection('users');
+        
+        // Load company logo if stored in Firestore
+        const logoDoc = await db.collection('settings').doc('companyLogo').get();
+        if (logoDoc.exists) {
+            state.companyLogo = logoDoc.data().value;
+        } else {
+            // fallback to local logo if present
+            const localSaved = localStorage.getItem('copyrent_data');
+            if (localSaved) {
+                const localState = JSON.parse(localSaved);
+                if (localState.companyLogo) {
+                    state.companyLogo = localState.companyLogo;
+                }
+            }
+        }
+        
+        // Safeguard user admin
+        if (state.users.length === 0) {
+            const defaultAdmin = {
+                id: 'user-admin',
+                username: 'dmoyano',
+                fullname: 'Darío Moyano',
+                email: 'dmoyano@mstecnologia.com.ar',
+                password: 'jUEVES2389$'
+            };
+            state.users = [defaultAdmin];
+            await db.collection('users').doc(defaultAdmin.id).set(defaultAdmin);
+        }
+    } catch (e) {
+        console.error("Error al descargar colecciones de Firebase:", e);
+        throw e;
+    }
+}
+
+async function fetchCollection(collectionName) {
+    const snapshot = await db.collection(collectionName).get();
+    const data = [];
+    snapshot.forEach(doc => {
+        data.push(doc.data());
+    });
+    return data;
+}
+
+function updateFirebaseUI(active, config = null) {
+    const badge = document.getElementById('firebase-status-badge');
+    const disconnectBtn = document.getElementById('btn-disconnect-firebase');
+    const syncPanel = document.getElementById('firebase-sync-panel');
+    
+    if (active) {
+        badge.textContent = 'Conectado (Nube)';
+        badge.style.backgroundColor = 'var(--emerald)';
+        disconnectBtn.style.display = 'inline-block';
+        syncPanel.style.display = 'block';
+        
+        if (config) {
+            document.getElementById('fb-api-key').value = config.apiKey || '';
+            document.getElementById('fb-auth-domain').value = config.authDomain || '';
+            document.getElementById('fb-project-id').value = config.projectId || '';
+            document.getElementById('fb-storage-bucket').value = config.storageBucket || '';
+            document.getElementById('fb-messaging-sender-id').value = config.messagingSenderId || '';
+            document.getElementById('fb-app-id').value = config.appId || '';
+        }
+    } else {
+        badge.textContent = 'Inactivo (Local)';
+        badge.style.backgroundColor = 'var(--text-secondary-light)';
+        disconnectBtn.style.display = 'none';
+        syncPanel.style.display = 'none';
+    }
+}
+
+// Firestore persistence wrappers
+async function dbSet(collectionName, docId, data) {
+    if (firebaseActive && db) {
+        try {
+            await db.collection(collectionName).doc(docId).set(data);
+        } catch (err) {
+            console.error(`Error saving to Firestore (${collectionName}/${docId}):`, err);
+            showToast('Error de sincronización con la nube', 'error');
+        }
+    }
+    // Always persist to local cache for safety & offline support
+    saveToLocalStorage();
+}
+
+async function dbDelete(collectionName, docId) {
+    if (firebaseActive && db) {
+        try {
+            await db.collection(collectionName).doc(docId).delete();
+        } catch (err) {
+            console.error(`Error deleting from Firestore (${collectionName}/${docId}):`, err);
+            showToast('Error al eliminar en la nube', 'error');
+        }
+    }
+    saveToLocalStorage();
+}
 
 function checkAuthSession() {
     const loginContainer = document.getElementById('login-container');
@@ -722,7 +868,7 @@ window.openRentalDetailModal = (machineId) => {
 // Form logic and submissions
 function setupForms() {
     // Client Form
-    document.getElementById('form-client').addEventListener('submit', (e) => {
+    document.getElementById('form-client').addEventListener('submit', async (e) => {
         e.preventDefault();
         const id = document.getElementById('client-id').value;
         const name = document.getElementById('client-name').value;
@@ -731,27 +877,32 @@ function setupForms() {
         const address = document.getElementById('client-address').value;
         const notes = document.getElementById('client-notes').value;
 
+        let clientData;
         if (id) {
             // Edit
             const idx = state.clients.findIndex(c => c.id === id);
             if (idx !== -1) {
-                state.clients[idx] = { id, name, phone, email, address, notes };
+                clientData = { id, name, phone, email, address, notes };
+                state.clients[idx] = clientData;
                 showToast('Cliente actualizado con éxito', 'success');
             }
         } else {
             // Create
             const newId = 'client-' + Date.now();
-            state.clients.push({ id: newId, name, phone, email, address, notes });
+            clientData = { id: newId, name, phone, email, address, notes };
+            state.clients.push(clientData);
             showToast('Cliente registrado con éxito', 'success');
         }
 
-        saveToLocalStorage();
+        if (clientData) {
+            await dbSet('clients', clientData.id, clientData);
+        }
         closeAllModals();
         renderApp();
     });
 
     // Machine Form
-    document.getElementById('form-machine').addEventListener('submit', (e) => {
+    document.getElementById('form-machine').addEventListener('submit', async (e) => {
         e.preventDefault();
         const id = document.getElementById('machine-id').value;
         const brand = document.getElementById('machine-brand').value;
@@ -794,7 +945,7 @@ function setupForms() {
             showToast('Máquina agregada con éxito', 'success');
         }
 
-        saveToLocalStorage();
+        await dbSet('machines', machineData.id, machineData);
         closeAllModals();
         renderApp();
     });
@@ -813,7 +964,7 @@ function setupForms() {
     });
 
     // Abono Form
-    document.getElementById('form-abono').addEventListener('submit', (e) => {
+    document.getElementById('form-abono').addEventListener('submit', async (e) => {
         e.preventDefault();
         const id = document.getElementById('abono-id').value;
         const name = document.getElementById('abono-name').value;
@@ -822,25 +973,26 @@ function setupForms() {
         const excessPrice = parseFloat(document.getElementById('abono-excess-price').value) || 0;
         const ivaRate = parseFloat(document.getElementById('abono-iva').value) || 0;
 
+        const abonoData = { id: id || ('abono-' + Date.now()), name, limit, price, excessPrice, ivaRate };
+
         if (id) {
             const idx = state.abonos.findIndex(a => a.id === id);
             if (idx !== -1) {
-                state.abonos[idx] = { id, name, limit, price, excessPrice, ivaRate };
+                state.abonos[idx] = abonoData;
                 showToast('Abono actualizado con éxito', 'success');
             }
         } else {
-            const newId = 'abono-' + Date.now();
-            state.abonos.push({ id: newId, name, limit, price, excessPrice, ivaRate });
+            state.abonos.push(abonoData);
             showToast('Abono registrado con éxito', 'success');
         }
 
-        saveToLocalStorage();
+        await dbSet('abonos', abonoData.id, abonoData);
         closeAllModals();
         renderApp();
     });
 
     // Reading Form
-    document.getElementById('form-reading').addEventListener('submit', (e) => {
+    document.getElementById('form-reading').addEventListener('submit', async (e) => {
         e.preventDefault();
         const id = document.getElementById('reading-id').value;
         const machineId = document.getElementById('reading-machine-id').value;
@@ -874,7 +1026,7 @@ function setupForms() {
             showToast('Lectura registrada con éxito', 'success');
         }
 
-        saveToLocalStorage();
+        await dbSet('readings', readingData.id, readingData);
         closeAllModals();
         renderApp();
     });
@@ -921,7 +1073,7 @@ function setupForms() {
     });
 
     // Form: User Submit (Add/Edit)
-    document.getElementById('form-user').addEventListener('submit', (e) => {
+    document.getElementById('form-user').addEventListener('submit', async (e) => {
         e.preventDefault();
         const id = document.getElementById('user-id').value;
         const username = document.getElementById('user-username').value.trim();
@@ -964,7 +1116,7 @@ function setupForms() {
             showToast('Usuario creado con éxito', 'success');
         }
 
-        saveToLocalStorage();
+        await dbSet('users', userData.id, userData);
         closeAllModals();
         checkAuthSession(); // Updates sidebar profile if we updated ourselves
         renderUsersTab();
@@ -1014,15 +1166,17 @@ function setupActions() {
     document.getElementById('import-file-input').addEventListener('change', importDataFromJSON);
     
     // Danger Zone actions
-    document.getElementById('btn-load-demo-data').addEventListener('click', () => {
+    document.getElementById('btn-load-demo-data').addEventListener('click', async () => {
         if (confirm('¿Estás seguro de que quieres restablecer todos los datos e importar la demo? Se perderán tus cambios actuales.')) {
             loadDemoData();
+            await clearFirestoreCollections();
+            await syncStateToFirestore();
             renderApp();
             showToast('Datos de demostración cargados', 'success');
         }
     });
 
-    document.getElementById('btn-clear-all-data').addEventListener('click', () => {
+    document.getElementById('btn-clear-all-data').addEventListener('click', async () => {
         if (confirm('ATENCIÓN: Esto eliminará de forma PERMANENTE todos los clientes, abonos, máquinas y lecturas del navegador. ¿Proceder?')) {
             state = { 
                 clients: [], 
@@ -1033,6 +1187,7 @@ function setupActions() {
                 users: state.users,
                 currentUser: state.currentUser 
             };
+            await clearFirestoreCollections();
             saveToLocalStorage();
             renderApp();
             showToast('Base de datos borrada por completo (los usuarios se conservan)', 'warning');
@@ -1269,9 +1424,10 @@ function updateLogoPreview() {
 }
 
 // Synchronize Final readings as Initial readings for current month
-function syncFinalReadings() {
+async function syncFinalReadings() {
     const prevMonthStr = getPreviousMonthString(currentMonth);
     let syncedCount = 0;
+    const syncedReadings = [];
 
     // Filter machines that are currently rented
     const rentedMachines = state.machines.filter(m => m.status === 'Alquilada' && m.clientId);
@@ -1285,20 +1441,24 @@ function syncFinalReadings() {
         
         if (prevReading && !hasCurrentReading) {
             // Create a new reading with initial set to previous final
-            state.readings.push({
+            const newReading = {
                 id: 'read-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
                 machineId: machine.id,
                 month: currentMonth,
                 initial: prevReading.final,
                 final: prevReading.final, // set same temporarily
                 status: 'pending'
-            });
+            };
+            state.readings.push(newReading);
+            syncedReadings.push(newReading);
             syncedCount++;
         }
     });
 
     if (syncedCount > 0) {
-        saveToLocalStorage();
+        for (const r of syncedReadings) {
+            await dbSet('readings', r.id, r);
+        }
         renderApp();
         showToast(`Se crearon ${syncedCount} lecturas trayendo contadores de ${formatPeriod(prevMonthStr)}`, 'success');
     } else {
@@ -1582,11 +1742,11 @@ function openInvoiceModal(reading) {
         markPaidBtn.style.display = 'inline-flex';
         
         // Wire mark as paid action
-        markPaidBtn.onclick = () => {
+        markPaidBtn.onclick = async () => {
             const idx = state.readings.findIndex(r => r.id === reading.id);
             if (idx !== -1) {
                 state.readings[idx].status = 'paid';
-                saveToLocalStorage();
+                await dbSet('readings', reading.id, state.readings[idx]);
                 renderApp();
                 showToast('Comprobante marcado como cobrado', 'success');
                 openInvoiceModal(state.readings[idx]); // refresh modal
@@ -1759,10 +1919,10 @@ window.editClientTrigger = (clientId) => {
     if (client) openClientModal(client);
 };
 
-window.deleteClientTrigger = (clientId) => {
+window.deleteClientTrigger = async (clientId) => {
     if (confirm('¿Seguro que deseas eliminar este cliente? No se desasignarán las máquinas de forma automática pero dejará huérfanas sus referencias.')) {
         state.clients = state.clients.filter(c => c.id !== clientId);
-        saveToLocalStorage();
+        await dbDelete('clients', clientId);
         renderApp();
         showToast('Cliente eliminado', 'warning');
     }
@@ -1773,11 +1933,17 @@ window.editMachineTrigger = (machineId) => {
     if (machine) openMachineModal(machine);
 };
 
-window.deleteMachineTrigger = (machineId) => {
+window.deleteMachineTrigger = async (machineId) => {
     if (confirm('¿Seguro que deseas eliminar esta máquina? Se perderá su historial de lecturas asociadas.')) {
+        const readingsToDelete = state.readings.filter(r => r.machineId === machineId);
         state.machines = state.machines.filter(m => m.id !== machineId);
         state.readings = state.readings.filter(r => r.machineId !== machineId);
-        saveToLocalStorage();
+        
+        await dbDelete('machines', machineId);
+        for (const r of readingsToDelete) {
+            await dbDelete('readings', r.id);
+        }
+        
         renderApp();
         showToast('Máquina eliminada', 'warning');
     }
@@ -1788,7 +1954,7 @@ window.editAbonoTrigger = (abonoId) => {
     if (abono) openAbonoModal(abono);
 };
 
-window.deleteAbonoTrigger = (abonoId) => {
+window.deleteAbonoTrigger = async (abonoId) => {
     // Check if being used
     const inUse = state.machines.some(m => m.abonoId === abonoId);
     if (inUse) {
@@ -1797,7 +1963,7 @@ window.deleteAbonoTrigger = (abonoId) => {
     }
     if (confirm('¿Seguro que deseas eliminar este abono?')) {
         state.abonos = state.abonos.filter(a => a.id !== abonoId);
-        saveToLocalStorage();
+        await dbDelete('abonos', abonoId);
         renderApp();
         showToast('Abono eliminado', 'warning');
     }
@@ -2514,13 +2680,13 @@ window.editMaintenanceEntryTrigger = (entryId) => {
     }
 };
 
-window.deleteMaintenanceEntryTrigger = (entryId) => {
+window.deleteMaintenanceEntryTrigger = async (entryId) => {
     if (confirm('¿Seguro que deseas eliminar este registro del historial?')) {
         const entry = state.maintenance.find(e => e.id === entryId);
         const machineId = entry ? entry.machineId : null;
         
         state.maintenance = state.maintenance.filter(e => e.id !== entryId);
-        saveToLocalStorage();
+        await dbDelete('maintenance', entryId);
         
         if (machineId) {
             renderMaintenanceHistoryTable(machineId);
@@ -2529,7 +2695,7 @@ window.deleteMaintenanceEntryTrigger = (entryId) => {
     }
 };
 
-function saveMaintenanceEntry() {
+async function saveMaintenanceEntry() {
     const id = document.getElementById('maintenance-entry-id').value;
     const machineId = document.getElementById('maintenance-machine-id').value;
     const type = document.getElementById('maintenance-type').value;
@@ -2564,7 +2730,7 @@ function saveMaintenanceEntry() {
         showToast('Registro guardado en el historial', 'success');
     }
 
-    saveToLocalStorage();
+    await dbSet('maintenance', entryData.id, entryData);
     document.getElementById('modal-add-maintenance').style.display = 'none';
     renderMaintenanceHistoryTable(machineId);
 }
@@ -2643,7 +2809,7 @@ window.editUserTrigger = (userId) => {
     openUserModal(userId);
 };
 
-window.deleteUserTrigger = (userId) => {
+window.deleteUserTrigger = async (userId) => {
     const user = state.users.find(u => u.id === userId);
     if (!user) return;
 
@@ -2654,9 +2820,193 @@ window.deleteUserTrigger = (userId) => {
 
     if (confirm(`¿Estás seguro de que deseas eliminar permanentemente al usuario "${user.username}"?`)) {
         state.users = state.users.filter(u => u.id !== userId);
-        saveToLocalStorage();
+        await dbDelete('users', userId);
         showToast('Usuario eliminado con éxito', 'warning');
         renderUsersTab();
     }
 };
+
+function setupFirebaseControls() {
+    // Form config connection
+    document.getElementById('form-firebase-config').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const config = {
+            apiKey: document.getElementById('fb-api-key').value.trim(),
+            authDomain: document.getElementById('fb-auth-domain').value.trim(),
+            projectId: document.getElementById('fb-project-id').value.trim(),
+            storageBucket: document.getElementById('fb-storage-bucket').value.trim(),
+            messagingSenderId: document.getElementById('fb-messaging-sender-id').value.trim(),
+            appId: document.getElementById('fb-app-id').value.trim()
+        };
+        
+        if (!config.apiKey || !config.projectId) {
+            showToast("Por favor completa los campos principales de Firebase.", "error");
+            return;
+        }
+        
+        try {
+            showToast("Conectando con Firebase Firestore...", "info");
+            localStorage.setItem('firebase_config', JSON.stringify(config));
+            
+            // Re-initialize database
+            await loadDatabase();
+            
+            if (firebaseActive) {
+                showToast("Conectado a Firebase con éxito.", "success");
+                renderApp();
+            }
+        } catch (err) {
+            console.error(err);
+            showToast("Error al conectar. Verifica las credenciales.", "error");
+        }
+    });
+    
+    // Disconnect button
+    document.getElementById('btn-disconnect-firebase').addEventListener('click', () => {
+        if (confirm("¿Seguro que deseas desconectar Firebase? La aplicación volverá a usar el almacenamiento local (localStorage).")) {
+            localStorage.removeItem('firebase_config');
+            firebaseActive = false;
+            db = null;
+            
+            // Load local data again
+            loadFromLocalStorage();
+            updateFirebaseUI(false);
+            
+            // Clean inputs
+            document.getElementById('form-firebase-config').reset();
+            
+            renderApp();
+            showToast("Desconectado de Firebase. Volviendo a almacenamiento local.", "warning");
+        }
+    });
+    
+    // Upload local storage database to Firestore
+    document.getElementById('btn-upload-local-to-firebase').addEventListener('click', async () => {
+        if (!firebaseActive || !db) {
+            showToast("Firebase no está conectado.", "error");
+            return;
+        }
+        
+        if (confirm("ATENCIÓN: Esto subirá todos los datos locales de este navegador a la nube de Firebase, combinándose o sobrescribiendo los existentes en Firestore. ¿Deseas continuar?")) {
+            try {
+                showToast("Subiendo datos locales a la nube...", "info");
+                
+                // Get local copy rent data
+                const saved = localStorage.getItem('copyrent_data');
+                if (saved) {
+                    const localState = JSON.parse(saved);
+                    
+                    // Upload clients
+                    if (localState.clients) {
+                        for (const client of localState.clients) {
+                            await db.collection('clients').doc(client.id).set(client);
+                        }
+                    }
+                    
+                    // Upload machines
+                    if (localState.machines) {
+                        for (const machine of localState.machines) {
+                            await db.collection('machines').doc(machine.id).set(machine);
+                        }
+                    }
+                    
+                    // Upload abonos
+                    if (localState.abonos) {
+                        for (const abono of localState.abonos) {
+                            await db.collection('abonos').doc(abono.id).set(abono);
+                        }
+                    }
+                    
+                    // Upload readings
+                    if (localState.readings) {
+                        for (const reading of localState.readings) {
+                            await db.collection('readings').doc(reading.id).set(reading);
+                        }
+                    }
+                    
+                    // Upload maintenance
+                    if (localState.maintenance) {
+                        for (const maint of localState.maintenance) {
+                            await db.collection('maintenance').doc(maint.id).set(maint);
+                        }
+                    }
+                    
+                    // Upload users
+                    if (localState.users) {
+                        for (const user of localState.users) {
+                            await db.collection('users').doc(user.id).set(user);
+                        }
+                    }
+                    
+                    // Upload logo
+                    if (localState.companyLogo) {
+                        await db.collection('settings').doc('companyLogo').set({ value: localState.companyLogo });
+                    }
+                    
+                    showToast("Sincronización completa. Todos los datos locales están en la nube.", "success");
+                    // Refresh data from cloud to be aligned
+                    await fetchCloudData();
+                    renderApp();
+                } else {
+                    showToast("No hay datos locales para subir.", "warning");
+                }
+            } catch (err) {
+                console.error("Error uploading to Firebase:", err);
+                showToast("Error al subir los datos a la nube.", "error");
+            }
+        }
+    });
+}
+
+async function clearFirestoreCollections() {
+    if (firebaseActive && db) {
+        try {
+            const deleteCol = async (colName) => {
+                const snap = await db.collection(colName).get();
+                const batch = db.batch();
+                let count = 0;
+                snap.forEach(doc => {
+                    batch.delete(doc.ref);
+                    count++;
+                });
+                if (count > 0) {
+                    await batch.commit();
+                }
+            };
+            
+            await deleteCol('clients');
+            await deleteCol('machines');
+            await deleteCol('abonos');
+            await deleteCol('readings');
+            await deleteCol('maintenance');
+            // We do NOT clear the 'users' collection to avoid administrative lockouts!
+        } catch (err) {
+            console.error("Error clearing Firestore collections:", err);
+        }
+    }
+}
+
+async function syncStateToFirestore() {
+    if (firebaseActive && db) {
+        try {
+            showToast("Sincronizando nuevos datos con la nube...", "info");
+            
+            // Upload current state items
+            for (const c of state.clients) await db.collection('clients').doc(c.id).set(c);
+            for (const m of state.machines) await db.collection('machines').doc(m.id).set(m);
+            for (const a of state.abonos) await db.collection('abonos').doc(a.id).set(a);
+            for (const r of state.readings) await db.collection('readings').doc(r.id).set(r);
+            for (const mt of state.maintenance) await db.collection('maintenance').doc(mt.id).set(mt);
+            for (const u of state.users) await db.collection('users').doc(u.id).set(u);
+            
+            if (state.companyLogo) {
+                await db.collection('settings').doc('companyLogo').set({ value: state.companyLogo });
+            }
+        } catch (err) {
+            console.error("Error syncing state to Firestore:", err);
+            showToast("Error al sincronizar datos con la nube.", "error");
+        }
+    }
+}
 

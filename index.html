@@ -613,6 +613,62 @@
                     </div>
 
                     <div class="dashboard-card flex-1">
+                        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                            <h2>Base de Datos Firebase (Nube)</h2>
+                            <span class="badge" id="firebase-status-badge" style="background-color: var(--text-secondary-light); color: white;">Inactivo (Local)</span>
+                        </div>
+                        <div class="card-body">
+                            <p class="mb-3 text-secondary text-sm">
+                                Conecta tu sistema a Firebase Firestore para almacenar tu base de datos de forma segura en la nube y sincronizarla entre dispositivos en tiempo real.
+                            </p>
+                            
+                            <form id="form-firebase-config">
+                                <div class="form-group mb-2">
+                                    <label for="fb-api-key" class="text-xs font-semibold" style="font-size:11px;">API Key</label>
+                                    <input type="text" id="fb-api-key" class="form-control text-xs" style="padding:6px 10px; font-size:11px;" placeholder="AIzaSy...">
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group col-6 mb-2">
+                                        <label for="fb-auth-domain" class="text-xs font-semibold" style="font-size:11px;">Auth Domain</label>
+                                        <input type="text" id="fb-auth-domain" class="form-control text-xs" style="padding:6px 10px; font-size:11px;" placeholder="tu-proyecto.firebaseapp.com">
+                                    </div>
+                                    <div class="form-group col-6 mb-2">
+                                        <label for="fb-project-id" class="text-xs font-semibold" style="font-size:11px;">Project ID</label>
+                                        <input type="text" id="fb-project-id" class="form-control text-xs" style="padding:6px 10px; font-size:11px;" placeholder="tu-proyecto">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group col-6 mb-2">
+                                        <label for="fb-storage-bucket" class="text-xs font-semibold" style="font-size:11px;">Storage Bucket</label>
+                                        <input type="text" id="fb-storage-bucket" class="form-control text-xs" style="padding:6px 10px; font-size:11px;" placeholder="tu-proyecto.appspot.com">
+                                    </div>
+                                    <div class="form-group col-6 mb-2">
+                                        <label for="fb-messaging-sender-id" class="text-xs font-semibold" style="font-size:11px;">Messaging Sender ID</label>
+                                        <input type="text" id="fb-messaging-sender-id" class="form-control text-xs" style="padding:6px 10px; font-size:11px;" placeholder="1234567890">
+                                    </div>
+                                </div>
+                                <div class="form-group mb-3">
+                                    <label for="fb-app-id" class="text-xs font-semibold" style="font-size:11px;">App ID</label>
+                                    <input type="text" id="fb-app-id" class="form-control text-xs" style="padding:6px 10px; font-size:11px;" placeholder="1:123456:web:abcd...">
+                                </div>
+                                
+                                <div style="display:flex; gap:10px;">
+                                    <button type="submit" class="btn btn-primary flex-1 text-center" style="font-size:12px; padding:8px 12px; justify-content:center;">Conectar Nube</button>
+                                    <button type="button" class="btn btn-danger-outline" id="btn-disconnect-firebase" style="font-size:12px; padding:8px 12px; display:none;">Desconectar</button>
+                                </div>
+                            </form>
+                            
+                            <div id="firebase-sync-panel" style="display:none; margin-top:15px; border-top:1px solid var(--border-color); padding-top:15px; text-align:center;">
+                                <strong class="text-indigo text-xs d-block mb-2" style="font-size:12px;">Sincronización de Datos</strong>
+                                <button class="btn btn-secondary btn-sm btn-block" id="btn-upload-local-to-firebase" style="font-size:11px; padding:6px; justify-content:center;">
+                                    ⬆️ Subir Base de Datos Local a la Nube
+                                </button>
+                                <span class="text-xs text-secondary-light d-block mt-1" style="font-size:10px; line-height:1.2;">Sube la información de este navegador a tu base de datos en la nube.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-card flex-1">
                         <div class="card-header border-danger">
                             <h2 class="text-danger">Zona de Peligro</h2>
                         </div>
@@ -1254,6 +1310,10 @@
             </form>
         </div>
     </div>
+
+    <!-- Firebase SDK (Compat mode to work easily with vanilla JS) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 
     <!-- JavaScript logic -->
     <script src="app.js"></script>
