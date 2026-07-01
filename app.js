@@ -19,6 +19,10 @@ let currentTab = 'dashboard';
 // Current Active Month (YYYY-MM format, default to current month or latest data month)
 let currentMonth = '2026-06'; // realistic starting point matching metadata
 
+// Chart instances
+let chartEarningsInstance = null;
+let chartMachinesInstance = null;
+
 // DOM Elements
 const tabs = document.querySelectorAll('.nav-item');
 const tabSections = document.querySelectorAll('.tab-content');
@@ -2420,6 +2424,158 @@ function renderDashboardTab() {
     if (availableEl) availableEl.textContent = totalAvailable;
     if (colorEl) colorEl.textContent = colorRented;
     if (monoEl) monoEl.textContent = monoRented;
+
+    // Render visual analytics charts
+    setTimeout(renderDashboardCharts, 100);
+}
+
+function renderDashboardCharts() {
+    if (typeof Chart === 'undefined') return;
+
+    if (chartEarningsInstance) {
+        chartEarningsInstance.destroy();
+        chartEarningsInstance = null;
+    }
+    if (chartMachinesInstance) {
+        chartMachinesInstance.destroy();
+        chartMachinesInstance = null;
+    }
+
+    const ctxEarnings = document.getElementById('chart-earnings-history');
+    const ctxMachines = document.getElementById('chart-machines-distribution');
+    if (!ctxEarnings || !ctxMachines) return;
+
+    // Helper to calculate recent 6 periods YYYY-MM
+    const getRecent6Months = (endPeriod) => {
+        const periods = [];
+        let [year, month] = endPeriod.split('-').map(Number);
+        
+        for (let i = 0; i < 6; i++) {
+            periods.unshift(`${year}-${String(month).padStart(2, '0')}`);
+            month--;
+            if (month === 0) {
+                month = 12;
+                year--;
+            }
+        }
+        return periods;
+    };
+
+    const recentPeriods = getRecent6Months(currentMonth);
+    const earningsData = recentPeriods.map(period => {
+        let revenue = 0;
+        state.machines.forEach(machine => {
+            const reading = state.readings.find(r => r.machineId === machine.id && r.month === period);
+            const abono = state.abonos.find(a => a.id === machine.abonoId);
+            if (abono) {
+                const ivaRate = machine.applyIva ? (abono.ivaRate || 0) : 0;
+                if (reading) {
+                    const copies = Math.max(0, reading.final - reading.initial);
+                    const excess = Math.max(0, copies - abono.limit);
+                    const netCost = abono.price + (excess * abono.excessPrice);
+                    revenue += netCost * (1 + ivaRate / 100);
+                } else if (machine.clientId) {
+                    revenue += abono.price * (1 + ivaRate / 100);
+                }
+            }
+        });
+        return Math.round(revenue);
+    });
+
+    const formattedLabels = recentPeriods.map(p => formatPeriod(p).split(' ')[0]);
+
+    // 1. Bar Chart: Earnings History
+    chartEarningsInstance = new Chart(ctxEarnings, {
+        type: 'bar',
+        data: {
+            labels: formattedLabels,
+            datasets: [{
+                label: 'Ingresos ($)',
+                data: earningsData,
+                backgroundColor: 'rgba(99, 102, 241, 0.75)',
+                borderColor: 'rgba(99, 102, 241, 1)',
+                borderWidth: 1.5,
+                borderRadius: 6,
+                hoverBackgroundColor: 'rgba(99, 102, 241, 0.95)'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return 'Ingresos: ' + formatCurrency(context.parsed.y);
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(0, 0, 0, 0.04)' },
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toLocaleString('es-AR');
+                        },
+                        font: { size: 9 }
+                    }
+                },
+                x: {
+                    grid: { display: false },
+                    ticks: { font: { size: 9 } }
+                }
+            }
+        }
+    });
+
+    // 2. Doughnut Chart: Machines Distribution
+    const rentedCount = state.machines.filter(m => m.clientId).length;
+    const availableCount = state.machines.filter(m => !m.clientId).length;
+
+    chartMachinesInstance = new Chart(ctxMachines, {
+        type: 'doughnut',
+        data: {
+            labels: ['Alquiladas', 'Disponibles'],
+            datasets: [{
+                data: [rentedCount, availableCount],
+                backgroundColor: [
+                    'rgba(99, 102, 241, 0.85)',
+                    'rgba(16, 185, 129, 0.85)'
+                ],
+                borderColor: '#ffffff',
+                borderWidth: 2,
+                hoverOffset: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        boxWidth: 10,
+                        font: { size: 10, family: 'Outfit, sans-serif' },
+                        padding: 10
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const value = context.parsed;
+                            const total = rentedCount + availableCount;
+                            const pct = total > 0 ? Math.round((value / total) * 100) : 0;
+                            return ` ${context.label}: ${value} (${pct}%)`;
+                        }
+                    }
+                }
+            },
+            cutout: '70%'
+        }
+    });
 }
 
 // Window globally scoped triggers so they can be triggered from HTML attributes (onclick)

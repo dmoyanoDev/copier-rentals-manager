@@ -327,6 +327,26 @@
                     </div>
                 </div>
 
+                <!-- Analytics Row: Income and Fleet charts -->
+                <div class="dashboard-row mt-4 grid-2-col">
+                    <div class="dashboard-card" style="margin-top:0;">
+                        <div class="card-header">
+                            <h2>Historial de Ingresos de Alquiler ($ ARS)</h2>
+                        </div>
+                        <div class="card-body" style="position: relative; height: 260px; min-height: 260px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+                            <canvas id="chart-earnings-history" style="max-height: 230px; width: 100%;"></canvas>
+                        </div>
+                    </div>
+                    <div class="dashboard-card" style="margin-top:0;">
+                        <div class="card-header">
+                            <h2>Distribución del Parque de Equipos</h2>
+                        </div>
+                        <div class="card-body" style="position: relative; height: 260px; min-height: 260px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+                            <canvas id="chart-machines-distribution" style="max-height: 220px; max-width: 220px;"></canvas>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="dashboard-row mt-4">
                     <!-- Left: Recent Technical Services -->
                     <div class="dashboard-card flex-2">
@@ -1514,6 +1534,9 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+
+    <!-- Chart.js for premium analytics charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <!-- JavaScript logic -->
     <script src="firebase-config.js"></script>
