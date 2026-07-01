@@ -236,6 +236,11 @@ function checkAuthSession() {
         const initials = parts.map(p => p[0]).join('').substring(0, 2).toUpperCase();
         initialsEl.textContent = initials || 'US';
 
+        const mobileInitialsEl = document.getElementById('mobile-user-initials');
+        if (mobileInitialsEl) {
+            mobileInitialsEl.textContent = initials || 'US';
+        }
+
         // Initial Render
         renderApp();
     }
