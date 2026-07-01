@@ -1197,6 +1197,22 @@ textarea.form-control {
     }
 }
 
+@media (min-width: 769px) and (max-width: 1200px) {
+    .sidebar {
+        width: 240px;
+    }
+    .main-content {
+        margin-left: 240px;
+        padding: 30px 20px;
+    }
+    .logo-container {
+        padding: 20px 16px;
+    }
+    .nav-menu {
+        padding: 15px 10px;
+    }
+}
+
 @media (max-width: 768px) {
     .mobile-header {
         display: flex;
@@ -1410,6 +1426,11 @@ textarea.form-control {
     .receipt-summary-block {
         width: 100%;
     }
+
+    .grid-2-col {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
 }
 
 @media (max-width: 480px) {
@@ -1442,6 +1463,12 @@ textarea.form-control {
     display: flex;
     gap: 8px;
     align-items: center;
+}
+
+.grid-2-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
 }
 
 .d-block {
