@@ -1490,6 +1490,7 @@ function setupActions() {
                         id: 'read-' + Date.now(),
                         machineId: machineId,
                         clientId: clientId,
+                        abonoId: abonoId || '',
                         month: currentMonth,
                         initial: initialCounter,
                         final: initialCounter,
@@ -1911,6 +1912,8 @@ async function syncFinalReadings() {
             const newReading = {
                 id: 'read-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
                 machineId: machine.id,
+                clientId: machine.clientId || '',
+                abonoId: machine.abonoId || '',
                 month: currentMonth,
                 initial: prevReading.final,
                 final: prevReading.final, // set same temporarily
@@ -5690,6 +5693,9 @@ async function submitSettleDebt(e) {
     }
 
     closeAllModals();
+    
+    // Re-render background charts, stats, tables to reflect payments immediately
+    renderApp();
     
     // Re-open client report to show the updated balance!
     window.openClientReportTrigger(clientId);
