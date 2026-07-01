@@ -227,6 +227,21 @@
                     </div>
                 </div>
 
+                <!-- Reading Reminders Notification Panel -->
+                <div class="dashboard-row" id="dashboard-notifications-row" style="display:none; margin-bottom: 24px;">
+                    <div class="dashboard-card flex-1" style="background-color: var(--amber-light); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 12px; margin-top:0;">
+                        <div class="card-header" style="border-bottom:none; padding:12px 20px 8px 20px; display:flex; align-items:center; gap:10px;">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2" style="width:20px; height:20px; flex-shrink:0;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                            <h2 style="color: var(--amber); font-size:14px; font-weight:700; margin:0;">Recordatorios y Próximos Vencimientos de Lecturas</h2>
+                        </div>
+                        <div class="card-body" style="padding: 0 20px 15px 20px;">
+                            <ul id="dashboard-notifications-list" style="margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:8px;">
+                                <!-- Dynamic notification alerts -->
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="dashboard-row">
                     <!-- Left: Readings Status -->
                     <div class="dashboard-card flex-2">
@@ -678,6 +693,38 @@
                         </div>
                     </div>
 
+                    <!-- Reading Reminders Configuration Card -->
+                    <div class="dashboard-card flex-1">
+                        <div class="card-header">
+                            <h2>Notificaciones de Lectura</h2>
+                        </div>
+                        <div class="card-body">
+                            <p class="mb-3 text-secondary text-sm">
+                                Configura con cuánta anticipación deseas recibir avisos sobre el cobro de alquileres y lecturas de contadores:
+                            </p>
+                            
+                            <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:15px;">
+                                <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; color:var(--text-secondary);">
+                                    <input type="checkbox" id="setting-notify-7days" checked style="width:16px; height:16px; accent-color:var(--primary); cursor:pointer;">
+                                    Avisar 1 semana antes (7 días)
+                                </label>
+                                <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; color:var(--text-secondary);">
+                                    <input type="checkbox" id="setting-notify-3days" checked style="width:16px; height:16px; accent-color:var(--primary); cursor:pointer;">
+                                    Avisar 3 días antes
+                                </label>
+                                <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; color:var(--text-secondary);">
+                                    <input type="checkbox" id="setting-notify-1day" checked style="width:16px; height:16px; accent-color:var(--primary); cursor:pointer;">
+                                    Avisar 1 día antes
+                                </label>
+                            </div>
+                            <span class="text-xs text-secondary-light d-block" style="font-size:11px; line-height:1.3;">
+                                Las alertas se mostrarán en la parte superior del panel de control cuando falte el tiempo configurado para la lectura de un cliente.
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-row">
                     <div class="dashboard-card flex-1">
                         <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
                             <h2>Base de Datos Firebase (Nube)</h2>
@@ -891,6 +938,11 @@
                         <label for="machine-apply-iva" style="margin-bottom:0; cursor:pointer; font-weight:500;">
                             Aplicar IVA en la facturación de este alquiler
                         </label>
+                    </div>
+                    <div class="form-group mt-3" id="group-machine-reading-day">
+                        <label for="machine-reading-day">Día del mes para toma de lectura <span class="required">*</span></label>
+                        <input type="number" id="machine-reading-day" class="form-control" min="1" max="28" value="10" required placeholder="Día del mes (1 al 28)">
+                        <span class="text-xs text-secondary-light">Se generará una notificación de alerta según tus preferencias.</span>
                     </div>
                 </div>
 
@@ -1411,12 +1463,17 @@
                         <label for="qr-initial-counter">Contador Inicial <span class="required">*</span></label>
                         <input type="number" id="qr-initial-counter" class="form-control" required min="0" placeholder="Ej: 5000">
                     </div>
-                    <div class="form-group col-6" style="display: flex; align-items: center; margin-top: 20px;">
-                        <label class="file-input-label" style="display:flex; align-items:center; gap:8px;">
-                             <input type="checkbox" id="qr-apply-iva" checked>
-                             Aplicar IVA al abono
-                        </label>
+                    <div class="form-group col-6">
+                        <label for="qr-reading-day">Día de Lectura Mensual <span class="required">*</span></label>
+                        <input type="number" id="qr-reading-day" class="form-control" min="1" max="28" value="10" required placeholder="Día del mes (1 al 28)">
                     </div>
+                </div>
+
+                <div class="form-group mt-3" style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="qr-apply-iva" checked style="width:18px; height:18px; cursor:pointer;">
+                    <label for="qr-apply-iva" style="margin-bottom:0; cursor:pointer; font-weight:500;">
+                         Aplicar IVA al abono en la facturación
+                    </label>
                 </div>
 
                 <div class="modal-footer" style="margin-top: 20px;">

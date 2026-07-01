@@ -6,7 +6,12 @@ let state = {
     readings: [],
     maintenance: [],
     users: [],
-    currentUser: null
+    currentUser: null,
+    settings: {
+        reminder7Days: true,
+        reminder3Days: true,
+        reminder1Day: true
+    }
 };
 
 // Current Active Tab
@@ -271,6 +276,13 @@ function loadFromLocalStorage() {
             if (!state.maintenance) state.maintenance = [];
             if (!state.users) state.users = [];
             if (state.currentUser === undefined) state.currentUser = null;
+            if (!state.settings) {
+                state.settings = {
+                    reminder7Days: true,
+                    reminder3Days: true,
+                    reminder1Day: true
+                };
+            }
         } catch (e) {
             console.error('Error parsing localStorage data, reloading defaults', e);
             loadDemoData();
@@ -589,6 +601,21 @@ function renderApp() {
         case 'users':
             renderUsersTab();
             break;
+        case 'data-management':
+            renderDataManagementTab();
+            break;
+    }
+}
+
+function renderDataManagementTab() {
+    const notify7DaysCheckbox = document.getElementById('setting-notify-7days');
+    const notify3DaysCheckbox = document.getElementById('setting-notify-3days');
+    const notify1DayCheckbox = document.getElementById('setting-notify-1day');
+    
+    if (notify7DaysCheckbox && notify3DaysCheckbox && notify1DayCheckbox) {
+        notify7DaysCheckbox.checked = state.settings?.reminder7Days !== false;
+        notify3DaysCheckbox.checked = state.settings?.reminder3Days !== false;
+        notify1DayCheckbox.checked = state.settings?.reminder1Day !== false;
     }
 }
 
@@ -948,6 +975,7 @@ function setupForms() {
         const initialCounter = parseInt(document.getElementById('machine-install-counter').value) || 0;
         const applyIva = document.getElementById('machine-apply-iva').checked;
         const isAvailable = document.getElementById('machine-availability').value === 'true';
+        const readingDay = parseInt(document.getElementById('machine-reading-day').value) || 10;
 
         const machineData = {
             id: id || ('machine-' + Date.now()),
@@ -962,6 +990,7 @@ function setupForms() {
             installationDate: clientId ? (installationDate || new Date().toISOString().split('T')[0]) : '',
             initialCounter: clientId ? initialCounter : 0,
             applyIva: clientId ? applyIva : false,
+            readingDay: clientId ? readingDay : 10,
             isAvailable
         };
 
@@ -1234,6 +1263,7 @@ function setupActions() {
             const abonoId = document.getElementById('qr-abono-id').value;
             const initialCounter = parseInt(document.getElementById('qr-initial-counter').value, 10) || 0;
             const applyIva = document.getElementById('qr-apply-iva').checked;
+            const readingDay = parseInt(document.getElementById('qr-reading-day').value, 10) || 10;
 
             const machineIdx = state.machines.findIndex(m => m.id === machineId);
             if (machineIdx !== -1) {
@@ -1244,6 +1274,7 @@ function setupActions() {
                 state.machines[machineIdx].machineCounter = initialCounter;
                 state.machines[machineIdx].status = 'Alquilada';
                 state.machines[machineIdx].applyIva = applyIva;
+                state.machines[machineIdx].readingDay = readingDay;
                 state.machines[machineIdx].installationDate = new Date().toISOString().split('T')[0];
 
                 // Sync machine to Firebase
@@ -1361,6 +1392,31 @@ function setupActions() {
             showToast('Logotipo eliminado', 'info');
         }
     });
+
+    // Reading Reminder Settings Listeners
+    const notify7DaysCheckbox = document.getElementById('setting-notify-7days');
+    const notify3DaysCheckbox = document.getElementById('setting-notify-3days');
+    const notify1DayCheckbox = document.getElementById('setting-notify-1day');
+    
+    if (notify7DaysCheckbox && notify3DaysCheckbox && notify1DayCheckbox) {
+        // Sync checkboxes from state
+        notify7DaysCheckbox.checked = state.settings?.reminder7Days !== false;
+        notify3DaysCheckbox.checked = state.settings?.reminder3Days !== false;
+        notify1DayCheckbox.checked = state.settings?.reminder1Day !== false;
+
+        const saveSettings = () => {
+            if (!state.settings) state.settings = {};
+            state.settings.reminder7Days = notify7DaysCheckbox.checked;
+            state.settings.reminder3Days = notify3DaysCheckbox.checked;
+            state.settings.reminder1Day = notify1DayCheckbox.checked;
+            saveToLocalStorage();
+            renderApp(); // Re-render the notifications panel in real-time!
+        };
+
+        notify7DaysCheckbox.addEventListener('change', saveSettings);
+        notify3DaysCheckbox.addEventListener('change', saveSettings);
+        notify1DayCheckbox.addEventListener('change', saveSettings);
+    }
 
     // Modal tabs toggle logic inside rental detail modal
     const modalTabBtns = document.querySelectorAll('.modal-tab-btn');
@@ -1703,6 +1759,11 @@ function openQuickRentalModal() {
                 counterInput.value = machine.machineCounter || 0;
             }
         };
+
+        const qrReadingDayInput = document.getElementById('qr-reading-day');
+        if (qrReadingDayInput) {
+            qrReadingDayInput.value = 10;
+        }
     }
 
     document.getElementById('modal-quick-rental').style.display = 'block';
@@ -1768,6 +1829,7 @@ function openMachineModal(machine = null) {
         document.getElementById('machine-install-date').value = machine.installationDate || '';
         document.getElementById('machine-install-counter').value = machine.initialCounter || 0;
         document.getElementById('machine-apply-iva').checked = machine.applyIva || false;
+        document.getElementById('machine-reading-day').value = machine.readingDay || 10;
 
         const isAvailable = machine.isAvailable !== false;
         const availSelect = document.getElementById('machine-availability');
@@ -1794,6 +1856,7 @@ function openMachineModal(machine = null) {
         document.getElementById('machine-install-date').value = '';
         document.getElementById('machine-install-counter').value = 0;
         document.getElementById('machine-apply-iva').checked = false;
+        document.getElementById('machine-reading-day').value = 10;
 
         const availSelect = document.getElementById('machine-availability');
         availSelect.value = 'true';
@@ -1994,8 +2057,135 @@ function openInvoiceModal(reading) {
 
 
 // Tab View 1: Dashboard
+function renderDashboardNotifications() {
+    const listEl = document.getElementById('dashboard-notifications-list');
+    const rowEl = document.getElementById('dashboard-notifications-row');
+    if (!listEl || !rowEl) return;
+
+    listEl.innerHTML = '';
+    
+    // Normalize today's date
+    const today = new Date();
+    const todayNormalized = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+    const activeRentals = state.machines.filter(m => m.clientId);
+    const alerts = [];
+
+    activeRentals.forEach(machine => {
+        // Check if a reading has already been logged for the current active month (currentMonth)
+        const reading = state.readings.find(r => r.machineId === machine.id && r.month === currentMonth);
+        if (reading) return; // Already logged, skip alert
+
+        const client = state.clients.find(c => c.id === machine.clientId);
+        if (!client) return;
+
+        const readingDay = machine.readingDay || 10;
+        
+        // Calculate deadline in the current month
+        const deadline = new Date(today.getFullYear(), today.getMonth(), readingDay);
+        
+        // Calculate difference in days
+        const diffTime = deadline - todayNormalized;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        let shouldShow = false;
+        let alertText = '';
+        let badgeType = ''; // 'danger' or 'warning'
+
+        if (diffDays < 0) {
+            // Overdue! Always show overdue readings
+            shouldShow = true;
+            alertText = `Debió registrarse hace ${Math.abs(diffDays)} ${Math.abs(diffDays) === 1 ? 'día' : 'días'} (Día ${readingDay} de cada mes).`;
+            badgeType = 'danger';
+        } else if (diffDays === 0) {
+            // Due today
+            shouldShow = true;
+            alertText = `Hoy corresponde tomar la lectura mensual de este equipo (Día ${readingDay} de cada mes).`;
+            badgeType = 'danger';
+        } else {
+            // Upcoming days. Check matching reminder preferences.
+            const reminder7 = state.settings?.reminder7Days !== false;
+            const reminder3 = state.settings?.reminder3Days !== false;
+            const reminder1 = state.settings?.reminder1Day !== false;
+
+            if (diffDays === 7 && reminder7) {
+                shouldShow = true;
+                alertText = `Falta exactamente 1 semana (7 días) para tomar la lectura (Día ${readingDay}).`;
+                badgeType = 'warning';
+            } else if (diffDays <= 3 && diffDays > 1 && reminder3) {
+                shouldShow = true;
+                alertText = `Faltan ${diffDays} días para tomar la lectura (Día ${readingDay}).`;
+                badgeType = 'warning';
+            } else if (diffDays === 1 && reminder1) {
+                shouldShow = true;
+                alertText = `Falta 1 día para tomar la lectura (Día ${readingDay}).`;
+                badgeType = 'warning';
+            }
+        }
+
+        if (shouldShow) {
+            alerts.push({
+                machine,
+                client,
+                text: alertText,
+                badgeType,
+                diffDays
+            });
+        }
+    });
+
+    // Sort alerts: most overdue first, then closest upcoming
+    alerts.sort((a, b) => a.diffDays - b.diffDays);
+
+    if (alerts.length > 0) {
+        rowEl.style.display = 'block';
+        alerts.forEach(alert => {
+            const li = document.createElement('li');
+            li.style.padding = '10px 14px';
+            li.style.borderRadius = '8px';
+            li.style.fontSize = '13px';
+            li.style.display = 'flex';
+            li.style.alignItems = 'center';
+            li.style.justifyContent = 'space-between';
+            li.style.gap = '12px';
+            
+            let bg = 'rgba(245, 158, 11, 0.08)';
+            let border = '1px solid rgba(245, 158, 11, 0.15)';
+            let color = '#d97706';
+            let badgeText = 'Próximo';
+            let badgeStyle = 'background-color: var(--amber-light); color: var(--amber);';
+
+            if (alert.badgeType === 'danger') {
+                bg = 'rgba(239, 68, 68, 0.08)';
+                border = '1px solid rgba(239, 68, 68, 0.15)';
+                color = '#dc2626';
+                badgeText = alert.diffDays < 0 ? 'Atrasado' : 'Hoy';
+                badgeStyle = 'background-color: var(--danger-light); color: var(--danger);';
+            }
+
+            li.style.backgroundColor = bg;
+            li.style.border = border;
+            li.style.color = color;
+
+            li.innerHTML = `
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span class="badge" style="font-weight:700; font-size:10px; text-transform:uppercase; padding:2px 6px; ${badgeStyle}">${badgeText}</span>
+                    <span><strong>${alert.client.name}</strong> (${alert.machine.brand || ''} ${alert.machine.model} - S/N: ${alert.machine.serial}): ${alert.text}</span>
+                </div>
+                <button class="btn btn-secondary btn-sm" onclick="addReadingTrigger('${alert.machine.id}')" style="background-color:white; border:1px solid rgba(0,0,0,0.1); color:var(--text-primary); font-size:11px; padding:4px 10px; white-space:nowrap; flex-shrink:0;">
+                    Tomar Lectura
+                </button>
+            `;
+            listEl.appendChild(li);
+        });
+    } else {
+        rowEl.style.display = 'none';
+    }
+}
+
 function renderDashboardTab() {
     // 1. Calculate General Metrics
+    renderDashboardNotifications();
     const activeClientsCount = state.clients.length;
     const rentedMachines = state.machines.filter(m => m.clientId);
     const rentedMachinesCount = rentedMachines.length;
@@ -2751,6 +2941,13 @@ function importDataFromJSON(e) {
                 }
                 if (state.currentUser === undefined || state.currentUser === null) {
                     state.currentUser = currentSession;
+                }
+                if (!state.settings) {
+                    state.settings = {
+                        reminder7Days: true,
+                        reminder3Days: true,
+                        reminder1Day: true
+                    };
                 }
 
                 saveToLocalStorage();
