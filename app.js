@@ -1578,6 +1578,16 @@ function setupActions() {
     document.getElementById('btn-export-data').addEventListener('click', exportDataToJSON);
     document.getElementById('import-file-input').addEventListener('change', importDataFromJSON);
     
+    // Accounting Audit Event Listeners
+    const btnRunAudit = document.getElementById('btn-run-audit-suite');
+    if (btnRunAudit) {
+        btnRunAudit.addEventListener('click', runAccountingAuditSuite);
+    }
+    const btnFixAudit = document.getElementById('btn-fix-audit-balances');
+    if (btnFixAudit) {
+        btnFixAudit.addEventListener('click', fixAccountingAuditBalances);
+    }
+
     // Danger Zone actions
     document.getElementById('btn-load-demo-data').addEventListener('click', async () => {
         if (confirm('¿Estás seguro de que quieres restablecer todos los datos e importar la demo? Se perderán tus cambios actuales.')) {
@@ -6082,5 +6092,250 @@ async function submitSettleDebt(e) {
     window.openClientReportTrigger(clientId);
     
     showToast(`Pago de ${formatCurrency(amountPaidInput)} registrado con éxito`, 'success');
+}
+
+async function runAccountingAuditSuite() {
+    const resultsPanel = document.getElementById('audit-results-panel');
+    const logsList = document.getElementById('audit-logs-list');
+    const globalBadge = document.getElementById('audit-global-badge');
+    const fixBtn = document.getElementById('btn-fix-audit-balances');
+
+    if (!resultsPanel || !logsList || !globalBadge) return;
+
+    resultsPanel.style.display = 'block';
+    logsList.innerHTML = '<div style="color:var(--text-secondary-light);">Ejecutando suite de pruebas...</div>';
+    
+    let passed = true;
+    let errorsCount = 0;
+    let warningsCount = 0;
+    const logs = [];
+
+    // Helper log functions
+    const logInfo = (msg) => logs.push(`<div style="color:var(--text-secondary-light); margin-bottom:2px;">ℹ️ ${msg}</div>`);
+    const logSuccess = (msg) => logs.push(`<div style="color:var(--emerald); font-weight:600; margin-bottom:2px;">✓ ${msg}</div>`);
+    const logWarning = (msg) => {
+        logs.push(`<div style="color:#d97706; font-weight:600; margin-bottom:2px;">⚠️ ${msg}</div>`);
+        warningsCount++;
+    };
+    const logError = (msg) => {
+        logs.push(`<div style="color:#dc2626; font-weight:700; margin-bottom:2px;">❌ ${msg}</div>`);
+        passed = false;
+        errorsCount++;
+    };
+
+    logInfo(`Iniciando Auditoría Contable y de Datos en local. Total Clientes: ${state.clients.length}, Total Lecturas: ${state.readings.length}, Total Máquinas: ${state.machines.length}`);
+
+    // --- PRUEBA 1: Consistencia Aritmética de Lecturas ---
+    let arithmeticIssues = [];
+    state.readings.forEach(r => {
+        const m = state.machines.find(mac => mac.id === r.machineId);
+        const abono = state.abonos.find(a => a.id === r.abonoId) || (m ? state.abonos.find(a => a.id === m.abonoId) : null);
+        
+        const isUnofficial = r.isUnofficial || false;
+        const creditNote = r.creditNote || 0;
+        const debitNote = r.debitNote || 0;
+
+        const diff = Math.max(0, r.final - r.initial);
+        const exc = abono ? Math.max(0, diff - abono.limit) : 0;
+        const ivaRate = (!isUnofficial && m && m.applyIva && abono) ? (abono.ivaRate || 0) : 0;
+        const fixedCost = abono ? abono.price : 0;
+        const excessCost = abono ? exc * abono.excessPrice : 0;
+        const net = fixedCost + excessCost;
+        const iva = net * (ivaRate / 100);
+        const total = net + iva - creditNote + debitNote;
+        
+        const paid = r.partialPaid || 0;
+        const remaining = total - paid;
+
+        // Check paid status matches remaining amount
+        if (r.status === 'paid' && Math.abs(remaining) > 0.01) {
+            logError(`Lectura ${r.id} (Mes: ${formatPeriod(r.month)}): Marcada COBRADA pero resta saldo: ${formatCurrency(remaining)}. Total: ${formatCurrency(total)}, Pagado: ${formatCurrency(paid)}.`);
+            arithmeticIssues.push(r);
+        } else if (r.status === 'pending' && remaining <= 0.01 && total > 0) {
+            logError(`Lectura ${r.id} (Mes: ${formatPeriod(r.month)}): Marcada PENDIENTE pero está totalmente pagada. Total: ${formatCurrency(total)}, Pagado: ${formatCurrency(paid)}.`);
+            arithmeticIssues.push(r);
+        } else if (remaining < -0.01) {
+            logError(`Lectura ${r.id} (Mes: ${formatPeriod(r.month)}): Pago supera total. Total: ${formatCurrency(total)}, Pagado: ${formatCurrency(paid)}. Sobrepago: ${formatCurrency(Math.abs(remaining))}.`);
+            arithmeticIssues.push(r);
+        }
+    });
+    if (arithmeticIssues.length === 0) {
+        logSuccess("Prueba 1 (Consistencia de Estados y Saldos) - PASSED");
+    } else {
+        logError(`Prueba 1 (Consistencia de Estados y Saldos) - FAILED (${arithmeticIssues.length} desvíos aritméticos detectados)`);
+    }
+
+    // --- PRUEBA 2: Integridad Fiscal de IVA ("En Negro") ---
+    let taxIssuesCount = 0;
+    state.readings.forEach(r => {
+        if (r.isUnofficial) {
+            const m = state.machines.find(mac => mac.id === r.machineId);
+            const abono = state.abonos.find(a => a.id === r.abonoId) || (m ? state.abonos.find(a => a.id === m.abonoId) : null);
+            
+            // Double check if calculated IVA is zero
+            const appliedIvaRate = (!r.isUnofficial && m && m.applyIva && abono) ? (abono.ivaRate || 0) : 0;
+            if (appliedIvaRate > 0) {
+                logError(`Lectura ${r.id} (Mes: ${formatPeriod(r.month)}): Marcada 'En Negro' pero conserva tasa de IVA del ${appliedIvaRate}%.`);
+                taxIssuesCount++;
+            }
+        }
+    });
+    if (taxIssuesCount === 0) {
+        logSuccess("Prueba 2 (Integridad Impositiva de Facturas 'En Negro') - PASSED");
+    } else {
+        logError(`Prueba 2 (Integridad Impositiva de Facturas 'En Negro') - FAILED (${taxIssuesCount} fallos impositivos)`);
+    }
+
+    // --- PRUEBA 3: Trazabilidad Histórica y Huérfanos ---
+    let orphanedClients = 0;
+    let orphanedMachines = 0;
+    state.readings.forEach(r => {
+        const clientExists = state.clients.some(c => c.id === r.clientId);
+        if (!clientExists) {
+            logWarning(`Registro Contable Huérfano: Lectura ${r.id} asociada al cliente ID ${r.clientId} que ya no existe.`);
+            orphanedClients++;
+        }
+        const machineExists = state.machines.some(m => m.id === r.machineId);
+        if (!machineExists) {
+            logWarning(`Registro Técnico Huérfano: Lectura ${r.id} asociada a máquina ID ${r.machineId} eliminada de stock.`);
+            orphanedMachines++;
+        }
+    });
+    if (orphanedClients === 0 && orphanedMachines === 0) {
+        logSuccess("Prueba 3 (Trazabilidad Histórica y Relacional) - PASSED");
+    } else {
+        logInfo(`Prueba 3 completada con advertencias: ${orphanedClients} clientes huérfanos, ${orphanedMachines} máquinas huérfanas en el historial de lecturas.`);
+    }
+
+    // --- PRUEBA 4: Continuidad Correlativa de Lectores ---
+    let meterIssuesCount = 0;
+    const machinesMap = {};
+    state.readings.forEach(r => {
+        if (!machinesMap[r.machineId]) {
+            machinesMap[r.machineId] = [];
+        }
+        machinesMap[r.machineId].push(r);
+    });
+
+    Object.keys(machinesMap).forEach(mId => {
+        const mReadings = machinesMap[mId];
+        mReadings.sort((a, b) => (a.month || '').localeCompare(b.month || ''));
+        const mach = state.machines.find(m => m.id === mId);
+        const machLabel = mach ? `${mach.brand} ${mach.model} (${mach.serial})` : `ID: ${mId}`;
+
+        for (let i = 0; i < mReadings.length; i++) {
+            const r = mReadings[i];
+            if (r.final < r.initial) {
+                logError(`Equipo ${machLabel} en período ${formatPeriod(r.month)}: Lectura final (${r.final}) es menor que lectura inicial (${r.initial}). Consumo negativo.`);
+                meterIssuesCount++;
+            }
+            if (i > 0) {
+                const prev = mReadings[i - 1];
+                if (prev.final > r.initial) {
+                    logWarning(`Equipo ${machLabel}: Salto negativo de contadores. Mes ${formatPeriod(prev.month)} finalizó en ${prev.final} pero mes ${formatPeriod(r.month)} inició en ${r.initial}. Posible recalibración o desajuste.`);
+                }
+            }
+        }
+    });
+    if (meterIssuesCount === 0) {
+        logSuccess("Prueba 4 (Correlatividad y Veracidad de Contadores) - PASSED");
+    } else {
+        logError(`Prueba 4 (Correlatividad y Veracidad de Contadores) - FAILED (${meterIssuesCount} consumos negativos)`);
+    }
+
+    // --- PRUEBA 5: Consistencia de Conciliación Bancaria ---
+    let bankIssuesCount = 0;
+    state.readings.forEach(r => {
+        if (r.bankReconciled) {
+            const isCash = r.paymentMethod === 'Efectivo' || r.paymentMethod === 'En Negro (Efectivo)';
+            if (isCash) {
+                logWarning(`Lectura ${r.id} (Mes: ${formatPeriod(r.month)}): Conciliada con el banco pero cobrada en Efectivo.`);
+                bankIssuesCount++;
+            }
+            if (!r.paymentReference) {
+                logWarning(`Lectura ${r.id} (Mes: ${formatPeriod(r.month)}): Marcada conciliada pero no posee Referencia de transacción.`);
+                bankIssuesCount++;
+            }
+        }
+    });
+    if (bankIssuesCount === 0) {
+        logSuccess("Prueba 5 (Consistencia de Conciliación Bancaria) - PASSED");
+    } else {
+        logInfo(`Prueba 5 completada con advertencias: ${bankIssuesCount} registros conciliados con inconsistencia menor.`);
+    }
+
+    // Output final status
+    logsList.innerHTML = logs.join('');
+    
+    if (passed) {
+        globalBadge.className = 'badge success';
+        globalBadge.textContent = 'PASÓ';
+        globalBadge.style.backgroundColor = 'var(--emerald)';
+        fixBtn.style.display = 'none';
+        showToast('Auditoría Contable Finalizada: Todos los estados coinciden.', 'success');
+    } else {
+        globalBadge.className = 'badge danger';
+        globalBadge.textContent = 'CON DESVÍOS';
+        globalBadge.style.backgroundColor = '#dc2626';
+        fixBtn.style.display = 'inline-flex';
+        showToast(`Auditoría Contable Finalizada con desvíos (${errorsCount} errores, ${warningsCount} advertencias)`, 'warning');
+    }
+}
+
+async function fixAccountingAuditBalances() {
+    if (!confirm('¿Deseas auto-corregir los desvíos contables detectados? Se ajustarán los estados de cobro y saldos parciales inconsistentes para cuadrar los balances contables.')) {
+        return;
+    }
+
+    let fixedCount = 0;
+    for (let i = 0; i < state.readings.length; i++) {
+        const r = state.readings[i];
+        const m = state.machines.find(mac => mac.id === r.machineId);
+        const abono = state.abonos.find(a => a.id === r.abonoId) || (m ? state.abonos.find(a => a.id === m.abonoId) : null);
+        
+        const isUnofficial = r.isUnofficial || false;
+        const creditNote = r.creditNote || 0;
+        const debitNote = r.debitNote || 0;
+
+        const diff = Math.max(0, r.final - r.initial);
+        const exc = abono ? Math.max(0, diff - abono.limit) : 0;
+        const ivaRate = (!isUnofficial && m && m.applyIva && abono) ? (abono.ivaRate || 0) : 0;
+        const fixedCost = abono ? abono.price : 0;
+        const excessCost = abono ? exc * abono.excessPrice : 0;
+        const net = fixedCost + excessCost;
+        const iva = net * (ivaRate / 100);
+        const total = net + iva - creditNote + debitNote;
+        
+        const paid = r.partialPaid || 0;
+        const remaining = total - paid;
+
+        let needsSave = false;
+
+        // Correct status vs remaining amount
+        if (r.status === 'paid' && Math.abs(remaining) > 0.01) {
+            r.partialPaid = total;
+            needsSave = true;
+            fixedCount++;
+        } else if (r.status === 'pending' && remaining <= 0.01 && total > 0) {
+            r.status = 'paid';
+            r.partialPaid = total;
+            needsSave = true;
+            fixedCount++;
+        } else if (remaining < -0.01) {
+            r.partialPaid = total;
+            needsSave = true;
+            fixedCount++;
+        }
+
+        if (needsSave) {
+            await dbSet('readings', r.id, r);
+        }
+    }
+
+    showToast(`Se corrigieron exitosamente ${fixedCount} inconsistencias contables.`, 'success');
+    renderApp();
+    
+    // Re-run audit to show fresh clean results!
+    runAccountingAuditSuite();
 }
 

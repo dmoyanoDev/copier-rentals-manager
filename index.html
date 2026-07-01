@@ -801,6 +801,42 @@
                     </div>
                 </div>
 
+                <!-- Test Suite & Accounting Audit Card -->
+                <div class="dashboard-row mt-3">
+                    <div class="dashboard-card flex-1">
+                        <div class="card-header" style="background-color: var(--indigo-light); border-bottom: 1px solid rgba(99, 102, 241, 0.15);">
+                            <h2 style="color: var(--indigo); font-weight:700; display:flex; align-items:center; gap:8px;">
+                                🔬 Banco de Pruebas y Auditoría Contable Automatizada
+                            </h2>
+                        </div>
+                        <div class="card-body">
+                            <p class="mb-3 text-secondary text-sm">
+                                Corre una suite de validaciones y pruebas de integridad sobre la base de datos viva (Lecturas, Clientes, Historiales, Máquinas, Notas e IVA).
+                            </p>
+                            
+                            <div style="display:flex; gap:10px; margin-bottom:15px;" class="no-print">
+                                <button type="button" class="btn btn-primary" id="btn-run-audit-suite" style="font-size:12px; padding:8px 16px; font-weight:600; display:flex; align-items:center; gap:6px;">
+                                    🚀 Ejecutar Auditoría Contable
+                                </button>
+                                <button type="button" class="btn btn-success" id="btn-fix-audit-balances" style="font-size:12px; padding:8px 16px; font-weight:600; display:none; align-items:center; gap:6px;">
+                                    🔧 Auto-Corregir Desvíos de Saldo
+                                </button>
+                            </div>
+                            
+                            <!-- Audit Report Results container -->
+                            <div id="audit-results-panel" style="display:none; background: rgba(0,0,0,0.015); border:1px solid var(--border-color); border-radius:8px; padding:15px;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom: 1px dashed rgba(0,0,0,0.1); padding-bottom:8px;">
+                                    <strong style="font-size:13px; color:var(--text-primary);">RESULTADOS DE LA AUDITORÍA</strong>
+                                    <span class="badge" id="audit-global-badge">Pasó</span>
+                                </div>
+                                <div id="audit-logs-list" style="font-family: monospace; font-size:11px; max-height: 250px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; padding-right:5px;">
+                                    <!-- Dynamic logs -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="dashboard-row">
                     <div class="dashboard-card flex-1">
                         <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
