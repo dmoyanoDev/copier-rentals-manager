@@ -1398,6 +1398,11 @@ function setupForms() {
         checkAuthSession(); // Updates sidebar profile if we updated ourselves
         renderUsersTab();
     });
+
+    const settleForm = document.getElementById('form-settle-debt');
+    if (settleForm) {
+        settleForm.addEventListener('submit', submitSettleDebt);
+    }
 }
 
 // Button action triggers
@@ -4936,11 +4941,15 @@ function generateClientReportHtml(client) {
             const net = fixedCost + excessCost;
             const total = net * (1 + ivaRate / 100);
 
-            totalDebt += total;
+            const alreadyPaid = r.partialPaid || 0;
+            const remaining = Math.max(0, total - alreadyPaid);
+
+            totalDebt += remaining;
+            const partialLabel = alreadyPaid > 0 ? `<br><span style="font-size:9px; color:var(--text-secondary-light);">Pago parcial: ${formatCurrency(alreadyPaid)} (Debe: ${formatCurrency(remaining)})</span>` : '';
             pendingDetailsHtml += `
                 <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dashed rgba(239, 68, 68, 0.1); font-size:11px;">
-                    <span>• <strong>${formatPeriod(r.month)}</strong> - ${mName} (S/N: ${m ? m.serial : ''})</span>
-                    <span style="color:#dc2626; font-weight:700;">${formatCurrency(total)}</span>
+                    <span>• <strong>${formatPeriod(r.month)}</strong> - ${mName} (S/N: ${m ? m.serial : ''})${partialLabel}</span>
+                    <span style="color:#dc2626; font-weight:700;">${formatCurrency(remaining)}</span>
                 </div>
             `;
         });
@@ -4960,12 +4969,23 @@ function generateClientReportHtml(client) {
         const net = fixedCost + excessCost;
         const total = net * (1 + ivaRate / 100);
 
+        const alreadyPaid = r.partialPaid || 0;
+        let statusBadgeText = "";
+        if (r.status === 'paid') {
+            statusBadgeText = `<span class="badge success" style="font-size:9px; padding:2px 4px;">Cobrado</span>`;
+        } else if (alreadyPaid > 0) {
+            statusBadgeText = `<span class="badge warning" style="font-size:9px; padding:2px 4px; background-color:rgba(245,158,11,0.12); color:#d97706; border-color:rgba(245,158,11,0.25);">Pago Parcial (${formatCurrency(alreadyPaid)})</span>`;
+        } else {
+            statusBadgeText = `<span class="badge warning" style="font-size:9px; padding:2px 4px;">Pendiente</span>`;
+        }
+
         return `
             <tr>
                 <td><strong>${formatPeriod(r.month)}</strong></td>
                 <td>${mName} (<code>${m ? m.serial : ''}</code>)</td>
                 <td>${(r.initial || 0).toLocaleString('es-AR')} - ${(r.final || 0).toLocaleString('es-AR')}</td>
                 <td><strong>${diff.toLocaleString('es-AR')}</strong></td>
+                <td>${statusBadgeText}</td>
                 <td style="text-align:right;"><strong class="text-indigo">${formatCurrency(total)}</strong></td>
             </tr>
         `;
@@ -5019,6 +5039,13 @@ function generateClientReportHtml(client) {
                     <strong style="font-size:12px;">DEUDA TOTAL ACUMULADA:</strong>
                     <strong style="font-size:16px; color:${totalDebt > 0 ? '#dc2626' : 'var(--emerald)'};">${formatCurrency(totalDebt)}</strong>
                 </div>
+                ${totalDebt > 0 ? `
+                <div style="margin-top:10px; text-align:right;" class="no-print">
+                    <button class="btn btn-primary btn-sm btn-icon" onclick="openSettleDebtModal('${client.id}')" style="font-size:11px; padding:6px 12px; font-weight:600; width:100%; justify-content:center;">
+                        💵 Registrar Pago / Saldar Deuda
+                    </button>
+                </div>
+                ` : ''}
             </div>
         </div>
 
@@ -5053,11 +5080,12 @@ function generateClientReportHtml(client) {
                             <th>Equipo</th>
                             <th>Rango Cont.</th>
                             <th>Copias Cons.</th>
+                            <th>Estado Pago</th>
                             <th style="text-align:right;">Monto Cobrado (c/IVA)</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${readingsTableRows || '<tr><td colspan="5" class="text-center py-3 text-secondary-light">No hay lecturas cargadas para este cliente.</td></tr>'}
+                        ${readingsTableRows || '<tr><td colspan="6" class="text-center py-3 text-secondary-light">No hay lecturas cargadas para este cliente.</td></tr>'}
                     </tbody>
                 </table>
             </div>
@@ -5561,5 +5589,111 @@ async function submitChangeMachine(e) {
     closeAllModals();
     renderApp();
     showToast(`Reemplazo realizado con éxito. Nuevo equipo: ${newMachine.brand || ''} ${newMachine.model}`, 'success');
+}
+
+window.openSettleDebtModal = (clientId) => {
+    const client = state.clients.find(c => c.id === clientId);
+    if (!client) return;
+
+    closeAllModals();
+
+    document.getElementById('settle-client-id').value = clientId;
+    document.getElementById('settle-client-name').textContent = client.name;
+
+    // Calculate total debt for this client (exactly matching client report calculations)
+    const clientReadings = state.readings.filter(r => r.clientId === client.id);
+
+    let totalDebt = 0;
+    clientReadings.forEach(r => {
+        if (r.status === 'pending') {
+            const m = state.machines.find(mac => mac.id === r.machineId);
+            const abono = state.abonos.find(a => a.id === r.abonoId) || (m ? state.abonos.find(a => a.id === m.abonoId) : null);
+            const diff = Math.max(0, r.final - r.initial);
+            const exc = abono ? Math.max(0, diff - abono.limit) : 0;
+            const ivaRate = (m && m.applyIva && abono) ? (abono.ivaRate || 0) : 0;
+            const fixedCost = abono ? abono.price : 0;
+            const excessCost = abono ? exc * abono.excessPrice : 0;
+            const net = fixedCost + excessCost;
+            const total = net * (1 + ivaRate / 100);
+            const alreadyPaid = r.partialPaid || 0;
+            const remaining = Math.max(0, total - alreadyPaid);
+            totalDebt += remaining;
+        }
+    });
+
+    document.getElementById('settle-total-debt').textContent = formatCurrency(totalDebt);
+    
+    const amountInput = document.getElementById('settle-amount');
+    amountInput.value = '';
+    amountInput.max = totalDebt.toFixed(2);
+    amountInput.placeholder = `Ej: ${totalDebt.toFixed(2)}`;
+
+    document.getElementById('modal-settle-debt').style.display = 'block';
+};
+
+async function submitSettleDebt(e) {
+    e.preventDefault();
+    const clientId = document.getElementById('settle-client-id').value;
+    const amountPaidInput = parseFloat(document.getElementById('settle-amount').value) || 0;
+    
+    if (amountPaidInput <= 0) {
+        showToast('Monto de pago inválido', 'error');
+        return;
+    }
+
+    const client = state.clients.find(c => c.id === clientId);
+    if (!client) return;
+
+    let amountToDistribute = amountPaidInput;
+
+    // Get all pending readings for this client, sorted by month ascending (oldest first)
+    const clientReadings = state.readings.filter(r => r.clientId === clientId && r.status === 'pending');
+    clientReadings.sort((a, b) => (a.month || '').localeCompare(b.month || ''));
+
+    if (clientReadings.length === 0) {
+        showToast('El cliente no tiene deudas pendientes', 'error');
+        closeAllModals();
+        return;
+    }
+
+    for (let i = 0; i < clientReadings.length; i++) {
+        if (amountToDistribute <= 0) break;
+
+        const r = clientReadings[i];
+        const m = state.machines.find(mac => mac.id === r.machineId);
+        const abono = state.abonos.find(a => a.id === r.abonoId) || (m ? state.abonos.find(a => a.id === m.abonoId) : null);
+        
+        const diff = Math.max(0, r.final - r.initial);
+        const exc = abono ? Math.max(0, diff - abono.limit) : 0;
+        const ivaRate = (m && m.applyIva && abono) ? (abono.ivaRate || 0) : 0;
+        const fixedCost = abono ? abono.price : 0;
+        const excessCost = abono ? exc * abono.excessPrice : 0;
+        const net = fixedCost + excessCost;
+        const total = net * (1 + ivaRate / 100);
+
+        const alreadyPaid = r.partialPaid || 0;
+        const remaining = Math.max(0, total - alreadyPaid);
+
+        if (amountToDistribute >= remaining) {
+            // Settle this reading completely
+            r.partialPaid = total;
+            r.status = 'paid';
+            amountToDistribute -= remaining;
+        } else {
+            // Apply partial payment
+            r.partialPaid = alreadyPaid + amountToDistribute;
+            amountToDistribute = 0;
+        }
+
+        // Save to Firestore and LocalStorage
+        await dbSet('readings', r.id, r);
+    }
+
+    closeAllModals();
+    
+    // Re-open client report to show the updated balance!
+    window.openClientReportTrigger(clientId);
+    
+    showToast(`Pago de ${formatCurrency(amountPaidInput)} registrado con éxito`, 'success');
 }
 
