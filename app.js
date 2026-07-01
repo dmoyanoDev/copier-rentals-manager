@@ -4809,6 +4809,37 @@ function generateClientReportHtml(client) {
     const clientMachineIds = assignedMachines.map(m => m.id);
     const clientReadings = state.readings.filter(r => clientMachineIds.includes(r.machineId));
     clientReadings.sort((a, b) => b.month.localeCompare(a.month));
+
+    // Calculate total debt and pending details html
+    let totalDebt = 0;
+    let pendingDetailsHtml = "";
+    const pendingReadings = clientReadings.filter(r => r.status === 'pending');
+    
+    if (pendingReadings.length > 0) {
+        pendingReadings.forEach(r => {
+            const m = state.machines.find(mac => mac.id === r.machineId);
+            const mName = m ? `${m.brand} ${m.model}` : 'Desconocido';
+            const abono = m ? state.abonos.find(a => a.id === m.abonoId) : null;
+            const diff = Math.max(0, r.final - r.initial);
+            const exc = abono ? Math.max(0, diff - abono.limit) : 0;
+            const ivaRate = (m && m.applyIva && abono) ? (abono.ivaRate || 0) : 0;
+            const fixedCost = abono ? abono.price : 0;
+            const excessCost = abono ? exc * abono.excessPrice : 0;
+            const net = fixedCost + excessCost;
+            const total = net * (1 + ivaRate / 100);
+
+            totalDebt += total;
+            pendingDetailsHtml += `
+                <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dashed rgba(239, 68, 68, 0.1); font-size:11px;">
+                    <span>• <strong>${formatPeriod(r.month)}</strong> - ${mName} (S/N: ${m ? m.serial : ''})</span>
+                    <span style="color:#dc2626; font-weight:700;">${formatCurrency(total)}</span>
+                </div>
+            `;
+        });
+    } else {
+        pendingDetailsHtml = `<div style="font-size:11px; color:var(--emerald); font-weight:600; padding:4px 0;">🎉 El cliente no posee deudas pendientes.</div>`;
+    }
+
     const readingsTableRows = clientReadings.map(r => {
         const m = state.machines.find(mac => mac.id === r.machineId);
         const mName = m ? `${m.brand} ${m.model}` : 'Desconocido';
@@ -4851,15 +4882,35 @@ function generateClientReportHtml(client) {
     }).join('');
 
     return `
-        <div style="margin-bottom: 20px; background: rgba(0,0,0,0.015); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px;">
-            <h4 style="margin:0 0 10px 0; font-size:13px; font-weight:700; color:var(--indigo); border-bottom: 1px solid rgba(0,0,0,0.05); padding-bottom:5px;">📋 DATOS GENERALES DEL CLIENTE</h4>
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size:12px;">
-                <div><strong>Razón Social:</strong> ${client.name}</div>
-                <div><strong>Teléfono:</strong> ${client.phone || '-'}</div>
-                <div><strong>Email:</strong> ${client.email || '-'}</div>
-                <div><strong>Dirección:</strong> ${client.address || '-'}</div>
+        <div style="margin-bottom: 20px; display:flex; flex-wrap:wrap; gap:15px; width:100%;">
+            <!-- Col 1: General Info -->
+            <div style="flex:1 1 340px; background: rgba(0,0,0,0.015); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; box-sizing:border-box;">
+                <h4 style="margin:0 0 10px 0; font-size:13px; font-weight:700; color:var(--indigo); border-bottom: 1px solid rgba(0,0,0,0.05); padding-bottom:5px;">📋 DATOS GENERALES DEL CLIENTE</h4>
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; font-size:12px;">
+                    <div><strong>Razón Social:</strong> ${client.name}</div>
+                    <div><strong>Teléfono:</strong> ${client.phone || '-'}</div>
+                    <div><strong>Email:</strong> ${client.email || '-'}</div>
+                    <div><strong>Dirección:</strong> ${client.address || '-'}</div>
+                </div>
+                ${client.notes ? `<div style="margin-top:10px; font-size:11px; border-top:1px dashed rgba(0,0,0,0.05); padding-top:8px;"><strong>Notas internas:</strong> <span style="font-style:italic;">${client.notes}</span></div>` : ''}
             </div>
-            ${client.notes ? `<div style="margin-top:10px; font-size:11px; border-top:1px dashed rgba(0,0,0,0.05); padding-top:8px;"><strong>Notas internas:</strong> <span style="font-style:italic;">${client.notes}</span></div>` : ''}
+
+            <!-- Col 2: Account Debt status -->
+            <div style="flex:1 1 340px; border: 1px solid ${totalDebt > 0 ? 'rgba(239, 68, 68, 0.25)' : 'rgba(16, 185, 129, 0.25)'}; background: ${totalDebt > 0 ? 'rgba(239, 68, 68, 0.03)' : 'rgba(16, 185, 129, 0.03)'}; border-radius: 8px; padding: 15px; display:flex; flex-direction:column; justify-content:space-between; box-sizing:border-box;">
+                <div>
+                    <h4 style="margin:0 0 10px 0; font-size:13px; font-weight:700; color:${totalDebt > 0 ? '#dc2626' : 'var(--emerald)'}; border-bottom: 1px solid rgba(0,0,0,0.05); padding-bottom:5px; display:flex; justify-content:space-between; align-items:center;">
+                        <span>💳 ESTADO DE CUENTA</span>
+                        <span class="badge" style="font-size:10px; padding:2px 6px; background-color:${totalDebt > 0 ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)'}; color:${totalDebt > 0 ? '#dc2626' : 'var(--emerald)'}; border:none;">${totalDebt > 0 ? 'Con Deuda' : 'Al Día'}</span>
+                    </h4>
+                    <div style="max-height: 80px; overflow-y:auto; padding-right:5px; margin-bottom:8px;">
+                        ${pendingDetailsHtml}
+                    </div>
+                </div>
+                <div style="padding-top:8px; border-top:1px solid rgba(0,0,0,0.05); display:flex; justify-content:space-between; align-items:center;">
+                    <strong style="font-size:12px;">DEUDA TOTAL ACUMULADA:</strong>
+                    <strong style="font-size:16px; color:${totalDebt > 0 ? '#dc2626' : 'var(--emerald)'};">${formatCurrency(totalDebt)}</strong>
+                </div>
+            </div>
         </div>
 
         <div style="margin-bottom: 20px;">
