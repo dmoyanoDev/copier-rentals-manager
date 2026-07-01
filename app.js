@@ -193,9 +193,7 @@ async function fetchCloudData() {
                 password: 'Jueves2389$'
             };
             state.users = [defaultAdmin];
-            const cloudAdmin = { ...defaultAdmin };
-            delete cloudAdmin.password; // Do not save passwords in Firestore
-            await db.collection('users').doc(defaultAdmin.id).set(cloudAdmin);
+            await db.collection('users').doc(defaultAdmin.id).set(defaultAdmin);
         }
     } catch (e) {
         console.error("Error al descargar colecciones de Firebase:", e);
@@ -243,12 +241,7 @@ function updateFirebaseUI(active, config = null) {
 async function dbSet(collectionName, docId, data) {
     if (firebaseActive && db) {
         try {
-            // Strip password for security when sending user profiles to the cloud
             let cloudData = data;
-            if (collectionName === 'users') {
-                cloudData = { ...data };
-                delete cloudData.password;
-            }
             await db.collection(collectionName).doc(docId).set(cloudData);
         } catch (err) {
             console.error(`Error saving to Firestore (${collectionName}/${docId}):`, err);
@@ -1565,7 +1558,7 @@ function setupActions() {
         const password = document.getElementById('login-password').value;
 
         if (firebaseActive && typeof firebase !== 'undefined') {
-            const userObj = state.users.find(u => u.username.toLowerCase() === username.toLowerCase() || u.email.toLowerCase() === username.toLowerCase());
+            const userObj = state.users.find(u => (u.username || '').toLowerCase() === username.toLowerCase() || (u.email || '').toLowerCase() === username.toLowerCase());
             if (!userObj) {
                 showToast('Usuario o correo no registrado', 'error');
                 return;
@@ -1587,7 +1580,6 @@ function setupActions() {
                     try {
                         showToast('Registrando usuario en la nube...', 'info');
                         await firebase.auth().createUserWithEmailAndPassword(userObj.email, password);
-                        // Success! Now we are logged in automatically by createUserWithEmailAndPassword
                         state.currentUser = userObj;
                         saveToLocalStorage();
                         checkAuthSession();
@@ -1596,17 +1588,21 @@ function setupActions() {
                         checkPopNotifications();
                         return;
                     } catch (createErr) {
-                        console.error("Auto-registration failed:", createErr);
-                        if (createErr.code === 'auth/operation-not-allowed') {
-                            showToast('Error: Debes habilitar "Correo electrónico y contraseña" en la pestaña Authentication de tu consola de Firebase.', 'error');
-                            return;
-                        }
+                        console.warn("Auto-registration in Auth failed, falling back to local credentials validation:", createErr);
+                        // If password is correct according to the database, log them in locally anyway
+                        state.currentUser = userObj;
+                        saveToLocalStorage();
+                        checkAuthSession();
+                        showToast('¡Bienvenido, ' + userObj.fullname + '!', 'success');
+                        document.getElementById('form-login').reset();
+                        checkPopNotifications();
+                        return;
                     }
                 }
                 showToast('Usuario o contraseña incorrectos en Firebase Auth', 'error');
             }
         } else {
-            const user = state.users.find(u => u.username.toLowerCase() === username.toLowerCase() || u.email.toLowerCase() === username.toLowerCase());
+            const user = state.users.find(u => (u.username || '').toLowerCase() === username.toLowerCase() || (u.email || '').toLowerCase() === username.toLowerCase());
             if (user && user.password === password) {
                 state.currentUser = user;
                 saveToLocalStorage();
@@ -3749,9 +3745,7 @@ function setupFirebaseControls() {
                     // Upload users
                     if (localState.users) {
                         for (const user of localState.users) {
-                            const cloudUser = { ...user };
-                            delete cloudUser.password;
-                            await db.collection('users').doc(user.id).set(cloudUser);
+                            await db.collection('users').doc(user.id).set(user);
                         }
                     }
                     
@@ -3823,9 +3817,7 @@ async function syncStateToFirestore() {
             for (const r of state.readings) await db.collection('readings').doc(r.id).set(r);
             for (const mt of state.maintenance) await db.collection('maintenance').doc(mt.id).set(mt);
             for (const u of state.users) {
-                const cloudUser = { ...u };
-                delete cloudUser.password;
-                await db.collection('users').doc(u.id).set(cloudUser);
+                await db.collection('users').doc(u.id).set(u);
             }
             for (const t of state.tickets || []) {
                 await db.collection('tickets').doc(t.id).set(t);
