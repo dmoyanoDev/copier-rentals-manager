@@ -5123,52 +5123,24 @@ function generateClientReportHtml(client) {
 
     // Readings for all client machines (historical and active)
     const clientReadings = state.readings.filter(r => r.clientId === client.id);
-    clientReadings.sort((a, b) => (b.month || '').localeCompare(a.month || ''));
+    clientReadings.sort((a, b) => (a.month || '').localeCompare(b.month || ''));
 
-    // Calculate total debt and pending details html
-    let totalDebt = 0;
+    // Accounting and Impositivos Accumulators
+    let totalNetoGravado = 0;
+    let totalIva21 = 0;
+    let totalIva105 = 0;
+    let totalCredito = 0;
+    let totalDebito = 0;
+    let totalNoOficial = 0;
+    let totalCobrado = 0;
+
+    // Detailed pending elements helper
     let pendingDetailsHtml = "";
     const pendingReadings = clientReadings.filter(r => r.status === 'pending');
-    
-    if (pendingReadings.length > 0) {
-        pendingReadings.forEach(r => {
-            const m = state.machines.find(mac => mac.id === r.machineId);
-            const mName = m ? `${m.brand} ${m.model}` : 'Desconocido';
-            const abono = state.abonos.find(a => a.id === r.abonoId) || (m ? state.abonos.find(a => a.id === m.abonoId) : null);
-            
-            const isUnofficial = r.isUnofficial || false;
-            const creditNote = r.creditNote || 0;
-            const debitNote = r.debitNote || 0;
 
-            const diff = Math.max(0, r.final - r.initial);
-            const exc = abono ? Math.max(0, diff - abono.limit) : 0;
-            const ivaRate = (!isUnofficial && m && m.applyIva && abono) ? (abono.ivaRate || 0) : 0;
-            const fixedCost = abono ? abono.price : 0;
-            const excessCost = abono ? exc * abono.excessPrice : 0;
-            const net = fixedCost + excessCost;
-            const total = net * (1 + ivaRate / 100) - creditNote + debitNote;
-
-            const alreadyPaid = r.partialPaid || 0;
-            const remaining = Math.max(0, total - alreadyPaid);
-
-            totalDebt += remaining;
-            const partialLabel = alreadyPaid > 0 ? `<br><span style="font-size:9px; color:var(--text-secondary-light);">Pago parcial: ${formatCurrency(alreadyPaid)} (Debe: ${formatCurrency(remaining)})</span>` : '';
-            pendingDetailsHtml += `
-                <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dashed rgba(239, 68, 68, 0.1); font-size:11px;">
-                    <span>• <strong>${formatPeriod(r.month)}</strong> - ${mName} (S/N: ${m ? m.serial : ''})${partialLabel}</span>
-                    <span style="color:#dc2626; font-weight:700;">${formatCurrency(remaining)}</span>
-                </div>
-            `;
-        });
-    } else {
-        pendingDetailsHtml = `<div style="font-size:11px; color:var(--emerald); font-weight:600; padding:4px 0;">🎉 El cliente no posee deudas pendientes.</div>`;
-    }
-
-    const readingsTableRows = clientReadings.map(r => {
+    clientReadings.forEach(r => {
         const m = state.machines.find(mac => mac.id === r.machineId);
-        const mName = m ? `${m.brand} ${m.model}` : 'Desconocido';
         const abono = state.abonos.find(a => a.id === r.abonoId) || (m ? state.abonos.find(a => a.id === m.abonoId) : null);
-        
         const isUnofficial = r.isUnofficial || false;
         const creditNote = r.creditNote || 0;
         const debitNote = r.debitNote || 0;
@@ -5179,52 +5151,151 @@ function generateClientReportHtml(client) {
         const fixedCost = abono ? abono.price : 0;
         const excessCost = abono ? exc * abono.excessPrice : 0;
         const net = fixedCost + excessCost;
-        const total = net * (1 + ivaRate / 100) - creditNote + debitNote;
+        const iva = net * (ivaRate / 100);
 
-        const alreadyPaid = r.partialPaid || 0;
-        let statusBadgeText = "";
-        
-        let methodLabel = "";
-        if (r.paymentMethod) {
-            methodLabel = ` (${r.paymentMethod})`;
+        if (isUnofficial) {
+            totalNoOficial += net;
+        } else {
+            totalNetoGravado += net;
+            if (ivaRate === 21) {
+                totalIva21 += iva;
+            } else if (ivaRate === 10.5) {
+                totalIva105 += iva;
+            }
         }
 
-        if (r.status === 'paid') {
-            if (isUnofficial) {
-                statusBadgeText = `<span class="badge" style="font-size:9px; padding:2px 4px; background-color:rgba(17,24,39,0.08); color:var(--text-primary); border: 1px solid rgba(17,24,39,0.2);">⚫ Negro (Cobrado)</span>`;
-            } else {
-                let reconTag = "";
-                if (r.paymentMethod === 'Transferencia Bancaria' || r.paymentMethod === 'Tarjeta de Débito' || r.paymentMethod === 'Tarjeta de Crédito' || r.paymentMethod === 'Cheque') {
-                    reconTag = r.bankReconciled 
-                        ? ` <span class="badge success" style="font-size:8px; padding:1px 3px; font-weight:700;">🟢 Conciliado</span>` 
-                        : ` <span class="badge warning" style="font-size:8px; padding:1px 3px; font-weight:700;">🟡 Sin Conciliar</span>`;
-                }
-                statusBadgeText = `<span class="badge success" style="font-size:9px; padding:2px 4px;">Cobrado${methodLabel}</span>${reconTag}`;
+        totalCredito += creditNote;
+        totalDebito += debitNote;
+        totalCobrado += (r.partialPaid || 0);
+
+        // For pending list in status card
+        if (r.status === 'pending') {
+            const total = net * (1 + ivaRate / 100) - creditNote + debitNote;
+            const alreadyPaid = r.partialPaid || 0;
+            const remaining = Math.max(0, total - alreadyPaid);
+            const mName = m ? `${m.brand} ${m.model}` : 'Desconocido';
+            const partialLabel = alreadyPaid > 0 ? `<br><span style="font-size:9px; color:var(--text-secondary-light);">Abonado parcial: ${formatCurrency(alreadyPaid)}</span>` : '';
+            pendingDetailsHtml += `
+                <div style="display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px dashed rgba(239, 68, 68, 0.1); font-size:11px;">
+                    <span>• <strong>${formatPeriod(r.month)}</strong> - ${mName}${partialLabel}</span>
+                    <span style="color:#dc2626; font-weight:700;">${formatCurrency(remaining)}</span>
+                </div>
+            `;
+        }
+    });
+
+    if (pendingReadings.length === 0) {
+        pendingDetailsHtml = `<div style="font-size:11px; color:var(--emerald); font-weight:600; padding:4px 0;">🎉 El cliente no posee saldo deudor.</div>`;
+    }
+
+    const totalFacturadoOfficial = totalNetoGravado + totalIva21 + totalIva105 - totalCredito + totalDebito;
+    const totalFacturadoGeneral = totalFacturadoOfficial + totalNoOficial;
+    const saldoAdeudado = Math.max(0, totalFacturadoGeneral - totalCobrado);
+
+    // Chronological Ledger Entries Generation
+    let ledgerEntries = [];
+    clientReadings.forEach(r => {
+        const m = state.machines.find(mac => mac.id === r.machineId);
+        const abono = state.abonos.find(a => a.id === r.abonoId) || (m ? state.abonos.find(a => a.id === m.abonoId) : null);
+        const isUnofficial = r.isUnofficial || false;
+        const creditNote = r.creditNote || 0;
+        const debitNote = r.debitNote || 0;
+
+        const diff = Math.max(0, r.final - r.initial);
+        const exc = abono ? Math.max(0, diff - abono.limit) : 0;
+        const ivaRate = (!isUnofficial && m && m.applyIva && abono) ? (abono.ivaRate || 0) : 0;
+        const fixedCost = abono ? abono.price : 0;
+        const excessCost = abono ? exc * abono.excessPrice : 0;
+        const net = fixedCost + excessCost;
+        const iva = net * (ivaRate / 100);
+        const baseInvoiceAmt = net + iva;
+
+        // Date represents the end of the billing month for invoices
+        const invoiceDate = r.month + '-28';
+        const machineDesc = m ? `${m.brand} ${m.model} (${m.serial})` : 'Equipo';
+
+        // 1. Debit charge (Debe)
+        ledgerEntries.push({
+            date: invoiceDate,
+            concept: `Cargo Alquiler mensual ${machineDesc} - Período ${formatPeriod(r.month)}`,
+            docType: isUnofficial ? 'Factura No Oficial' : 'Factura',
+            docNro: r.invoiceNumber || 'Pendiente',
+            debe: baseInvoiceAmt,
+            haber: 0
+        });
+
+        // 2. Nota de Crédito (Haber)
+        if (creditNote > 0) {
+            ledgerEntries.push({
+                date: invoiceDate,
+                concept: `Nota de Crédito: ${r.creditNoteReason || 'Bonificación / Descuento'}`,
+                docType: 'Nota de Crédito',
+                docNro: r.invoiceNumber ? `NC-${r.invoiceNumber.split('-')[1] || r.invoiceNumber}` : 'S/N',
+                debe: 0,
+                haber: creditNote
+            });
+        }
+
+        // 3. Nota de Débito (Debe)
+        if (debitNote > 0) {
+            ledgerEntries.push({
+                date: invoiceDate,
+                concept: `Nota de Débito: ${r.debitNoteReason || 'Recargo contable'}`,
+                docType: 'Nota de Débito',
+                docNro: r.invoiceNumber ? `ND-${r.invoiceNumber.split('-')[1] || r.invoiceNumber}` : 'S/N',
+                debe: debitNote,
+                haber: 0
+            });
+        }
+
+        // 4. Payments received (Haber)
+        const alreadyPaid = r.partialPaid || 0;
+        if (alreadyPaid > 0) {
+            let payMethodLabel = r.paymentMethod || 'Efectivo';
+            if (r.paymentReference) {
+                payMethodLabel += ` [Ref: ${r.paymentReference}]`;
             }
-        } else if (alreadyPaid > 0) {
-            let reconTag = "";
-            if (!isUnofficial && (r.paymentMethod === 'Transferencia Bancaria' || r.paymentMethod === 'Tarjeta de Débito' || r.paymentMethod === 'Tarjeta de Crédito' || r.paymentMethod === 'Cheque')) {
-                reconTag = r.bankReconciled 
-                    ? ` <span class="badge success" style="font-size:8px; padding:1px 3px; font-weight:700;">🟢 Conciliado</span>` 
-                    : ` <span class="badge warning" style="font-size:8px; padding:1px 3px; font-weight:700;">🟡 Sin Conciliar</span>`;
-            }
-            statusBadgeText = `<span class="badge warning" style="font-size:9px; padding:2px 4px; background-color:rgba(245,158,11,0.12); color:#d97706; border-color:rgba(245,158,11,0.25);">Pago Parcial (${formatCurrency(alreadyPaid)})${methodLabel}</span>${reconTag}`;
-        } else {
-            if (isUnofficial) {
-                statusBadgeText = `<span class="badge" style="font-size:9px; padding:2px 4px; background-color:rgba(17,24,39,0.03); color:var(--text-secondary); border: 1px dashed rgba(17,24,39,0.25);">⚫ Negro (Pendiente)</span>`;
-            } else {
-                statusBadgeText = `<span class="badge warning" style="font-size:9px; padding:2px 4px;">Pendiente</span>`;
-            }
+            ledgerEntries.push({
+                date: r.paymentDate || invoiceDate,
+                concept: `Cobro Alquiler Período ${formatPeriod(r.month)} - Medio: ${payMethodLabel}`,
+                docType: 'Recibo',
+                docNro: r.paymentReference || 'S/N',
+                debe: 0,
+                haber: alreadyPaid
+            });
+        }
+    });
+
+    // Sort ledger items chronologically (oldest first)
+    ledgerEntries.sort((a, b) => a.date.localeCompare(b.date));
+
+    // Render ledger table rows with cumulative running balance calculation
+    let runningBalance = 0;
+    const ledgerTableRows = ledgerEntries.map(entry => {
+        runningBalance += (entry.debe - entry.haber);
+        
+        let typeBadge = "";
+        if (entry.docType === 'Factura') {
+            typeBadge = `<span class="badge" style="font-size:9px; padding:1px 4px; background-color:rgba(99,102,241,0.08); color:var(--indigo); border:1px solid rgba(99,102,241,0.15);">Factura</span>`;
+        } else if (entry.docType === 'Factura No Oficial') {
+            typeBadge = `<span class="badge" style="font-size:9px; padding:1px 4px; background-color:rgba(17,24,39,0.08); color:var(--text-secondary); border:1px solid rgba(17,24,39,0.15);">Factura No Of.</span>`;
+        } else if (entry.docType === 'Nota de Crédito') {
+            typeBadge = `<span class="badge success" style="font-size:9px; padding:1px 4px;">N. Crédito</span>`;
+        } else if (entry.docType === 'Nota de Débito') {
+            typeBadge = `<span class="badge danger" style="font-size:9px; padding:1px 4px;">N. Débito</span>`;
+        } else if (entry.docType === 'Recibo') {
+            typeBadge = `<span class="badge success" style="font-size:9px; padding:1px 4px; background-color:rgba(16,185,129,0.08); color:var(--emerald); border:none;">Recibo</span>`;
         }
 
         return `
             <tr>
-                <td><strong>${formatPeriod(r.month)}</strong></td>
-                <td>${mName} (<code>${m ? m.serial : ''}</code>)</td>
-                <td>${(r.initial || 0).toLocaleString('es-AR')} - ${(r.final || 0).toLocaleString('es-AR')}</td>
-                <td><strong>${diff.toLocaleString('es-AR')}</strong></td>
-                <td>${statusBadgeText}</td>
-                <td style="text-align:right;"><strong class="text-indigo">${formatCurrency(total)}</strong></td>
+                <td><strong>${entry.date.split('-').reverse().join('/')}</strong></td>
+                <td>${typeBadge}</td>
+                <td><code>${entry.docNro}</code></td>
+                <td class="font-bold-title">${entry.concept}</td>
+                <td style="text-align:right; font-weight:600; color:${entry.debe > 0 ? 'var(--text-primary)' : 'var(--text-secondary-light)'};">${entry.debe > 0 ? formatCurrency(entry.debe) : '-'}</td>
+                <td style="text-align:right; font-weight:600; color:${entry.haber > 0 ? 'var(--emerald)' : 'var(--text-secondary-light)'};">${entry.haber > 0 ? formatCurrency(entry.haber) : '-'}</td>
+                <td style="text-align:right; font-weight:700; color:${runningBalance > 0 ? '#dc2626' : 'var(--emerald)'};">${formatCurrency(runningBalance)}</td>
             </tr>
         `;
     }).join('');
@@ -5249,11 +5320,11 @@ function generateClientReportHtml(client) {
     }).join('');
 
     return `
-        <div style="margin-bottom: 20px; display:flex; flex-wrap:wrap; gap:15px; width:100%;">
-            <!-- Col 1: General Info -->
-            <div style="flex:1 1 340px; background: rgba(0,0,0,0.015); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; box-sizing:border-box;">
+        <div style="margin-bottom: 20px; display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:15px; width:100%;">
+            <!-- Card 1: General Info -->
+            <div style="background: rgba(0,0,0,0.015); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; box-sizing:border-box;">
                 <h4 style="margin:0 0 10px 0; font-size:13px; font-weight:700; color:var(--indigo); border-bottom: 1px solid rgba(0,0,0,0.05); padding-bottom:5px;">📋 DATOS GENERALES DEL CLIENTE</h4>
-                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; font-size:12px;">
+                <div style="display:grid; grid-template-columns: 1fr; gap: 8px; font-size:12px;">
                     <div><strong>Razón Social:</strong> ${client.name}</div>
                     <div><strong>Teléfono:</strong> ${client.phone || '-'}</div>
                     <div><strong>Email:</strong> ${client.email || '-'}</div>
@@ -5262,28 +5333,69 @@ function generateClientReportHtml(client) {
                 ${client.notes ? `<div style="margin-top:10px; font-size:11px; border-top:1px dashed rgba(0,0,0,0.05); padding-top:8px;"><strong>Notas internas:</strong> <span style="font-style:italic;">${client.notes}</span></div>` : ''}
             </div>
 
-            <!-- Col 2: Account Debt status -->
-            <div style="flex:1 1 340px; border: 1px solid ${totalDebt > 0 ? 'rgba(239, 68, 68, 0.25)' : 'rgba(16, 185, 129, 0.25)'}; background: ${totalDebt > 0 ? 'rgba(239, 68, 68, 0.03)' : 'rgba(16, 185, 129, 0.03)'}; border-radius: 8px; padding: 15px; display:flex; flex-direction:column; justify-content:space-between; box-sizing:border-box;">
+            <!-- Card 2: Tax / Impositivo details -->
+            <div style="background: rgba(0,0,0,0.015); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; box-sizing:border-box;">
+                <h4 style="margin:0 0 10px 0; font-size:13px; font-weight:700; color:var(--indigo); border-bottom: 1px solid rgba(0,0,0,0.05); padding-bottom:5px;">📊 CONCILIACIÓN IMPOSITIVA (IVA)</h4>
+                <div style="display:grid; grid-template-columns: 1fr 120px; gap: 6px; font-size:12px;">
+                    <span><strong>Neto Gravado (Oficial):</strong></span><span style="text-align:right; font-weight:500;">${formatCurrency(totalNetoGravado)}</span>
+                    <span><strong>Débito Fiscal IVA 21%:</strong></span><span style="text-align:right; font-weight:500;">${formatCurrency(totalIva21)}</span>
+                    <span><strong>Débito Fiscal IVA 10.5%:</strong></span><span style="text-align:right; font-weight:500;">${formatCurrency(totalIva105)}</span>
+                    <span><strong>Notas de Crédito (Desc.):</strong></span><span style="text-align:right; color:var(--emerald); font-weight:500;">-${formatCurrency(totalCredito)}</span>
+                    <span><strong>Notas de Débito (Rec.):</strong></span><span style="text-align:right; color:#dc2626; font-weight:500;">+${formatCurrency(totalDebito)}</span>
+                    <span><strong>Subtotal Oficial Facturado:</strong></span><span style="text-align:right; font-weight:600; color:var(--indigo);">${formatCurrency(totalFacturadoOfficial)}</span>
+                    <span style="border-top:1px dashed rgba(0,0,0,0.05); padding-top:4px;"><strong>Operaciones No Oficiales (Negro):</strong></span><span style="text-align:right; border-top:1px dashed rgba(0,0,0,0.05); padding-top:4px; font-weight:500;">${formatCurrency(totalNoOficial)}</span>
+                    <span style="border-top:1px solid rgba(0,0,0,0.1); padding-top:6px; font-size:13px; color:var(--text-primary);"><strong>TOTAL FACTURADO:</strong></span><span style="text-align:right; border-top:1px solid rgba(0,0,0,0.1); padding-top:6px; font-size:13px; font-weight:700; color:var(--indigo);">${formatCurrency(totalFacturadoGeneral)}</span>
+                </div>
+            </div>
+
+            <!-- Card 3: Financial balance status -->
+            <div style="border: 1px solid ${saldoAdeudado > 0 ? 'rgba(239, 68, 68, 0.25)' : 'rgba(16, 185, 129, 0.25)'}; background: ${saldoAdeudado > 0 ? 'rgba(239, 68, 68, 0.03)' : 'rgba(16, 185, 129, 0.03)'}; border-radius: 8px; padding: 15px; display:flex; flex-direction:column; justify-content:space-between; box-sizing:border-box;">
                 <div>
-                    <h4 style="margin:0 0 10px 0; font-size:13px; font-weight:700; color:${totalDebt > 0 ? '#dc2626' : 'var(--emerald)'}; border-bottom: 1px solid rgba(0,0,0,0.05); padding-bottom:5px; display:flex; justify-content:space-between; align-items:center;">
-                        <span>💳 ESTADO DE CUENTA</span>
-                        <span class="badge" style="font-size:10px; padding:2px 6px; background-color:${totalDebt > 0 ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)'}; color:${totalDebt > 0 ? '#dc2626' : 'var(--emerald)'}; border:none;">${totalDebt > 0 ? 'Con Deuda' : 'Al Día'}</span>
+                    <h4 style="margin:0 0 10px 0; font-size:13px; font-weight:700; color:${saldoAdeudado > 0 ? '#dc2626' : 'var(--emerald)'}; border-bottom: 1px solid rgba(0,0,0,0.05); padding-bottom:5px; display:flex; justify-content:space-between; align-items:center;">
+                        <span>💳 ESTADO FINANCIERO</span>
+                        <span class="badge" style="font-size:10px; padding:2px 6px; background-color:${saldoAdeudado > 0 ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)'}; color:${saldoAdeudado > 0 ? '#dc2626' : 'var(--emerald)'}; border:none;">${saldoAdeudado > 0 ? 'Con Saldo Deudor' : 'Al Día / Cancelado'}</span>
                     </h4>
-                    <div style="max-height: 80px; overflow-y:auto; padding-right:5px; margin-bottom:8px;">
+                    <div style="font-size:12px; display:grid; grid-template-columns: 1fr 120px; gap:6px; margin-bottom:10px;">
+                        <span><strong>Total Facturado General:</strong></span><span style="text-align:right;">${formatCurrency(totalFacturadoGeneral)}</span>
+                        <span><strong>Total Cobrado (Ingresos):</strong></span><span style="text-align:right; color:var(--emerald); font-weight:600;">${formatCurrency(totalCobrado)}</span>
+                    </div>
+                    <div style="max-height: 80px; overflow-y:auto; padding-right:5px; margin-bottom:8px; border-top:1px dashed rgba(0,0,0,0.05); padding-top:6px;">
                         ${pendingDetailsHtml}
                     </div>
                 </div>
                 <div style="padding-top:8px; border-top:1px solid rgba(0,0,0,0.05); display:flex; justify-content:space-between; align-items:center;">
-                    <strong style="font-size:12px;">DEUDA TOTAL ACUMULADA:</strong>
-                    <strong style="font-size:16px; color:${totalDebt > 0 ? '#dc2626' : 'var(--emerald)'};">${formatCurrency(totalDebt)}</strong>
+                    <strong style="font-size:12px;">SALDO EXIGIBLE PENDIENTE:</strong>
+                    <strong style="font-size:16px; color:${saldoAdeudado > 0 ? '#dc2626' : 'var(--emerald)'};">${formatCurrency(saldoAdeudado)}</strong>
                 </div>
-                ${totalDebt > 0 ? `
+                ${saldoAdeudado > 0 ? `
                 <div style="margin-top:10px; text-align:right;" class="no-print">
                     <button class="btn btn-primary btn-sm btn-icon" onclick="openSettleDebtModal('${client.id}')" style="font-size:11px; padding:6px 12px; font-weight:600; width:100%; justify-content:center;">
                         💵 Registrar Pago / Saldar Deuda
                     </button>
                 </div>
                 ` : ''}
+            </div>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <h4 style="margin:0 0 10px 0; font-size:13px; font-weight:700; color:var(--text-primary);">📊 LIBRO MAYOR DE CUENTA CORRIENTE (MOVIMIENTOS CRONOLÓGICOS)</h4>
+            <div class="table-container">
+                <table class="table" style="font-size:11px;">
+                    <thead>
+                        <tr>
+                            <th style="width:100px;">Fecha</th>
+                            <th style="width:120px;">Tipo Doc</th>
+                            <th style="width:130px;">Ref / Doc Nro</th>
+                            <th>Concepto</th>
+                            <th style="text-align:right; width:120px;">Debe (Cargos)</th>
+                            <th style="text-align:right; width:120px;">Haber (Abonos)</th>
+                            <th style="text-align:right; width:120px;">Saldo Acumulado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${ledgerTableRows || '<tr><td colspan="7" class="text-center py-3 text-secondary-light">No se registran movimientos en la cuenta corriente de este cliente.</td></tr>'}
+                    </tbody>
+                </table>
             </div>
         </div>
 
@@ -5303,27 +5415,6 @@ function generateClientReportHtml(client) {
                     </thead>
                     <tbody>
                         ${machinesTableRows || '<tr><td colspan="6" class="text-center py-3 text-secondary-light">El cliente no tiene equipos en alquiler actualmente.</td></tr>'}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <div style="margin-bottom: 20px;">
-            <h4 style="margin:0 0 10px 0; font-size:13px; font-weight:700; color:var(--text-primary);">📊 HISTORIAL DE LECTURAS Y FACTURACIÓN (${clientReadings.length})</h4>
-            <div class="table-container">
-                <table class="table" style="font-size:11px;">
-                    <thead>
-                        <tr>
-                            <th>Mes</th>
-                            <th>Equipo</th>
-                            <th>Rango Cont.</th>
-                            <th>Copias Cons.</th>
-                            <th>Estado Pago</th>
-                            <th style="text-align:right;">Monto Cobrado (c/IVA)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${readingsTableRows || '<tr><td colspan="6" class="text-center py-3 text-secondary-light">No hay lecturas cargadas para este cliente.</td></tr>'}
                     </tbody>
                 </table>
             </div>
