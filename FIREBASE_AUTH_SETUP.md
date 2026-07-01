@@ -23,7 +23,7 @@ Para poder iniciar sesión por primera vez tras conectar Firebase en tu aplicaci
 2. Haz clic en el botón **Agregar usuario**.
 3. Introduce los datos del administrador maestro:
    - **Correo electrónico**: `dmoyano@mstecnologia.com.ar`
-   - **Contraseña**: `jUEVES2389$`
+   - **Contraseña**: `Jueves2389$`
 4. Haz clic en **Agregar usuario**.
 
 > [!NOTE]

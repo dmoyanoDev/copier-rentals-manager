@@ -127,7 +127,7 @@ async function fetchCloudData() {
                 username: 'dmoyano',
                 fullname: 'Darío Moyano',
                 email: 'dmoyano@mstecnologia.com.ar',
-                password: 'jUEVES2389$'
+                password: 'Jueves2389$'
             };
             state.users = [defaultAdmin];
             const cloudAdmin = { ...defaultAdmin };
@@ -280,7 +280,7 @@ function loadFromLocalStorage() {
                 username: 'dmoyano',
                 fullname: 'Darío Moyano',
                 email: 'dmoyano@mstecnologia.com.ar',
-                password: 'jUEVES2389$'
+                password: 'Jueves2389$'
             }
         ];
     }
