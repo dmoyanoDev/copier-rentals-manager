@@ -1095,6 +1095,25 @@ function setupForms() {
             return;
         }
 
+        // Firebase Auth Creation for new users
+        if (firebaseActive && typeof firebase !== 'undefined' && !id) {
+            try {
+                showToast('Registrando credenciales en la nube...', 'info');
+                const savedConfig = localStorage.getItem('firebase_config');
+                if (savedConfig) {
+                    const config = JSON.parse(savedConfig);
+                    // Use a secondary app instance so GCM / active session is not modified/logged-out
+                    const secondaryApp = firebase.initializeApp(config, 'SecondaryApp');
+                    await secondaryApp.auth().createUserWithEmailAndPassword(email, password);
+                    await secondaryApp.delete();
+                }
+            } catch (authErr) {
+                console.error("Error creating user in Firebase Auth:", authErr);
+                showToast("Error de Firebase Auth: " + authErr.message, "error");
+                return;
+            }
+        }
+
         const userData = { id: id || ('user-' + Date.now()), username, fullname, email, password };
 
         if (id) {
@@ -1266,20 +1285,40 @@ function setupActions() {
     });
 
     // Form: Login
-    document.getElementById('form-login').addEventListener('submit', (e) => {
+    document.getElementById('form-login').addEventListener('submit', async (e) => {
         e.preventDefault();
         const username = document.getElementById('login-username').value.trim();
         const password = document.getElementById('login-password').value;
 
-        const user = state.users.find(u => u.username.toLowerCase() === username.toLowerCase());
-        if (user && user.password === password) {
-            state.currentUser = user;
-            saveToLocalStorage();
-            checkAuthSession();
-            showToast('¡Bienvenido de nuevo, ' + user.fullname + '!', 'success');
-            document.getElementById('form-login').reset();
+        if (firebaseActive && typeof firebase !== 'undefined') {
+            const userObj = state.users.find(u => u.username.toLowerCase() === username.toLowerCase() || u.email.toLowerCase() === username.toLowerCase());
+            if (!userObj) {
+                showToast('Usuario o correo no registrado', 'error');
+                return;
+            }
+            try {
+                showToast('Autenticando en la nube...', 'info');
+                await firebase.auth().signInWithEmailAndPassword(userObj.email, password);
+                state.currentUser = userObj;
+                saveToLocalStorage();
+                checkAuthSession();
+                showToast('¡Bienvenido de nuevo, ' + userObj.fullname + '!', 'success');
+                document.getElementById('form-login').reset();
+            } catch (err) {
+                console.error(err);
+                showToast('Usuario o contraseña incorrectos en Firebase Auth', 'error');
+            }
         } else {
-            showToast('Usuario o contraseña incorrectos', 'error');
+            const user = state.users.find(u => u.username.toLowerCase() === username.toLowerCase() || u.email.toLowerCase() === username.toLowerCase());
+            if (user && user.password === password) {
+                state.currentUser = user;
+                saveToLocalStorage();
+                checkAuthSession();
+                showToast('¡Bienvenido de nuevo, ' + user.fullname + '!', 'success');
+                document.getElementById('form-login').reset();
+            } else {
+                showToast('Usuario o contraseña incorrectos', 'error');
+            }
         }
     });
 
@@ -1314,7 +1353,7 @@ function setupActions() {
     document.getElementById('link-back-login-2').addEventListener('click', backToLogin);
 
     // Form: Recovery Step 1
-    document.getElementById('form-recovery-req').addEventListener('submit', (e) => {
+    document.getElementById('form-recovery-req').addEventListener('submit', async (e) => {
         e.preventDefault();
         const identity = document.getElementById('recovery-identity').value.trim().toLowerCase();
 
@@ -1322,31 +1361,47 @@ function setupActions() {
         if (user) {
             recoveryUser = user;
             
-            // Generate a secure random 6-digit code
-            const recoveryCode = Math.floor(100000 + Math.random() * 900000).toString();
-            state.tempRecoveryCode = recoveryCode; // Store code in state temporarily
+            if (firebaseActive && typeof firebase !== 'undefined') {
+                try {
+                    showToast('Enviando enlace de restablecimiento...', 'info');
+                    await firebase.auth().sendPasswordResetEmail(user.email);
+                    showToast(`Se ha enviado un correo de restablecimiento a: ${user.email}`, 'success');
+                    
+                    // Directly return to login since Firebase Auth handles the reset page securely on their servers
+                    document.getElementById('reset-password-container').style.display = 'none';
+                    document.getElementById('login-container').style.display = 'flex';
+                    recoveryUser = null;
+                } catch (authErr) {
+                    console.error("Error sending reset email:", authErr);
+                    showToast("Error de Firebase Auth: " + authErr.message, "error");
+                }
+            } else {
+                // Generate a secure random 6-digit code
+                const recoveryCode = Math.floor(100000 + Math.random() * 900000).toString();
+                state.tempRecoveryCode = recoveryCode; // Store code in state temporarily
 
-            // Generate mailto link prefilled with recovery instructions and code
-            const subject = encodeURIComponent("Código de Recuperación - M&S Tecnología Digital");
-            const body = encodeURIComponent(
-                `Hola ${user.fullname},\n\n` +
-                `Has solicitado restablecer tu contraseña en el Gestor de Alquileres de M&S Tecnología Digital.\n\n` +
-                `Tu código de verificación de seguridad es: ${recoveryCode}\n\n` +
-                `Por favor, ingresa este código en la aplicación para proceder con el restablecimiento.\n\n` +
-                `Si no solicitaste este cambio, por favor ignora este correo.\n\n` +
-                `Atentamente,\n` +
-                `M&S Tecnología Digital`
-            );
-            const mailtoUrl = `mailto:${user.email}?subject=${subject}&body=${body}`;
+                // Generate mailto link prefilled with recovery instructions and code
+                const subject = encodeURIComponent("Código de Recuperación - M&S Tecnología Digital");
+                const body = encodeURIComponent(
+                    `Hola ${user.fullname},\n\n` +
+                    `Has solicitado restablecer tu contraseña en el Gestor de Alquileres de M&S Tecnología Digital.\n\n` +
+                    `Tu código de verificación de seguridad es: ${recoveryCode}\n\n` +
+                    `Por favor, ingresa este código en la aplicación para proceder con el restablecimiento.\n\n` +
+                    `Si no solicitaste este cambio, por favor ignora este correo.\n\n` +
+                    `Atentamente,\n` +
+                    `M&S Tecnología Digital`
+                );
+                const mailtoUrl = `mailto:${user.email}?subject=${subject}&body=${body}`;
 
-            document.getElementById('recovery-email-hint').textContent = `Enviando código a: ${user.email}. Por favor, envía el correo redactado en tu cliente de e-mail para recibir el código.`;
-            document.getElementById('recovery-step-1').style.display = 'none';
-            document.getElementById('recovery-step-2').style.display = 'block';
-            
-            // Open user default mail composer pre-filled
-            window.location.href = mailtoUrl;
+                document.getElementById('recovery-email-hint').textContent = `Enviando código a: ${user.email}. Por favor, envía el correo redactado en tu cliente de e-mail para recibir el código.`;
+                document.getElementById('recovery-step-1').style.display = 'none';
+                document.getElementById('recovery-step-2').style.display = 'block';
+                
+                // Open user default mail composer pre-filled
+                window.location.href = mailtoUrl;
 
-            showToast('Abriendo cliente de e-mail con el código de recuperación pre-completado...', 'info');
+                showToast('Abriendo cliente de e-mail con el código de recuperación pre-completado...', 'info');
+            }
         } else {
             showToast('El usuario o email no coincide con ninguna cuenta', 'error');
         }
