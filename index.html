@@ -1529,6 +1529,14 @@
                             </table>
                         </div>
                     </div>
+                    <div style="grid-column: span 2; margin-top: 15px; display: flex; gap: 10px; justify-content: flex-end;" class="no-print">
+                        <button class="btn btn-secondary btn-sm" id="btn-rental-change-machine" style="display:flex; align-items:center; gap:5px; font-size:12px;">
+                            🔄 Cambiar de Equipo
+                        </button>
+                        <button class="btn btn-danger-outline btn-sm" id="btn-rental-end" style="display:flex; align-items:center; gap:5px; font-size:12px;">
+                            ⏹️ Terminar Alquiler
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -1691,6 +1699,114 @@
                 <div class="modal-footer" style="margin-top: 20px;">
                     <button type="button" class="btn btn-secondary" id="cancel-quick-rental">Cancelar</button>
                     <button type="submit" class="btn btn-success">Activar Alquiler</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: End Rental (Terminar Alquiler) -->
+    <div id="modal-end-rental" class="modal">
+        <div class="modal-content" style="max-width: 480px;">
+            <div class="modal-header">
+                <h3>⏹️ Finalizar Alquiler de Equipo</h3>
+                <span class="close-modal">&times;</span>
+            </div>
+            <form id="form-end-rental">
+                <input type="hidden" id="end-rental-machine-id">
+                
+                <div style="background-color:rgba(239, 68, 68, 0.04); border:1px solid rgba(239, 68, 68, 0.15); border-radius:8px; padding:12px; font-size:12px; color:#dc2626; margin-bottom:15px; line-height:1.4;">
+                    <strong>Atención:</strong> Esta acción desvinculará al cliente y devolverá el equipo al inventario disponible. Su historial de lecturas y bitácoras de servicio <strong>permanecerá intacto</strong> en el sistema.
+                </div>
+
+                <div class="form-group">
+                    <label>Equipo a Devolver:</label>
+                    <div id="end-rental-machine-desc" style="font-weight:700; font-size:14px; color:var(--text-primary);">Cargando...</div>
+                </div>
+
+                <div class="form-group" style="margin-top: 15px;">
+                    <label for="end-rental-counter">Contador de Devolución (Lectura Final) <span class="required">*</span></label>
+                    <input type="number" id="end-rental-counter" class="form-control" required min="0" placeholder="Ej: 25400">
+                    <span class="text-xs text-secondary-light" id="end-rental-min-hint">El contador actual es de -- copias.</span>
+                </div>
+
+                <div class="form-row" style="margin-top: 15px;">
+                    <div class="form-group col-6">
+                        <label for="end-rental-status">Estado Físico del Equipo <span class="required">*</span></label>
+                        <select id="end-rental-status" class="form-control" required>
+                            <option value="Usado">Usado</option>
+                            <option value="Nuevo">Nuevo (Sin Uso)</option>
+                            <option value="No funciona">No Funciona</option>
+                            <option value="Scrap">Scrap (Desguace)</option>
+                        </select>
+                    </div>
+                    <div class="form-group col-6">
+                        <label for="end-rental-availability">Disponibilidad Comercial <span class="required">*</span></label>
+                        <select id="end-rental-availability" class="form-control" required>
+                            <option value="true">Disponible (Venta/Alquiler)</option>
+                            <option value="false">No Disponible</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="modal-footer" style="margin-top: 20px;">
+                    <button type="button" class="btn btn-secondary close-modal-btn">Cancelar</button>
+                    <button type="submit" class="btn btn-danger">Confirmar Devolución</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Change Machine (Cambiar de Equipo) -->
+    <div id="modal-change-machine" class="modal">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header">
+                <h3>🔄 Cambiar Equipo en Alquiler</h3>
+                <span class="close-modal">&times;</span>
+            </div>
+            <form id="form-change-machine">
+                <input type="hidden" id="change-old-machine-id">
+                
+                <div style="background-color:rgba(99, 102, 241, 0.05); border:1px solid rgba(99, 102, 241, 0.15); border-radius:8px; padding:12px; font-size:12px; color:var(--indigo); margin-bottom:15px; line-height:1.4;">
+                    Reemplazará el equipo actual de este alquiler por otro disponible del stock. El abono y condiciones se mantendrán asignados al cliente. Se guardarán de forma diferenciada las historias de ambos equipos.
+                </div>
+
+                <div class="form-group">
+                    <label>Equipo Actual (Saliente):</label>
+                    <div id="change-old-machine-desc" style="font-weight:700; font-size:13px; color:var(--text-primary);">Cargando...</div>
+                </div>
+
+                <div class="form-row" style="margin-top: 15px;">
+                    <div class="form-group col-6">
+                        <label for="change-old-counter">Contador Final del Saliente <span class="required">*</span></label>
+                        <input type="number" id="change-old-counter" class="form-control" required min="0" placeholder="Ej: 15000">
+                        <span class="text-xs text-secondary-light" id="change-old-min-hint">Actual: -- copias.</span>
+                    </div>
+                    <div class="form-group col-6">
+                        <label for="change-old-status">Estado del Saliente al Volver <span class="required">*</span></label>
+                        <select id="change-old-status" class="form-control" required>
+                            <option value="Usado">Usado</option>
+                            <option value="No funciona">No Funciona</option>
+                            <option value="Scrap">Scrap</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-top: 15px;">
+                    <label for="change-new-machine-id">Seleccionar Nuevo Equipo (Entrante) <span class="required">*</span></label>
+                    <select id="change-new-machine-id" class="form-control" required>
+                        <!-- Populated dynamically with available machines -->
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-top: 15px;">
+                    <label for="change-new-initial-counter">Contador de Entrega (Inicial Entrante) <span class="required">*</span></label>
+                    <input type="number" id="change-new-initial-counter" class="form-control" required min="0" placeholder="Ej: 0">
+                    <span class="text-xs text-secondary-light" id="change-new-hint">Se pre-completa con el contador actual del stock.</span>
+                </div>
+
+                <div class="modal-footer" style="margin-top: 20px;">
+                    <button type="button" class="btn btn-secondary close-modal-btn">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Procesar Reemplazo</button>
                 </div>
             </form>
         </div>

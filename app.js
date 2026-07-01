@@ -71,6 +71,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Wire up Reports actions
     setupReports();
+
+    // Wire up Rental Transitions
+    setupRentalTransitions();
 });
 
 // Async function to load either from Firebase or LocalStorage
@@ -921,6 +924,19 @@ window.openRentalDetailModal = (machineId) => {
         openAddMaintenanceTrigger(machineId);
     };
 
+    const isTech = state.currentUser?.role === 'tecnico';
+    const endRentalBtn = document.getElementById('btn-rental-end');
+    const changeMachineBtn = document.getElementById('btn-rental-change-machine');
+
+    if (endRentalBtn) {
+        endRentalBtn.style.display = isTech ? 'none' : 'inline-block';
+        endRentalBtn.onclick = () => openEndRentalModal(machineId);
+    }
+    if (changeMachineBtn) {
+        changeMachineBtn.style.display = isTech ? 'none' : 'inline-block';
+        changeMachineBtn.onclick = () => openChangeMachineModal(machineId);
+    }
+
     const titleEl = document.getElementById('rental-detail-title');
     const subtitleEl = document.getElementById('rental-detail-subtitle');
 
@@ -1080,13 +1096,19 @@ function setupForms() {
         const isAvailable = document.getElementById('machine-availability').value === 'true';
         const readingDay = parseInt(document.getElementById('machine-reading-day').value) || 10;
 
+        let finalStatus = status;
+        if (status === 'Nuevo' && machineCounter > 0) {
+            finalStatus = 'Usado';
+            showToast('El equipo era Nuevo y al tener contador mayor a 0, cambió a Usado automáticamente', 'info');
+        }
+
         const machineData = {
             id: id || ('machine-' + Date.now()),
             brand,
             model,
             serial,
             type,
-            status,
+            status: finalStatus,
             machineCounter,
             clientId: clientId || '',
             abonoId: abonoId || '',
@@ -1194,8 +1216,13 @@ function setupForms() {
         // Propagate logged final counter to update active machine current counter record
         const machineIdx = state.machines.findIndex(m => m.id === machineId);
         if (machineIdx !== -1) {
-            state.machines[machineIdx].machineCounter = final;
-            dbSet('machines', machineId, state.machines[machineIdx]);
+            let machine = state.machines[machineIdx];
+            machine.machineCounter = final;
+            if (machine.status === 'Nuevo' && final > 0) {
+                machine.status = 'Usado';
+                showToast('El equipo era Nuevo y al tener contador mayor a 0, cambió a Usado automáticamente', 'info');
+            }
+            dbSet('machines', machineId, machine);
         }
 
         closeAllModals();
@@ -5206,4 +5233,248 @@ window.openMachineReportTrigger = (machineId) => {
 
     document.getElementById('modal-report').style.display = 'block';
 };
+
+// RENTAL TRANSITIONS: END RENTAL & CHANGE MACHINE
+function setupRentalTransitions() {
+    const endForm = document.getElementById('form-end-rental');
+    if (endForm) {
+        endForm.addEventListener('submit', submitEndRental);
+    }
+
+    const changeForm = document.getElementById('form-change-machine');
+    if (changeForm) {
+        changeForm.addEventListener('submit', submitChangeMachine);
+    }
+}
+
+window.openEndRentalModal = (machineId) => {
+    closeAllModals();
+    const machine = state.machines.find(m => m.id === machineId);
+    if (!machine) return;
+
+    document.getElementById('end-rental-machine-id').value = machineId;
+    document.getElementById('end-rental-machine-desc').textContent = `${machine.brand || ''} ${machine.model} (S/N: ${machine.serial})`;
+    
+    const counterInput = document.getElementById('end-rental-counter');
+    counterInput.value = machine.machineCounter || 0;
+    counterInput.min = machine.machineCounter || 0;
+    
+    document.getElementById('end-rental-min-hint').textContent = `El contador actual es de ${(machine.machineCounter || 0).toLocaleString('es-AR')} copias.`;
+    
+    // Default physical status select to current machine status
+    document.getElementById('end-rental-status').value = machine.status === 'Nuevo' ? 'Usado' : (machine.status || 'Usado');
+    document.getElementById('end-rental-availability').value = 'true';
+
+    document.getElementById('modal-end-rental').style.display = 'block';
+};
+
+async function submitEndRental(e) {
+    e.preventDefault();
+    const machineId = document.getElementById('end-rental-machine-id').value;
+    const finalCounter = parseInt(document.getElementById('end-rental-counter').value, 10) || 0;
+    const status = document.getElementById('end-rental-status').value;
+    const isAvailable = document.getElementById('end-rental-availability').value === 'true';
+
+    const machine = state.machines.find(m => m.id === machineId);
+    if (!machine) return;
+
+    if (finalCounter < (machine.machineCounter || 0)) {
+        showToast('El contador final no puede ser menor al contador actual', 'error');
+        return;
+    }
+
+    // Auto-convert Nuevo to Usado if counter changes from 0 to > 0
+    let finalStatus = status;
+    if (machine.status === 'Nuevo' && finalCounter > 0) {
+        finalStatus = 'Usado';
+        showToast('El equipo era Nuevo y al tener contador mayor a 0, cambió a Usado automáticamente', 'info');
+    }
+
+    // Save final reading if we want to log the usage for the current month
+    const activeReading = state.readings.find(r => r.machineId === machineId && r.month === currentMonth);
+    if (activeReading) {
+        activeReading.final = finalCounter;
+        activeReading.status = 'paid'; // mark paid since rental ended and settled
+        await dbSet('readings', activeReading.id, activeReading);
+    } else if (machine.clientId) {
+        const newReading = {
+            id: 'read-' + Date.now(),
+            machineId: machineId,
+            clientId: machine.clientId,
+            month: currentMonth,
+            initial: machine.machineCounter || 0,
+            final: finalCounter,
+            status: 'paid'
+        };
+        state.readings.push(newReading);
+        await dbSet('readings', newReading.id, newReading);
+    }
+
+    // Return machine to stock (unlink client/abono)
+    machine.clientId = '';
+    machine.abonoId = '';
+    machine.machineCounter = finalCounter;
+    machine.status = finalStatus;
+    machine.isAvailable = isAvailable;
+    
+    // Clear installation details since it is now unassigned
+    machine.installationDate = '';
+    machine.initialCounter = 0;
+
+    await dbSet('machines', machineId, machine);
+
+    closeAllModals();
+    renderApp();
+    showToast('Alquiler finalizado y equipo devuelto al stock', 'success');
+}
+
+window.openChangeMachineModal = (oldMachineId) => {
+    closeAllModals();
+    const oldMachine = state.machines.find(m => m.id === oldMachineId);
+    if (!oldMachine) return;
+
+    document.getElementById('change-old-machine-id').value = oldMachineId;
+    document.getElementById('change-old-machine-desc').textContent = `${oldMachine.brand || ''} ${oldMachine.model} (S/N: ${oldMachine.serial})`;
+    
+    const oldCounterInput = document.getElementById('change-old-counter');
+    oldCounterInput.value = oldMachine.machineCounter || 0;
+    oldCounterInput.min = oldMachine.machineCounter || 0;
+    document.getElementById('change-old-min-hint').textContent = `Actual: ${(oldMachine.machineCounter || 0).toLocaleString('es-AR')} copias.`;
+    
+    // Set default return status to Usado
+    document.getElementById('change-old-status').value = oldMachine.status === 'Nuevo' ? 'Usado' : (oldMachine.status || 'Usado');
+
+    // Populate dropdown with available machines
+    const newMachineSelect = document.getElementById('change-new-machine-id');
+    newMachineSelect.innerHTML = '<option value="">-- Selecciona el equipo de reemplazo --</option>';
+    
+    const available = state.machines.filter(m => (m.status === 'Disponible' || !m.clientId) && m.id !== oldMachineId);
+    available.forEach(m => {
+        const option = document.createElement('option');
+        option.value = m.id;
+        option.textContent = `${m.brand || ''} ${m.model} (${m.serial}) - Contador: ${(m.machineCounter || 0).toLocaleString('es-AR')}`;
+        newMachineSelect.appendChild(option);
+    });
+
+    // Handle selection change to prefill new initial counter
+    newMachineSelect.onchange = (e) => {
+        const selectedId = e.target.value;
+        const selectedMachine = state.machines.find(m => m.id === selectedId);
+        const newInitialInput = document.getElementById('change-new-initial-counter');
+        const hintEl = document.getElementById('change-new-hint');
+        if (selectedMachine) {
+            newInitialInput.value = selectedMachine.machineCounter || 0;
+            hintEl.textContent = `Contador actual en stock: ${(selectedMachine.machineCounter || 0).toLocaleString('es-AR')} copias.`;
+        } else {
+            newInitialInput.value = 0;
+            hintEl.textContent = 'Se pre-completa con el contador actual del stock.';
+        }
+    };
+
+    document.getElementById('modal-change-machine').style.display = 'block';
+};
+
+async function submitChangeMachine(e) {
+    e.preventDefault();
+    const oldMachineId = document.getElementById('change-old-machine-id').value;
+    const oldFinalCounter = parseInt(document.getElementById('change-old-counter').value, 10) || 0;
+    const oldStatus = document.getElementById('change-old-status').value;
+    
+    const newMachineId = document.getElementById('change-new-machine-id').value;
+    const newInitialCounter = parseInt(document.getElementById('change-new-initial-counter').value, 10) || 0;
+
+    if (!newMachineId) {
+        showToast('Debes seleccionar el equipo de reemplazo', 'error');
+        return;
+    }
+
+    const oldMachine = state.machines.find(m => m.id === oldMachineId);
+    const newMachine = state.machines.find(m => m.id === newMachineId);
+
+    if (!oldMachine || !newMachine) return;
+
+    if (oldFinalCounter < (oldMachine.machineCounter || 0)) {
+        showToast('El contador final de la máquina saliente no puede ser menor a su contador actual', 'error');
+        return;
+    }
+
+    // Save final status for old machine, check Nuevo to Usado
+    let finalOldStatus = oldStatus;
+    if (oldMachine.status === 'Nuevo' && oldFinalCounter > 0) {
+        finalOldStatus = 'Usado';
+    }
+
+    // 1. Process old machine release
+    const client = state.clients.find(c => c.id === oldMachine.clientId);
+    if (client) {
+        // Save old reading log for currentMonth
+        const activeReading = state.readings.find(r => r.machineId === oldMachineId && r.month === currentMonth);
+        if (activeReading) {
+            activeReading.final = oldFinalCounter;
+            activeReading.status = 'paid';
+            await dbSet('readings', activeReading.id, activeReading);
+        } else {
+            const newReading = {
+                id: 'read-' + Date.now(),
+                machineId: oldMachineId,
+                clientId: oldMachine.clientId,
+                month: currentMonth,
+                initial: oldMachine.machineCounter || 0,
+                final: oldFinalCounter,
+                status: 'paid'
+            };
+            state.readings.push(newReading);
+            await dbSet('readings', newReading.id, newReading);
+        }
+    }
+
+    const savedClientId = oldMachine.clientId;
+    const savedAbonoId = oldMachine.abonoId;
+    const savedApplyIva = oldMachine.applyIva;
+    const savedReadingDay = oldMachine.readingDay;
+
+    // Reset old machine fields and return to stock
+    oldMachine.clientId = '';
+    oldMachine.abonoId = '';
+    oldMachine.machineCounter = oldFinalCounter;
+    oldMachine.status = finalOldStatus;
+    oldMachine.isAvailable = true;
+    oldMachine.installationDate = '';
+    oldMachine.initialCounter = 0;
+    await dbSet('machines', oldMachineId, oldMachine);
+
+    // 2. Process new machine assignment
+    let finalNewStatus = newMachine.status;
+    if (newMachine.status === 'Nuevo' && newInitialCounter > 0) {
+        finalNewStatus = 'Usado';
+    }
+
+    newMachine.clientId = savedClientId;
+    newMachine.abonoId = savedAbonoId;
+    newMachine.applyIva = savedApplyIva;
+    newMachine.readingDay = savedReadingDay;
+    newMachine.initialCounter = newInitialCounter;
+    newMachine.machineCounter = newInitialCounter;
+    newMachine.status = 'En Servicio'; // mark it active
+    newMachine.isAvailable = false;
+    newMachine.installationDate = new Date().toISOString().split('T')[0];
+    await dbSet('machines', newMachineId, newMachine);
+
+    // 3. Create initial reading log for the new machine
+    const newReading = {
+        id: 'read-' + (Date.now() + 1),
+        machineId: newMachineId,
+        clientId: savedClientId,
+        month: currentMonth,
+        initial: newInitialCounter,
+        final: newInitialCounter,
+        status: 'pending'
+    };
+    state.readings.push(newReading);
+    await dbSet('readings', newReading.id, newReading);
+
+    closeAllModals();
+    renderApp();
+    showToast(`Reemplazo realizado con éxito. Nuevo equipo: ${newMachine.brand || ''} ${newMachine.model}`, 'success');
+}
 
