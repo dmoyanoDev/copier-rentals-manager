@@ -1090,6 +1090,14 @@ function setupForms() {
         }
 
         dbSet('readings', readingData.id, readingData);
+
+        // Propagate logged final counter to update active machine current counter record
+        const machineIdx = state.machines.findIndex(m => m.id === machineId);
+        if (machineIdx !== -1) {
+            state.machines[machineIdx].machineCounter = final;
+            dbSet('machines', machineId, state.machines[machineIdx]);
+        }
+
         closeAllModals();
         renderApp();
     });
@@ -1924,12 +1932,17 @@ function openReadingModal(machineId, month, reading = null) {
     const prevReading = state.readings.find(r => r.machineId === machineId && r.month === prevMonthStr);
     const hintText = document.getElementById('reading-last-month-hint');
     
-    let defaultInitial = 0;
+    let defaultInitial = machine.initialCounter || machine.machineCounter || 0;
+    let hasPrevious = false;
     if (prevReading) {
         defaultInitial = prevReading.final;
-        hintText.textContent = `Lectura final de ${formatPeriod(prevMonthStr)}: ${defaultInitial.toLocaleString('es-AR')}`;
+        hintText.textContent = `Lectura final de ${formatPeriod(prevMonthStr)}: ${defaultInitial.toLocaleString('es-AR')} (Pre-completado automático)`;
+        hasPrevious = true;
     } else {
-        hintText.textContent = `Sin lecturas en ${formatPeriod(prevMonthStr)}. Cargar lectura inicial manualmente.`;
+        hintText.textContent = `Sin lecturas previas. Se inicializa con el contador de instalación: ${defaultInitial.toLocaleString('es-AR')}`;
+        if (defaultInitial > 0) {
+            hasPrevious = true;
+        }
     }
 
     if (reading) {
@@ -1944,8 +1957,19 @@ function openReadingModal(machineId, month, reading = null) {
         document.getElementById('reading-status').value = 'pending';
     }
 
-    // Trigger calculation updates
+    // Lock initial input to prevent altering carry-over integrity
     const initialInput = document.getElementById('reading-initial');
+    if (hasPrevious) {
+        initialInput.readOnly = true;
+        initialInput.style.backgroundColor = 'rgba(0, 0, 0, 0.03)';
+        initialInput.style.cursor = 'not-allowed';
+    } else {
+        initialInput.readOnly = false;
+        initialInput.style.backgroundColor = '';
+        initialInput.style.cursor = '';
+    }
+
+    // Trigger calculation updates
     initialInput.dispatchEvent(new Event('input'));
 
     document.getElementById('modal-reading').style.display = 'block';
