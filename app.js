@@ -288,6 +288,12 @@ function checkAuthSession() {
         
         const userRole = user.role || 'administrativo';
         roleEl.textContent = userRole === 'tecnico' ? 'Técnico' : 'Administrativo';
+
+        // Hide/show add machine button based on role
+        const addMachineBtn = document.getElementById('btn-add-machine');
+        if (addMachineBtn) {
+            addMachineBtn.style.display = userRole === 'tecnico' ? 'none' : 'block';
+        }
         
         // Filter sidebar navigation by role (technicians only see dashboard, technical area, and machines)
         const navItems = document.querySelectorAll('.nav-menu .nav-item');
@@ -1981,6 +1987,18 @@ function openMachineModal(machine = null) {
         availSelect.disabled = false;
     }
     
+    // Manage fields readability by user role (Technicians view only)
+    const userRole = state.currentUser ? (state.currentUser.role || 'administrativo') : 'administrativo';
+    const isTech = userRole === 'tecnico';
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) {
+        submitBtn.style.display = isTech ? 'none' : 'block';
+    }
+    const formElements = form.querySelectorAll('input, select, textarea');
+    formElements.forEach(el => {
+        el.disabled = isTech;
+    });
+
     document.getElementById('modal-machine').style.display = 'block';
 }
 
@@ -2413,79 +2431,296 @@ function renderDashboardTab() {
         }
     });
 
-    // Update numbers
+    // Update numbers depending on role
+    const userRole = state.currentUser ? (state.currentUser.role || 'administrativo') : 'administrativo';
+    const isTech = userRole === 'tecnico';
+
     document.getElementById('stat-active-clients').textContent = activeClientsCount;
     document.getElementById('stat-rented-machines').textContent = rentedMachinesCount;
-    document.getElementById('stat-fixed-revenue').textContent = formatCurrency(projectedBase);
-    document.getElementById('stat-total-revenue').textContent = formatCurrency(totalInvoiced);
-    document.getElementById('stat-excedente-revenue').textContent = `Excedentes: ${formatCurrency(excessInvoiced)}`;
 
-    // Billing chart summary
-    document.getElementById('billing-summary-paid').textContent = formatCurrency(paidAmt);
-    document.getElementById('billing-summary-pending').textContent = formatCurrency(pendingAmt);
+    const card3Title = document.querySelector('.metric-card:nth-child(3) h3');
+    const card3Value = document.getElementById('stat-fixed-revenue');
+    const card3Sub = document.querySelector('.metric-card:nth-child(3) .metric-subtext');
+    const card3Icon = document.querySelector('.metric-card:nth-child(3) .metric-icon');
 
-    const billingTotal = paidAmt + pendingAmt;
-    const paidPct = billingTotal > 0 ? Math.round((paidAmt / billingTotal) * 100) : 0;
-    const pendingPct = billingTotal > 0 ? (100 - paidPct) : 0;
+    const card4Title = document.querySelector('.metric-card:nth-child(4) h3');
+    const card4Value = document.getElementById('stat-total-revenue');
+    const card4Sub = document.getElementById('stat-excedente-revenue');
+    const card4Icon = document.querySelector('.metric-card:nth-child(4) .metric-icon');
 
-    document.getElementById('chart-bar-paid').style.width = `${paidPct}%`;
-    document.getElementById('chart-bar-pending').style.width = `${pendingPct}%`;
-    document.getElementById('chart-pct-paid').textContent = `${paidPct}%`;
-    document.getElementById('chart-pct-pending').textContent = `${pendingPct}%`;
-
-    // 2. Progress of readings
-    const totalToRead = rentedMachinesCount;
-    const progressPct = totalToRead > 0 ? Math.round((loggedReadingsCount / totalToRead) * 100) : 0;
-    document.getElementById('dashboard-month-label').textContent = formatPeriod(currentMonth);
-    document.getElementById('readings-progress-percent').textContent = `${progressPct}%`;
-    document.getElementById('readings-progress-bar').style.width = `${progressPct}%`;
-    document.getElementById('readings-progress-desc').textContent = `${loggedReadingsCount} de ${totalToRead} máquinas registradas en el mes`;
-
-    // 3. Pending Readings Table
-    const dashboardTableBody = document.querySelector('#dashboard-pending-readings-table tbody');
-    dashboardTableBody.innerHTML = '';
-
-    if (rentedMachines.length === 0) {
-        dashboardTableBody.innerHTML = `<tr><td colspan="5" class="text-center py-4">No hay máquinas alquiladas registradas. Ve a Máquinas para asignar.</td></tr>`;
-        return;
-    }
-
-    rentedMachines.forEach(machine => {
-        const client = state.clients.find(c => c.id === machine.clientId);
-        const abono = state.abonos.find(a => a.id === machine.abonoId);
-        const reading = state.readings.find(r => r.machineId === machine.id && r.month === currentMonth);
-
-        const clientName = client ? client.name : 'Cliente no encontrado';
-        const abonoName = abono ? abono.name : 'Sin plan';
-
-        let statusBadge = '';
-        let actionBtn = '';
-
-        if (reading) {
-            if (reading.status === 'paid') {
-                statusBadge = `<span class="badge success">Lectura Cargada (Cobrado)</span>`;
-            } else {
-                statusBadge = `<span class="badge warning">Lectura Cargada (Pendiente)</span>`;
-            }
-            actionBtn = `<button class="btn btn-secondary btn-sm" onclick="editReadingTrigger('${reading.id}')">Editar Lectura</button>`;
-        } else {
-            statusBadge = `<span class="badge danger">Falta Lectura</span>`;
-            actionBtn = `<button class="btn btn-primary btn-sm btn-icon" onclick="addReadingTrigger('${machine.id}')">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="M12 5v14M5 12h14"/></svg>
-                Cargar Lectura
-            </button>`;
+    if (isTech) {
+        // Morph Card 3 to Technical Pending incident tickets count
+        if (card3Title) card3Title.textContent = 'Pedidos Pendientes';
+        if (card3Value) {
+            const pendingCount = (state.tickets || []).filter(t => t.status !== 'visto-resuelto' && t.status !== 'sin-solucion').length;
+            card3Value.textContent = pendingCount;
+            card3Value.className = 'metric-value text-indigo';
+        }
+        if (card3Sub) card3Sub.textContent = 'Servicios sin finalizar';
+        if (card3Icon) {
+            card3Icon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>`;
+            card3Icon.className = 'metric-icon bg-indigo-light text-indigo';
         }
 
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td class="font-bold-title">${clientName}</td>
-            <td>${machine.model} <span class="text-xs text-secondary-light">(${machine.serial})</span></td>
-            <td>${abonoName}</td>
-            <td>${statusBadge}</td>
-            <td>${actionBtn}</td>
-        `;
-        dashboardTableBody.appendChild(row);
-    });
+        // Morph Card 4 to Technical urgent incident tickets count
+        if (card4Title) card4Title.textContent = 'Pedidos Críticos';
+        if (card4Value) {
+            const urgentCount = (state.tickets || []).filter(t => t.priority === 'alta' && t.status !== 'visto-resuelto' && t.status !== 'sin-solucion').length;
+            card4Value.textContent = urgentCount;
+            card4Value.className = 'metric-value text-danger';
+        }
+        if (card4Sub) {
+            card4Sub.textContent = 'Atención inmediata requerida';
+            card4Sub.className = 'metric-subtext text-danger';
+        }
+        if (card4Icon) {
+            card4Icon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01"/></svg>`;
+            card4Icon.className = 'metric-icon bg-danger-light text-danger';
+        }
+
+        // Morph dashboard left card to Active Technical Tickets list
+        const leftProg = document.querySelector('#dashboard-left-card .progress-container');
+        if (leftProg) leftProg.style.display = 'none';
+        
+        const leftTitle = document.getElementById('dashboard-left-card-title');
+        if (leftTitle) leftTitle.textContent = 'Pedidos Activos del Área Técnica';
+
+        const tableHead = document.querySelector('#dashboard-pending-readings-table thead');
+        if (tableHead) {
+            tableHead.innerHTML = `
+                <tr>
+                    <th>Fecha/Hora</th>
+                    <th>Cliente</th>
+                    <th>Equipo</th>
+                    <th>Problema / Tarea</th>
+                    <th>Prioridad</th>
+                    <th>Acción</th>
+                </tr>
+            `;
+        }
+
+        // Morph dashboard right card to My Assigned Support requests
+        const rightTitle = document.getElementById('dashboard-right-card-title');
+        if (rightTitle) rightTitle.textContent = 'Mis Pedidos Asignados';
+
+        const rightBilling = document.querySelector('#dashboard-right-card .billing-summary-block');
+        if (rightBilling) rightBilling.style.display = 'none';
+
+        let myTicketsList = document.getElementById('dashboard-my-tickets-list');
+        if (!myTicketsList) {
+            myTicketsList = document.createElement('div');
+            myTicketsList.id = 'dashboard-my-tickets-list';
+            myTicketsList.style.maxHeight = '320px';
+            myTicketsList.style.overflowY = 'auto';
+            document.querySelector('#dashboard-right-card .card-body').appendChild(myTicketsList);
+        }
+        myTicketsList.style.display = 'block';
+        myTicketsList.innerHTML = '';
+
+        const myAssigned = (state.tickets || []).filter(t => t.assignedTechId === state.currentUser.id && t.status !== 'visto-resuelto' && t.status !== 'sin-solucion');
+        if (myAssigned.length === 0) {
+            myTicketsList.innerHTML = `<p class="text-xs text-secondary-light text-center py-4">No tienes pedidos de soporte asignados pendientes.</p>`;
+        } else {
+            const ul = document.createElement('ul');
+            ul.style.listStyle = 'none';
+            ul.style.padding = '0';
+            ul.style.margin = '0';
+            ul.style.display = 'flex';
+            ul.style.flexDirection = 'column';
+            ul.style.gap = '8px';
+            
+            myAssigned.forEach(t => {
+                const li = document.createElement('li');
+                li.style.padding = '10px';
+                li.style.borderRadius = '6px';
+                li.style.backgroundColor = 'rgba(99,102,241,0.05)';
+                li.style.border = '1px solid rgba(99,102,241,0.1)';
+                li.style.fontSize = '12px';
+                li.style.display = 'flex';
+                li.style.justifyContent = 'space-between';
+                li.style.alignItems = 'center';
+                
+                let pBadge = '';
+                if (t.priority === 'alta') pBadge = '🔴';
+                else if (t.priority === 'media') pBadge = '🟡';
+                else pBadge = '🟢';
+                
+                li.innerHTML = `
+                    <div style="line-height:1.3; color:var(--text-primary);">
+                        <strong>${pBadge} ${t.clientName}</strong>
+                        <span class="d-block text-xs text-secondary-light mt-0.5" style="font-weight:500;">${t.machineDesc}</span>
+                        <span class="d-block text-xs mt-1 text-secondary-light" style="font-weight:400; line-height:1.2; font-style:italic;">"${escapeHTML(t.description)}"</span>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" onclick="editTicketTrigger('${t.id}')" style="background-color:white; font-size:10px; padding:4px 8px; margin-left:8px; flex-shrink:0;">
+                        Atender
+                    </button>
+                `;
+                ul.appendChild(li);
+            });
+            myTicketsList.appendChild(ul);
+        }
+
+        // Render Active incident requests list into Left Table
+        const dashboardTableBody = document.querySelector('#dashboard-pending-readings-table tbody');
+        dashboardTableBody.innerHTML = '';
+        const activeTickets = (state.tickets || []).filter(t => t.status !== 'visto-resuelto' && t.status !== 'sin-solucion');
+        const priorityWeight = { alta: 3, media: 2, baja: 1 };
+        activeTickets.sort((a, b) => {
+            const prioDiff = (priorityWeight[b.priority] || 0) - (priorityWeight[a.priority] || 0);
+            if (prioDiff !== 0) return prioDiff;
+            return (b.createdAt || 0) - (a.createdAt || 0);
+        });
+
+        if (activeTickets.length === 0) {
+            dashboardTableBody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-secondary-light">No hay pedidos técnicos activos en este momento.</td></tr>`;
+        } else {
+            activeTickets.forEach(ticket => {
+                const dateFmt = ticket.date ? ticket.date.split('-').reverse().join('/') : 'N/A';
+                
+                let priorityBadge = '';
+                if (ticket.priority === 'alta') {
+                    priorityBadge = `<span class="badge danger" style="font-weight:700;">🔴 Alta</span>`;
+                } else if (ticket.priority === 'media') {
+                    priorityBadge = `<span class="badge warning" style="font-weight:700; color:#d97706; background-color:rgba(245,158,11,0.12);">🟡 Media</span>`;
+                } else {
+                    priorityBadge = `<span class="badge success" style="font-weight:700;">🟢 Baja</span>`;
+                }
+
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><strong>${dateFmt}</strong> <span class="text-xs text-secondary-light d-block">${ticket.time || ''}</span></td>
+                    <td class="font-bold-title">${ticket.clientName}</td>
+                    <td>${ticket.machineDesc}</td>
+                    <td><strong>${ticket.taskType}</strong> <span class="text-xs text-secondary-light d-block">${escapeHTML(ticket.description)}</span></td>
+                    <td>${priorityBadge}</td>
+                    <td>
+                        <button class="btn btn-secondary btn-sm" onclick="editTicketTrigger('${ticket.id}')">Atender</button>
+                    </td>
+                `;
+                dashboardTableBody.appendChild(row);
+            });
+        }
+    } else {
+        // Reset left/right morphing back to administrative view
+        const leftProg = document.querySelector('#dashboard-left-card .progress-container');
+        if (leftProg) leftProg.style.display = 'block';
+        
+        const leftTitle = document.getElementById('dashboard-left-card-title');
+        if (leftTitle) leftTitle.textContent = 'Estado de Lecturas del Mes Seleccionado';
+
+        const tableHead = document.querySelector('#dashboard-pending-readings-table thead');
+        if (tableHead) {
+            tableHead.innerHTML = `
+                <tr>
+                    <th>Cliente</th>
+                    <th>Máquina</th>
+                    <th>Abono</th>
+                    <th>Estado Lectura</th>
+                    <th>Acción</th>
+                </tr>
+            `;
+        }
+
+        const rightTitle = document.getElementById('dashboard-right-card-title');
+        if (rightTitle) rightTitle.textContent = 'Resumen de Cobros';
+
+        const rightBilling = document.querySelector('#dashboard-right-card .billing-summary-block');
+        if (rightBilling) rightBilling.style.display = 'block';
+
+        const myTicketsList = document.getElementById('dashboard-my-tickets-list');
+        if (myTicketsList) myTicketsList.style.display = 'none';
+
+        // Original administrator metrics population
+        if (card3Title) card3Title.textContent = 'Abono Mensual Fijo';
+        if (card3Value) {
+            card3Value.textContent = formatCurrency(projectedBase);
+            card3Value.className = 'metric-value';
+        }
+        if (card3Sub) card3Sub.textContent = 'Total proyectado base';
+        if (card3Icon) {
+            card3Icon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>`;
+            card3Icon.className = 'metric-icon bg-blue-light text-blue';
+        }
+
+        if (card4Title) card4Title.textContent = 'Facturación Total Mes';
+        if (card4Value) {
+            card4Value.textContent = formatCurrency(totalInvoiced);
+            card4Value.className = 'metric-value';
+        }
+        if (card4Sub) {
+            card4Sub.textContent = `Excedentes: ${formatCurrency(excessInvoiced)}`;
+            card4Sub.className = 'metric-subtext';
+        }
+        if (card4Icon) {
+            card4Icon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path><polyline points="18 8 22 12 18 16"></polyline></svg>`;
+            card4Icon.className = 'metric-icon bg-purple-light text-purple';
+        }
+
+        // Billing chart summary
+        document.getElementById('billing-summary-paid').textContent = formatCurrency(paidAmt);
+        document.getElementById('billing-summary-pending').textContent = formatCurrency(pendingAmt);
+
+        const billingTotal = paidAmt + pendingAmt;
+        const paidPct = billingTotal > 0 ? Math.round((paidAmt / billingTotal) * 100) : 0;
+        const pendingPct = billingTotal > 0 ? (100 - paidPct) : 0;
+
+        document.getElementById('chart-bar-paid').style.width = `${paidPct}%`;
+        document.getElementById('chart-bar-pending').style.width = `${pendingPct}%`;
+        document.getElementById('chart-pct-paid').textContent = `${paidPct}%`;
+        document.getElementById('chart-pct-pending').textContent = `${pendingPct}%`;
+
+        // readings progress
+        const totalToRead = rentedMachinesCount;
+        const progressPct = totalToRead > 0 ? Math.round((loggedReadingsCount / totalToRead) * 100) : 0;
+        document.getElementById('dashboard-month-label').textContent = formatPeriod(currentMonth);
+        document.getElementById('readings-progress-percent').textContent = `${progressPct}%`;
+        document.getElementById('readings-progress-bar').style.width = `${progressPct}%`;
+        document.getElementById('readings-progress-desc').textContent = `${loggedReadingsCount} de ${totalToRead} máquinas registradas en el mes`;
+
+        // Render readings table
+        const dashboardTableBody = document.querySelector('#dashboard-pending-readings-table tbody');
+        dashboardTableBody.innerHTML = '';
+        if (rentedMachines.length === 0) {
+            dashboardTableBody.innerHTML = `<tr><td colspan="5" class="text-center py-4">No hay máquinas alquiladas registradas. Ve a Máquinas para asignar.</td></tr>`;
+        } else {
+            rentedMachines.forEach(machine => {
+                const client = state.clients.find(c => c.id === machine.clientId);
+                const abono = state.abonos.find(a => a.id === machine.abonoId);
+                const reading = state.readings.find(r => r.machineId === machine.id && r.month === currentMonth);
+
+                const clientName = client ? client.name : 'Cliente no encontrado';
+                const abonoName = abono ? abono.name : 'Sin plan';
+
+                let statusBadge = '';
+                let actionBtn = '';
+
+                if (reading) {
+                    if (reading.status === 'paid') {
+                        statusBadge = `<span class="badge success">Lectura Cargada (Cobrado)</span>`;
+                    } else {
+                        statusBadge = `<span class="badge warning">Lectura Cargada (Pendiente)</span>`;
+                    }
+                    actionBtn = `<button class="btn btn-secondary btn-sm" onclick="editReadingTrigger('${reading.id}')">Editar Lectura</button>`;
+                } else {
+                    statusBadge = `<span class="badge danger">Falta Lectura</span>`;
+                    actionBtn = `<button class="btn btn-primary btn-sm btn-icon" onclick="addReadingTrigger('${machine.id}')">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="M12 5v14M5 12h14"/></svg>
+                        Cargar Lectura
+                    </button>`;
+                }
+
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="font-bold-title">${clientName}</td>
+                    <td>${machine.model} <span class="text-xs text-secondary-light">(${machine.serial})</span></td>
+                    <td>${abonoName}</td>
+                    <td>${statusBadge}</td>
+                    <td>${actionBtn}</td>
+                `;
+                dashboardTableBody.appendChild(row);
+            });
+        }
+    }
 
     // 4. Recent Maintenance Service Log
     const recentMaintenanceBody = document.querySelector('#dashboard-recent-maintenance-table tbody');
@@ -2563,41 +2798,69 @@ function renderDashboardCharts() {
     };
 
     const recentPeriods = getRecent6Months(currentMonth);
-    const earningsData = recentPeriods.map(period => {
-        let revenue = 0;
-        state.machines.forEach(machine => {
-            const reading = state.readings.find(r => r.machineId === machine.id && r.month === period);
-            const abono = state.abonos.find(a => a.id === machine.abonoId);
-            if (abono) {
-                const ivaRate = machine.applyIva ? (abono.ivaRate || 0) : 0;
-                if (reading) {
-                    const copies = Math.max(0, reading.final - reading.initial);
-                    const excess = Math.max(0, copies - abono.limit);
-                    const netCost = abono.price + (excess * abono.excessPrice);
-                    revenue += netCost * (1 + ivaRate / 100);
-                } else if (machine.clientId) {
-                    revenue += abono.price * (1 + ivaRate / 100);
-                }
-            }
+    const userRole = state.currentUser ? (state.currentUser.role || 'administrativo') : 'administrativo';
+    const isTech = userRole === 'tecnico';
+
+    let chartData = [];
+    let chartLabelText = 'Ingresos ($)';
+    let tooltipLabelCallback = function(context) {
+        return 'Ingresos: ' + formatCurrency(context.parsed.y);
+    };
+    let yAxisTickCallback = function(value) {
+        return '$' + value.toLocaleString('es-AR');
+    };
+
+    const chartTitleEl = document.getElementById('chart-earnings-card-title');
+    if (isTech) {
+        if (chartTitleEl) chartTitleEl.textContent = 'Servicios Técnicos Realizados (Últimos 6 Meses)';
+        chartLabelText = 'Servicios Realizados';
+        chartData = recentPeriods.map(period => {
+            return (state.maintenance || []).filter(m => m.date && m.date.startsWith(period)).length;
         });
-        return Math.round(revenue);
-    });
+        tooltipLabelCallback = function(context) {
+            return 'Servicios: ' + context.parsed.y;
+        };
+        yAxisTickCallback = function(value) {
+            return value + ' serv.';
+        };
+    } else {
+        if (chartTitleEl) chartTitleEl.textContent = 'Historial de Ingresos de Alquiler ($ ARS)';
+        chartData = recentPeriods.map(period => {
+            let revenue = 0;
+            state.machines.forEach(machine => {
+                const reading = state.readings.find(r => r.machineId === machine.id && r.month === period);
+                const abono = state.abonos.find(a => a.id === machine.abonoId);
+                if (abono) {
+                    const ivaRate = machine.applyIva ? (abono.ivaRate || 0) : 0;
+                    if (reading) {
+                        const copies = Math.max(0, reading.final - reading.initial);
+                        const excess = Math.max(0, copies - abono.limit);
+                        const netCost = abono.price + (excess * abono.excessPrice);
+                        revenue += netCost * (1 + ivaRate / 100);
+                    } else if (machine.clientId) {
+                        revenue += abono.price * (1 + ivaRate / 100);
+                    }
+                }
+            });
+            return Math.round(revenue);
+        });
+    }
 
     const formattedLabels = recentPeriods.map(p => formatPeriod(p).split(' ')[0]);
 
-    // 1. Bar Chart: Earnings History
+    // 1. Bar Chart: Earnings History (or Services completed for tech)
     chartEarningsInstance = new Chart(ctxEarnings, {
         type: 'bar',
         data: {
             labels: formattedLabels,
             datasets: [{
-                label: 'Ingresos ($)',
-                data: earningsData,
-                backgroundColor: 'rgba(99, 102, 241, 0.75)',
-                borderColor: 'rgba(99, 102, 241, 1)',
+                label: chartLabelText,
+                data: chartData,
+                backgroundColor: isTech ? 'rgba(16, 185, 129, 0.75)' : 'rgba(99, 102, 241, 0.75)',
+                borderColor: isTech ? 'rgba(16, 185, 129, 1)' : 'rgba(99, 102, 241, 1)',
                 borderWidth: 1.5,
                 borderRadius: 6,
-                hoverBackgroundColor: 'rgba(99, 102, 241, 0.95)'
+                hoverBackgroundColor: isTech ? 'rgba(16, 185, 129, 0.95)' : 'rgba(99, 102, 241, 0.95)'
             }]
         },
         options: {
@@ -2607,9 +2870,7 @@ function renderDashboardCharts() {
                 legend: { display: false },
                 tooltip: {
                     callbacks: {
-                        label: function(context) {
-                            return 'Ingresos: ' + formatCurrency(context.parsed.y);
-                        }
+                        label: tooltipLabelCallback
                     }
                 }
             },
@@ -2618,9 +2879,7 @@ function renderDashboardCharts() {
                     beginAtZero: true,
                     grid: { color: 'rgba(0, 0, 0, 0.04)' },
                     ticks: {
-                        callback: function(value) {
-                            return '$' + value.toLocaleString('es-AR');
-                        },
+                        callback: yAxisTickCallback,
                         font: { size: 9 }
                     }
                 },
@@ -3158,9 +3417,9 @@ function renderMachinesTab() {
             </td>
             <td>
                 <div class="flex-actions-row">
-                    <button class="btn btn-secondary btn-sm" onclick="editMachineTrigger('${machine.id}')">Editar</button>
+                    <button class="btn btn-secondary btn-sm" onclick="editMachineTrigger('${machine.id}')">${state.currentUser?.role === 'tecnico' ? 'Ver Detalle' : 'Editar'}</button>
                     ${machine.clientId ? `<button class="btn btn-secondary btn-sm" onclick="openMaintenanceHistoryTrigger('${machine.id}')">Historial</button>` : ''}
-                    <button class="btn btn-danger-outline btn-sm" onclick="deleteMachineTrigger('${machine.id}')">Eliminar</button>
+                    ${state.currentUser?.role !== 'tecnico' ? `<button class="btn btn-danger-outline btn-sm" onclick="deleteMachineTrigger('${machine.id}')">Eliminar</button>` : ''}
                 </div>
             </td>
         `;

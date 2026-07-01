@@ -266,9 +266,9 @@
 
                 <div class="dashboard-row">
                     <!-- Left: Readings Status -->
-                    <div class="dashboard-card flex-2">
+                    <div class="dashboard-card flex-2" id="dashboard-left-card">
                         <div class="card-header">
-                            <h2>Estado de Lecturas del Mes Seleccionado</h2>
+                            <h2 id="dashboard-left-card-title">Estado de Lecturas del Mes Seleccionado</h2>
                             <span class="badge" id="dashboard-month-label">Junio 2026</span>
                         </div>
                         <div class="card-body">
@@ -302,9 +302,9 @@
                     </div>
 
                     <!-- Right: Fast Info / Quick actions -->
-                    <div class="dashboard-card flex-1">
+                    <div class="dashboard-card flex-1" id="dashboard-right-card">
                         <div class="card-header">
-                            <h2>Resumen de Cobros</h2>
+                            <h2 id="dashboard-right-card-title">Resumen de Cobros</h2>
                         </div>
                         <div class="card-body">
                             <div class="billing-summary-block">
@@ -353,7 +353,7 @@
                 <div class="dashboard-row mt-4 grid-2-col">
                     <div class="dashboard-card" style="margin-top:0;">
                         <div class="card-header">
-                            <h2>Historial de Ingresos de Alquiler ($ ARS)</h2>
+                            <h2 id="chart-earnings-card-title">Historial de Ingresos de Alquiler ($ ARS)</h2>
                         </div>
                         <div class="card-body" style="position: relative; height: 260px; min-height: 260px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
                             <canvas id="chart-earnings-history" style="max-height: 230px; width: 100%;"></canvas>
