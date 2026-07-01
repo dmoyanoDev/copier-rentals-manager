@@ -1604,3 +1604,9 @@ textarea.form-control {
     85% { transform: rotate(-4deg); }
 }
 
+#btn-share-whatsapp:hover {
+    transform: scale(1.03);
+    box-shadow: 0 4px 12px rgba(37, 211, 102, 0.25);
+    background-color: #20ba5a !important;
+}
+

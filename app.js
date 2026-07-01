@@ -2082,6 +2082,39 @@ function openInvoiceModal(reading) {
         };
     }
 
+    // Wire share via WhatsApp action
+    const whatsappBtn = document.getElementById('btn-share-whatsapp');
+    if (whatsappBtn) {
+        whatsappBtn.onclick = () => {
+            const clientPhone = (client.phone || '').trim().replace(/[^0-9]/g, '');
+            const periodStr = formatPeriod(reading.month);
+            const machineName = `${machine.brand || ''} ${machine.model}`.trim();
+            const excessStr = excess > 0 
+                ? `\n*Copias Excedentes:* ${excess.toLocaleString('es-AR')} (${formatCurrency(abono.excessPrice)}/copia) -> *Subtotal exc:* ${formatCurrency(excessFee)}`
+                : '';
+            const ivaStr = machine.applyIva && ivaRate > 0 
+                ? `\n*Subtotal Neto:* ${formatCurrency(netSubtotal)}\n*IVA (${ivaRate}%):* ${formatCurrency(ivaCost)}`
+                : '';
+
+            const msg = `Estimado *${client.name}*,\nLe compartimos el resumen de cobro de alquiler para el período *${periodStr}*:\n\n` +
+                `*Equipo:* ${machineName} (S/N: ${machine.serial})\n` +
+                `*Lectura Inicial:* ${reading.initial.toLocaleString('es-AR')}\n` +
+                `*Lectura Final:* ${reading.final.toLocaleString('es-AR')}\n` +
+                `*Consumo del Mes:* ${copies.toLocaleString('es-AR')} copias\n\n` +
+                `*Abono Fijo:* ${formatCurrency(abono.price)} (Incluye ${abono.limit.toLocaleString('es-AR')} copias)${excessStr}${ivaStr}\n` +
+                `-----------------------------------------\n` +
+                `*TOTAL A ABONAR:* ${formatCurrency(totalGeneral)}\n\n` +
+                `Por favor, envíe el comprobante de transferencia bancaria una vez realizado el pago. ¡Muchas gracias por su confianza!\n_M&S Tecnología Digital_`;
+
+            const encodedMsg = encodeURIComponent(msg);
+            let waUrl = `https://wa.me/?text=${encodedMsg}`;
+            if (clientPhone) {
+                waUrl = `https://wa.me/${clientPhone}?text=${encodedMsg}`;
+            }
+            window.open(waUrl, '_blank');
+        };
+    }
+
     document.getElementById('modal-invoice-detail').style.display = 'block';
 }
 
