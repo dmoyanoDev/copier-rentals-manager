@@ -4916,7 +4916,7 @@ function generateClientReportHtml(client) {
 
     // Readings for all client machines (historical and active)
     const clientReadings = state.readings.filter(r => r.clientId === client.id);
-    clientReadings.sort((a, b) => b.month.localeCompare(a.month));
+    clientReadings.sort((a, b) => (b.month || '').localeCompare(a.month || ''));
 
     // Calculate total debt and pending details html
     let totalDebt = 0;
@@ -4964,7 +4964,7 @@ function generateClientReportHtml(client) {
             <tr>
                 <td><strong>${formatPeriod(r.month)}</strong></td>
                 <td>${mName} (<code>${m ? m.serial : ''}</code>)</td>
-                <td>${r.initial.toLocaleString('es-AR')} - ${r.final.toLocaleString('es-AR')}</td>
+                <td>${(r.initial || 0).toLocaleString('es-AR')} - ${(r.final || 0).toLocaleString('es-AR')}</td>
                 <td><strong>${diff.toLocaleString('es-AR')}</strong></td>
                 <td style="text-align:right;"><strong class="text-indigo">${formatCurrency(total)}</strong></td>
             </tr>
@@ -4972,8 +4972,9 @@ function generateClientReportHtml(client) {
     }).join('');
 
     // Maintenance logs for all client machines
+    const clientMachineIds = assignedMachines.map(m => m.id);
     const clientMaintenance = state.maintenance.filter(mn => clientMachineIds.includes(mn.machineId));
-    clientMaintenance.sort((a, b) => b.date.localeCompare(a.date));
+    clientMaintenance.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     const maintTableRows = clientMaintenance.map(mn => {
         const m = state.machines.find(mac => mac.id === mn.machineId);
         const mName = m ? `${m.brand} ${m.model}` : 'Desconocido';
@@ -4984,7 +4985,7 @@ function generateClientReportHtml(client) {
                 <td>${mName} (<code>${m ? m.serial : ''}</code>)</td>
                 <td><span class="badge ${mn.type === 'Repuesto' ? 'danger' : 'warning'}" style="font-size:10px; padding:1px 4px;">${mn.type}</span></td>
                 <td>${mn.description}</td>
-                <td style="text-align:right;"><strong>${mn.counter.toLocaleString('es-AR')}</strong></td>
+                <td style="text-align:right;"><strong>${(mn.counter || 0).toLocaleString('es-AR')}</strong></td>
             </tr>
         `;
     }).join('');
@@ -5091,7 +5092,7 @@ function generateMachineReportHtml(machine) {
 
     // Readings for this machine
     const machineReadings = state.readings.filter(r => r.machineId === machine.id);
-    machineReadings.sort((a, b) => b.month.localeCompare(a.month));
+    machineReadings.sort((a, b) => (b.month || '').localeCompare(a.month || ''));
     const readingsTableRows = machineReadings.map(r => {
         const diff = Math.max(0, r.final - r.initial);
         const exc = abono ? Math.max(0, diff - abono.limit) : 0;
@@ -5104,7 +5105,7 @@ function generateMachineReportHtml(machine) {
         return `
             <tr>
                 <td><strong>${formatPeriod(r.month)}</strong></td>
-                <td>${r.initial.toLocaleString('es-AR')} - ${r.final.toLocaleString('es-AR')}</td>
+                <td>${(r.initial || 0).toLocaleString('es-AR')} - ${(r.final || 0).toLocaleString('es-AR')}</td>
                 <td><strong>${diff.toLocaleString('es-AR')}</strong></td>
                 <td style="text-align:right;"><strong class="text-indigo">${formatCurrency(total)}</strong></td>
             </tr>
@@ -5113,7 +5114,7 @@ function generateMachineReportHtml(machine) {
 
     // Maintenance log for this machine
     const machineMaintenance = state.maintenance.filter(mn => mn.machineId === machine.id);
-    machineMaintenance.sort((a, b) => b.date.localeCompare(a.date));
+    machineMaintenance.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     const maintTableRows = machineMaintenance.map(mn => {
         const dateFmt = mn.date ? mn.date.split('-').reverse().join('/') : '-';
         return `
@@ -5121,7 +5122,7 @@ function generateMachineReportHtml(machine) {
                 <td><strong>${dateFmt}</strong></td>
                 <td><span class="badge ${mn.type === 'Repuesto' ? 'danger' : 'warning'}" style="font-size:10px; padding:1px 4px;">${mn.type}</span></td>
                 <td>${mn.description}</td>
-                <td style="text-align:right;"><strong>${mn.counter.toLocaleString('es-AR')}</strong></td>
+                <td style="text-align:right;"><strong>${(mn.counter || 0).toLocaleString('es-AR')}</strong></td>
             </tr>
         `;
     }).join('');
