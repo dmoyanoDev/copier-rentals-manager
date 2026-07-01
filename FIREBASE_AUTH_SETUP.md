@@ -36,3 +36,24 @@ Una vez activado el proveedor, si un usuario olvida su contraseña:
 1. Hará clic en *"Restablecer contraseña"* en la pantalla de login.
 2. Ingresará su correo `dmoyano@mstecnologia.com.ar` y presionará Buscar.
 3. Firebase enviará de forma **100% segura y automática** un correo electrónico real de parte de Google con un enlace para que el usuario pueda escribir su nueva clave de acceso de manera privada y directa.
+
+---
+
+## 4. Configurar Reglas de Seguridad en Firestore (PRODUCCIÓN)
+Para evitar que personas ajenas o atacantes lean o modifiquen tu base de datos:
+1. En Firebase Console, ve a **Firestore Database** en el menú de la izquierda.
+2. Ve a la pestaña **Reglas** (Rules).
+3. Reemplaza el código actual por las siguientes reglas restrictivas que solo permiten lectura y escritura a usuarios autenticados:
+   ```javascript
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /{document=**} {
+         allow read, write: if request.auth != null;
+       }
+     }
+   }
+   ```
+4. Haz clic en **Publicar** (Publish).
+
+Con esta regla, tus datos están protegidos contra accesos no autorizados y son 100% seguros.

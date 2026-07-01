@@ -130,7 +130,9 @@ async function fetchCloudData() {
                 password: 'jUEVES2389$'
             };
             state.users = [defaultAdmin];
-            await db.collection('users').doc(defaultAdmin.id).set(defaultAdmin);
+            const cloudAdmin = { ...defaultAdmin };
+            delete cloudAdmin.password; // Do not save passwords in Firestore
+            await db.collection('users').doc(defaultAdmin.id).set(cloudAdmin);
         }
     } catch (e) {
         console.error("Error al descargar colecciones de Firebase:", e);
@@ -178,7 +180,13 @@ function updateFirebaseUI(active, config = null) {
 async function dbSet(collectionName, docId, data) {
     if (firebaseActive && db) {
         try {
-            await db.collection(collectionName).doc(docId).set(data);
+            // Strip password for security when sending user profiles to the cloud
+            let cloudData = data;
+            if (collectionName === 'users') {
+                cloudData = { ...data };
+                delete cloudData.password;
+            }
+            await db.collection(collectionName).doc(docId).set(cloudData);
         } catch (err) {
             console.error(`Error saving to Firestore (${collectionName}/${docId}):`, err);
             showToast('Error de sincronización con la nube', 'error');
@@ -1355,8 +1363,15 @@ function setupActions() {
     });
 
     // Logout trigger
-    document.getElementById('btn-logout').addEventListener('click', () => {
+    document.getElementById('btn-logout').addEventListener('click', async () => {
         if (confirm('¿Seguro que deseas cerrar la sesión actual?')) {
+            if (firebaseActive && typeof firebase !== 'undefined') {
+                try {
+                    await firebase.auth().signOut();
+                } catch (signOutErr) {
+                    console.error("Error signing out from Firebase Auth:", signOutErr);
+                }
+            }
             state.currentUser = null;
             saveToLocalStorage();
             checkAuthSession();
@@ -3022,7 +3037,9 @@ function setupFirebaseControls() {
                     // Upload users
                     if (localState.users) {
                         for (const user of localState.users) {
-                            await db.collection('users').doc(user.id).set(user);
+                            const cloudUser = { ...user };
+                            delete cloudUser.password;
+                            await db.collection('users').doc(user.id).set(cloudUser);
                         }
                     }
                     
@@ -3085,7 +3102,11 @@ async function syncStateToFirestore() {
             for (const a of state.abonos) await db.collection('abonos').doc(a.id).set(a);
             for (const r of state.readings) await db.collection('readings').doc(r.id).set(r);
             for (const mt of state.maintenance) await db.collection('maintenance').doc(mt.id).set(mt);
-            for (const u of state.users) await db.collection('users').doc(u.id).set(u);
+            for (const u of state.users) {
+                const cloudUser = { ...u };
+                delete cloudUser.password;
+                await db.collection('users').doc(u.id).set(cloudUser);
+            }
             
             if (state.companyLogo) {
                 await db.collection('settings').doc('companyLogo').set({ value: state.companyLogo });
@@ -3095,5 +3116,16 @@ async function syncStateToFirestore() {
             showToast("Error al sincronizar datos con la nube.", "error");
         }
     }
+}
+
+// Sanitization helper to protect against XSS injections
+function escapeHTML(str) {
+    if (str === null || str === undefined) return '';
+    return str.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
