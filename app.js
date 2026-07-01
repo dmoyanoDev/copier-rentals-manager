@@ -4652,7 +4652,7 @@ async function saveTicket() {
                                          `*Problema:* ${description}\n` +
                                          `*Estado:* ${status.toUpperCase()}\n` +
                                          (actionTaken.trim() ? `*Resolución:* ${actionTaken}\n` : '') +
-                                         `\n🌐 Acceder al sistema:\nhttps://panel-mys.netlify.app`;
+                                         `\n🌐 Acceder al sistema:\nhttps://dashboard-mys.netlify.app/`;
                     const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(formattedMsg)}`;
                     window.open(waUrl, '_blank');
                 }
