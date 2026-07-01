@@ -32,11 +32,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Set default month selector value
     monthSelector.value = currentMonth;
     
-    // Load Firebase if credentials exist, otherwise load from localStorage
-    await loadDatabase();
-
-    // Init security gate
+    // Load local state first for instant flicker-free rendering and session persistence
+    loadFromLocalStorage();
     checkAuthSession();
+    
+    // Download latest cloud data in background if connected
+    try {
+        await loadDatabase();
+        // Re-render UI with latest downloaded data
+        renderApp();
+    } catch (e) {
+        console.error("Error loading database:", e);
+    }
     
     // Set up Event Listeners
     setupNavigation();
@@ -919,7 +926,7 @@ function setupForms() {
         }
 
         if (clientData) {
-            await dbSet('clients', clientData.id, clientData);
+            dbSet('clients', clientData.id, clientData);
         }
         closeAllModals();
         renderApp();
@@ -969,7 +976,7 @@ function setupForms() {
             showToast('Máquina agregada con éxito', 'success');
         }
 
-        await dbSet('machines', machineData.id, machineData);
+        dbSet('machines', machineData.id, machineData);
         closeAllModals();
         renderApp();
     });
@@ -1010,7 +1017,7 @@ function setupForms() {
             showToast('Abono registrado con éxito', 'success');
         }
 
-        await dbSet('abonos', abonoData.id, abonoData);
+        dbSet('abonos', abonoData.id, abonoData);
         closeAllModals();
         renderApp();
     });
@@ -1050,7 +1057,7 @@ function setupForms() {
             showToast('Lectura registrada con éxito', 'success');
         }
 
-        await dbSet('readings', readingData.id, readingData);
+        dbSet('readings', readingData.id, readingData);
         closeAllModals();
         renderApp();
     });
@@ -1159,7 +1166,7 @@ function setupForms() {
             showToast('Usuario creado con éxito', 'success');
         }
 
-        await dbSet('users', userData.id, userData);
+        dbSet('users', userData.id, userData);
         closeAllModals();
         checkAuthSession(); // Updates sidebar profile if we updated ourselves
         renderUsersTab();
@@ -1240,7 +1247,7 @@ function setupActions() {
                 state.machines[machineIdx].installationDate = new Date().toISOString().split('T')[0];
 
                 // Sync machine to Firebase
-                await dbSet('machines', machineId, state.machines[machineIdx]);
+                dbSet('machines', machineId, state.machines[machineIdx]);
 
                 // Create initial reading record for currentMonth
                 const existingReading = state.readings.find(r => r.machineId === machineId && r.month === currentMonth);
@@ -1255,7 +1262,7 @@ function setupActions() {
                         status: 'pending'
                     };
                     state.readings.push(newReading);
-                    await dbSet('readings', newReading.id, newReading);
+                    dbSet('readings', newReading.id, newReading);
                 }
 
                 showToast('¡Alquiler activado y máquina asignada con éxito!', 'success');
@@ -2186,10 +2193,10 @@ window.editClientTrigger = (clientId) => {
     if (client) openClientModal(client);
 };
 
-window.deleteClientTrigger = async (clientId) => {
+window.deleteClientTrigger = (clientId) => {
     if (confirm('¿Seguro que deseas eliminar este cliente? No se desasignarán las máquinas de forma automática pero dejará huérfanas sus referencias.')) {
         state.clients = state.clients.filter(c => c.id !== clientId);
-        await dbDelete('clients', clientId);
+        dbDelete('clients', clientId);
         renderApp();
         showToast('Cliente eliminado', 'warning');
     }
@@ -2200,15 +2207,15 @@ window.editMachineTrigger = (machineId) => {
     if (machine) openMachineModal(machine);
 };
 
-window.deleteMachineTrigger = async (machineId) => {
+window.deleteMachineTrigger = (machineId) => {
     if (confirm('¿Seguro que deseas eliminar esta máquina? Se perderá su historial de lecturas asociadas.')) {
         const readingsToDelete = state.readings.filter(r => r.machineId === machineId);
         state.machines = state.machines.filter(m => m.id !== machineId);
         state.readings = state.readings.filter(r => r.machineId !== machineId);
         
-        await dbDelete('machines', machineId);
+        dbDelete('machines', machineId);
         for (const r of readingsToDelete) {
-            await dbDelete('readings', r.id);
+            dbDelete('readings', r.id);
         }
         
         renderApp();
@@ -2221,7 +2228,7 @@ window.editAbonoTrigger = (abonoId) => {
     if (abono) openAbonoModal(abono);
 };
 
-window.deleteAbonoTrigger = async (abonoId) => {
+window.deleteAbonoTrigger = (abonoId) => {
     // Check if being used
     const inUse = state.machines.some(m => m.abonoId === abonoId);
     if (inUse) {
@@ -2230,7 +2237,7 @@ window.deleteAbonoTrigger = async (abonoId) => {
     }
     if (confirm('¿Seguro que deseas eliminar este abono?')) {
         state.abonos = state.abonos.filter(a => a.id !== abonoId);
-        await dbDelete('abonos', abonoId);
+        dbDelete('abonos', abonoId);
         renderApp();
         showToast('Abono eliminado', 'warning');
     }
@@ -2947,13 +2954,13 @@ window.editMaintenanceEntryTrigger = (entryId) => {
     }
 };
 
-window.deleteMaintenanceEntryTrigger = async (entryId) => {
+window.deleteMaintenanceEntryTrigger = (entryId) => {
     if (confirm('¿Seguro que deseas eliminar este registro del historial?')) {
         const entry = state.maintenance.find(e => e.id === entryId);
         const machineId = entry ? entry.machineId : null;
         
         state.maintenance = state.maintenance.filter(e => e.id !== entryId);
-        await dbDelete('maintenance', entryId);
+        dbDelete('maintenance', entryId);
         
         if (machineId) {
             renderMaintenanceHistoryTable(machineId);
@@ -2997,7 +3004,7 @@ async function saveMaintenanceEntry() {
         showToast('Registro guardado en el historial', 'success');
     }
 
-    await dbSet('maintenance', entryData.id, entryData);
+    dbSet('maintenance', entryData.id, entryData);
     document.getElementById('modal-add-maintenance').style.display = 'none';
     renderMaintenanceHistoryTable(machineId);
 }
@@ -3076,7 +3083,7 @@ window.editUserTrigger = (userId) => {
     openUserModal(userId);
 };
 
-window.deleteUserTrigger = async (userId) => {
+window.deleteUserTrigger = (userId) => {
     const user = state.users.find(u => u.id === userId);
     if (!user) return;
 
@@ -3087,7 +3094,7 @@ window.deleteUserTrigger = async (userId) => {
 
     if (confirm(`¿Estás seguro de que deseas eliminar permanentemente al usuario "${user.username}"?`)) {
         state.users = state.users.filter(u => u.id !== userId);
-        await dbDelete('users', userId);
+        dbDelete('users', userId);
         showToast('Usuario eliminado con éxito', 'warning');
         renderUsersTab();
     }
