@@ -1316,7 +1316,28 @@ function setupActions() {
                 showToast('¡Bienvenido de nuevo, ' + userObj.fullname + '!', 'success');
                 document.getElementById('form-login').reset();
             } catch (err) {
-                console.error(err);
+                console.warn("Firebase Auth sign-in failed, trying fallback creation:", err);
+                
+                // Fallback: If password matches the database record, attempt to auto-create the user in Firebase Auth!
+                if (userObj.password === password) {
+                    try {
+                        showToast('Registrando usuario en la nube...', 'info');
+                        await firebase.auth().createUserWithEmailAndPassword(userObj.email, password);
+                        // Success! Now we are logged in automatically by createUserWithEmailAndPassword
+                        state.currentUser = userObj;
+                        saveToLocalStorage();
+                        checkAuthSession();
+                        showToast('¡Bienvenido y registrado en la nube, ' + userObj.fullname + '!', 'success');
+                        document.getElementById('form-login').reset();
+                        return;
+                    } catch (createErr) {
+                        console.error("Auto-registration failed:", createErr);
+                        if (createErr.code === 'auth/operation-not-allowed') {
+                            showToast('Error: Debes habilitar "Correo electrónico y contraseña" en la pestaña Authentication de tu consola de Firebase.', 'error');
+                            return;
+                        }
+                    }
+                }
                 showToast('Usuario o contraseña incorrectos en Firebase Auth', 'error');
             }
         } else {
