@@ -841,9 +841,12 @@ function renderRentalsTab() {
                                 <tr style="border-bottom:1px solid rgba(0,0,0,0.03);"><td style="font-weight:600; color:var(--text-secondary-light); padding:4px 0;">Instalación:</td><td style="text-align:right;">${m.installationDate ? m.installationDate.split('-').reverse().join('/') : '-'}</td></tr>
                                 <tr><td style="font-weight:600; color:var(--text-secondary-light); padding:4px 0;">Disponibilidad:</td><td style="text-align:right; font-weight:500;">${m.isAvailable !== false ? 'Disponible' : 'No Disponible'}</td></tr>
                             </table>
-                            <div style="margin-top:15px; display:flex; gap:8px;">
-                                <button class="btn btn-primary btn-sm flex-1" onclick="openReadingModal('${m.id}', currentMonth)" style="font-size:11px; padding:6px; justify-content:center; white-space:nowrap;">+ Cargar Lectura</button>
-                                <button class="btn btn-secondary btn-sm flex-1" onclick="openAddMaintenanceTrigger('${m.id}')" style="font-size:11px; padding:6px; justify-content:center; white-space:nowrap;">+ Registrar Cambio</button>
+                            <div style="margin-top:15px; display:flex; flex-direction:column; gap:6px;">
+                                <div style="display:flex; gap:6px;">
+                                    <button class="btn btn-primary btn-sm flex-1" onclick="openReadingModal('${m.id}', currentMonth)" style="font-size:11px; padding:5px; justify-content:center; white-space:nowrap;">+ Lectura</button>
+                                    <button class="btn btn-secondary btn-sm flex-1" onclick="openAddMaintenanceTrigger('${m.id}')" style="font-size:11px; padding:5px; justify-content:center; white-space:nowrap;">+ Service</button>
+                                </div>
+                                <button class="btn btn-secondary btn-sm" onclick="openRentalDetailModal('${m.id}')" style="font-size:11px; padding:6px; justify-content:center; width:100%; display:flex; align-items:center; gap:4px; font-weight:600;">📂 Ver Expediente de Alquiler</button>
                             </div>
                         </div>
 
@@ -3472,7 +3475,7 @@ function renderMachinesTab() {
                 <div class="flex-actions-row">
                     <button class="btn btn-secondary btn-sm" onclick="openMachineReportTrigger('${machine.id}')">📋 Reporte</button>
                     <button class="btn btn-secondary btn-sm" onclick="editMachineTrigger('${machine.id}')">${state.currentUser?.role === 'tecnico' ? 'Ver Detalle' : 'Editar'}</button>
-                    ${machine.clientId ? `<button class="btn btn-secondary btn-sm" onclick="openMaintenanceHistoryTrigger('${machine.id}')">Historial</button>` : ''}
+                    ${machine.clientId ? `<button class="btn btn-secondary btn-sm" onclick="openRentalDetailModal('${machine.id}')">📂 Expediente</button>` : ''}
                     ${state.currentUser?.role !== 'tecnico' ? `<button class="btn btn-danger-outline btn-sm" onclick="deleteMachineTrigger('${machine.id}')">Eliminar</button>` : ''}
                 </div>
             </td>
