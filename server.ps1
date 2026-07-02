@@ -27,6 +27,8 @@ while ($listener.IsListening) {
         # Redirigir la raíz a index.html
         if ($url -eq "/") { $url = "/index.html" }
 
+        Write-Output "[$((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))] $($request.HttpMethod) $url"
+
         if ($url -eq "/api/send-email") {
             try {
                 # Read the POST request body
@@ -83,6 +85,7 @@ while ($listener.IsListening) {
                 $response.StatusCode = 500
                 $errMsg = $_.Exception.Message
                 if (!$errMsg) { $errMsg = $_.ToString() }
+                Write-Output "  Error enviando email: $errMsg"
                 $errBytes = [System.Text.Encoding]::UTF8.GetBytes("Error: $errMsg")
                 $response.ContentType = "text/plain; charset=utf-8"
                 $response.ContentLength64 = $errBytes.Length
@@ -118,6 +121,7 @@ while ($listener.IsListening) {
                 $response.StatusCode = 500
                 $errMsg = $_.Exception.Message
                 if (!$errMsg) { $errMsg = $_.ToString() }
+                Write-Output "  Error subiendo PDF: $errMsg"
                 $errBytes = [System.Text.Encoding]::UTF8.GetBytes("Error: $errMsg")
                 $response.ContentType = "text/plain; charset=utf-8"
                 $response.ContentLength64 = $errBytes.Length
