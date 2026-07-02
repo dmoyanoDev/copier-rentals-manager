@@ -8640,17 +8640,71 @@ async function generateReportPDF(activeReport, shouldUpload = false, downloadToo
 
     // Create wrapper for off-screen rendering to ensure perfect page margins and avoid viewport cutting
     const wrapper = document.createElement('div');
+    wrapper.id = 'report-printable-area';
     wrapper.style.position = 'absolute';
     wrapper.style.left = '-9999px';
     wrapper.style.top = '0';
     wrapper.style.width = '800px';
     wrapper.style.padding = '40px';
     wrapper.style.background = '#ffffff';
-    wrapper.style.color = '#000000';
+    wrapper.style.color = '#1e293b';
     wrapper.style.boxSizing = 'border-box';
     
     // Copy the inner HTML of the printable report area
     wrapper.innerHTML = element.innerHTML;
+    
+    // Inject clean print-friendly stylesheet to override dark mode colors and ensure perfect high-contrast printing
+    const styleTag = document.createElement('style');
+    styleTag.innerHTML = `
+        #report-printable-area {
+            font-family: 'Inter', 'Outfit', sans-serif !important;
+            color: #1e293b !important;
+            background-color: #ffffff !important;
+        }
+        #report-printable-area * {
+            color: #1e293b !important;
+            border-color: #cbd5e1 !important;
+        }
+        #report-printable-area table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            margin-top: 15px !important;
+            margin-bottom: 20px !important;
+        }
+        #report-printable-area th {
+            background-color: #f8fafc !important;
+            color: #0f172a !important;
+            font-weight: 600 !important;
+            border-bottom: 2px solid #cbd5e1 !important;
+            padding: 8px 12px !important;
+            text-align: left !important;
+        }
+        #report-printable-area td {
+            padding: 8px 12px !important;
+            border-bottom: 1px solid #cbd5e1 !important;
+            text-align: left !important;
+        }
+        #report-printable-area h1, #report-printable-area h2, #report-printable-area h3, #report-printable-area h4 {
+            color: #1e3a8a !important;
+            margin-bottom: 8px !important;
+        }
+        #report-printable-area .badge {
+            padding: 3px 8px !important;
+            border-radius: 4px !important;
+            font-size: 11px !important;
+            font-weight: 600 !important;
+            display: inline-block !important;
+        }
+        #report-printable-area .badge.success, #report-printable-area [style*="background-color: var(--emerald)"] {
+            background-color: #dcfce7 !important;
+            color: #15803d !important;
+        }
+        #report-printable-area .badge.danger, #report-printable-area [style*="color: #dc2626"] {
+            background-color: #fee2e2 !important;
+            color: #b91c1c !important;
+        }
+    `;
+    wrapper.appendChild(styleTag);
     document.body.appendChild(wrapper);
 
     // Wait for all images inside the report to load
