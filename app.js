@@ -8661,7 +8661,7 @@ async function generateReportPDF(activeReport, shouldUpload = false, downloadToo
     wrapper.style.position = 'absolute';
     wrapper.style.left = '-9999px';
     wrapper.style.top = '0';
-    wrapper.style.width = '850px';
+    wrapper.style.width = '750px';
     wrapper.style.height = '1px';
     wrapper.style.overflow = 'visible';
     document.body.appendChild(wrapper);
@@ -8669,7 +8669,7 @@ async function generateReportPDF(activeReport, shouldUpload = false, downloadToo
     // 3. Create the clean print element inside the wrapper
     const element = document.createElement('div');
     element.id = 'report-pdf-temp-element';
-    element.style.width = '850px';
+    element.style.width = '750px';
     element.style.padding = '30px';
     element.style.background = '#ffffff';
     element.style.color = '#1e293b';
@@ -8702,12 +8702,56 @@ async function generateReportPDF(activeReport, shouldUpload = false, downloadToo
             }
             #report-pdf-temp-element table {
                 width: 100% !important;
+                table-layout: fixed !important;
                 border-collapse: collapse !important;
                 margin-top: 15px !important;
                 margin-bottom: 25px !important;
-                font-size: 11px !important;
+                font-size: 10px !important;
                 background-color: #ffffff !important;
+                word-wrap: break-word !important;
             }
+            
+            /* Table 1: Assigned Machines */
+            #report-pdf-temp-element table:nth-of-type(1) th:nth-child(1),
+            #report-pdf-temp-element table:nth-of-type(1) td:nth-child(1) { width: 25% !important; }
+            #report-pdf-temp-element table:nth-of-type(1) th:nth-child(2),
+            #report-pdf-temp-element table:nth-of-type(1) td:nth-child(2) { width: 18% !important; }
+            #report-pdf-temp-element table:nth-of-type(1) th:nth-child(3),
+            #report-pdf-temp-element table:nth-of-type(1) td:nth-child(3) { width: 12% !important; }
+            #report-pdf-temp-element table:nth-of-type(1) th:nth-child(4),
+            #report-pdf-temp-element table:nth-of-type(1) td:nth-child(4) { width: 18% !important; }
+            #report-pdf-temp-element table:nth-of-type(1) th:nth-child(5),
+            #report-pdf-temp-element table:nth-of-type(1) td:nth-child(5) { width: 15% !important; }
+            #report-pdf-temp-element table:nth-of-type(1) th:nth-child(6),
+            #report-pdf-temp-element table:nth-of-type(1) td:nth-child(6) { width: 12% !important; }
+
+            /* Table 2: Ledger Table (Libro Mayor) */
+            #report-pdf-temp-element table:nth-of-type(2) th:nth-child(1),
+            #report-pdf-temp-element table:nth-of-type(2) td:nth-child(1) { width: 11% !important; }
+            #report-pdf-temp-element table:nth-of-type(2) th:nth-child(2),
+            #report-pdf-temp-element table:nth-of-type(2) td:nth-child(2) { width: 11% !important; }
+            #report-pdf-temp-element table:nth-of-type(2) th:nth-child(3),
+            #report-pdf-temp-element table:nth-of-type(2) td:nth-child(3) { width: 12% !important; }
+            #report-pdf-temp-element table:nth-of-type(2) th:nth-child(4),
+            #report-pdf-temp-element table:nth-of-type(2) td:nth-child(4) { width: 31% !important; word-wrap: break-word !important; }
+            #report-pdf-temp-element table:nth-of-type(2) th:nth-child(5),
+            #report-pdf-temp-element table:nth-of-type(2) td:nth-child(5) { width: 11% !important; }
+            #report-pdf-temp-element table:nth-of-type(2) th:nth-child(6),
+            #report-pdf-temp-element table:nth-of-type(2) td:nth-child(6) { width: 11% !important; }
+            #report-pdf-temp-element table:nth-of-type(2) th:nth-child(7),
+            #report-pdf-temp-element table:nth-of-type(2) td:nth-child(7) { width: 13% !important; }
+
+            /* Table 3: Technical Service */
+            #report-pdf-temp-element table:nth-of-type(3) th:nth-child(1),
+            #report-pdf-temp-element table:nth-of-type(3) td:nth-child(1) { width: 12% !important; }
+            #report-pdf-temp-element table:nth-of-type(3) th:nth-child(2),
+            #report-pdf-temp-element table:nth-of-type(3) td:nth-child(2) { width: 22% !important; }
+            #report-pdf-temp-element table:nth-of-type(3) th:nth-child(3),
+            #report-pdf-temp-element table:nth-of-type(3) td:nth-child(3) { width: 13% !important; }
+            #report-pdf-temp-element table:nth-of-type(3) th:nth-child(4),
+            #report-pdf-temp-element table:nth-of-type(3) td:nth-child(4) { width: 41% !important; word-wrap: break-word !important; }
+            #report-pdf-temp-element table:nth-of-type(3) th:nth-child(5),
+            #report-pdf-temp-element table:nth-of-type(3) td:nth-child(5) { width: 12% !important; }
             #report-pdf-temp-element tr {
                 background-color: #ffffff !important;
                 background: #ffffff !important;
