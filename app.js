@@ -202,17 +202,32 @@ async function loadDatabase() {
 // Function to fetch all collections from Firestore
 async function fetchCloudData() {
     try {
-        state.clients = await fetchCollection('clients');
-        state.machines = await fetchCollection('machines');
-        state.abonos = await fetchCollection('abonos');
-        state.readings = await fetchCollection('readings');
-        state.maintenance = await fetchCollection('maintenance') || [];
-        state.users = await fetchCollection('users');
-        state.tickets = await fetchCollection('tickets') || [];
-        state.presupuestos = await fetchCollection('presupuestos') || [];
+        const [clients, machines, abonos, readings, maintenance, users, tickets, presupuestos] = await Promise.all([
+            fetchCollection('clients'),
+            fetchCollection('machines'),
+            fetchCollection('abonos'),
+            fetchCollection('readings'),
+            fetchCollection('maintenance'),
+            fetchCollection('users'),
+            fetchCollection('tickets'),
+            fetchCollection('presupuestos')
+        ]);
+
+        state.clients = clients || [];
+        state.machines = machines || [];
+        state.abonos = abonos || [];
+        state.readings = readings || [];
+        state.maintenance = maintenance || [];
+        state.users = users || [];
+        state.tickets = tickets || [];
+        state.presupuestos = presupuestos || [];
         
-        // Load company logo if stored in Firestore
-        const logoDoc = await db.collection('settings').doc('companyLogo').get();
+        // Load company logo and general settings in parallel
+        const [logoDoc, settingsDoc] = await Promise.all([
+            db.collection('settings').doc('companyLogo').get(),
+            db.collection('settings').doc('generalSettings').get()
+        ]);
+
         if (logoDoc.exists) {
             state.companyLogo = logoDoc.data().value;
         } else {
@@ -226,8 +241,6 @@ async function fetchCloudData() {
             }
         }
         
-        
-        const settingsDoc = await db.collection('settings').doc('generalSettings').get();
         if (settingsDoc.exists) {
             state.settings = settingsDoc.data();
         }
@@ -288,29 +301,31 @@ function updateFirebaseUI(active, config = null) {
 
 // Firestore persistence wrappers
 async function dbSet(collectionName, docId, data) {
+    // 1. Always persist to local cache immediately for zero latency
+    saveToLocalStorage();
+
+    // 2. Perform Firestore write in background without blocking UI
     if (firebaseActive && db) {
-        try {
-            let cloudData = data;
-            await db.collection(collectionName).doc(docId).set(cloudData);
-        } catch (err) {
+        db.collection(collectionName).doc(docId).set(data).catch(err => {
             console.error(`Error saving to Firestore (${collectionName}/${docId}):`, err);
             showToast('Error de sincronización con la nube', 'error');
-        }
+        });
     }
-    // Always persist to local cache for safety & offline support
-    saveToLocalStorage();
+    return Promise.resolve();
 }
 
 async function dbDelete(collectionName, docId) {
+    // 1. Always persist to local cache immediately for zero latency
+    saveToLocalStorage();
+
+    // 2. Perform Firestore delete in background without blocking UI
     if (firebaseActive && db) {
-        try {
-            await db.collection(collectionName).doc(docId).delete();
-        } catch (err) {
+        db.collection(collectionName).doc(docId).delete().catch(err => {
             console.error(`Error deleting from Firestore (${collectionName}/${docId}):`, err);
             showToast('Error al eliminar en la nube', 'error');
-        }
+        });
     }
-    saveToLocalStorage();
+    return Promise.resolve();
 }
 
 function checkAuthSession() {
