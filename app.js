@@ -1,3 +1,15 @@
+// API Base URL Helper for Local Server
+function getApiUrl(endpoint) {
+    const isLocalProtocol = window.location.protocol === 'http:' || window.location.protocol === 'https:';
+    const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (isLocalProtocol && isLocalHost) {
+        return endpoint;
+    } else {
+        // Fallback to local server running on port 8000 when opened via file:// or other hosts
+        return `http://localhost:8000${endpoint}`;
+    }
+}
+
 // State Management
 let state = {
     clients: [],
@@ -1230,7 +1242,7 @@ function setupForms() {
 
             showToast("Subiendo ficha técnica del equipo...", "info");
             try {
-                const response = await fetch(`/api/upload-pdf?filename=${encodeURIComponent(file.name)}`, {
+                const response = await fetch(getApiUrl(`/api/upload-pdf?filename=${encodeURIComponent(file.name)}`), {
                     method: 'POST',
                     body: file
                 });
@@ -6955,7 +6967,7 @@ function setupPresupuestos() {
 
             showToast("Subiendo ficha técnica...", "info");
             try {
-                const response = await fetch(`/api/upload-pdf?filename=${encodeURIComponent(file.name)}`, {
+                const response = await fetch(getApiUrl(`/api/upload-pdf?filename=${encodeURIComponent(file.name)}`), {
                     method: 'POST',
                     body: file
                 });
@@ -8525,7 +8537,7 @@ async function generateBudgetPDF(budget, shouldUpload = false, downloadToo = fal
             const file = new File([pdfBlob], `presupuesto_${Date.now()}.pdf`, { type: 'application/pdf' });
 
             try {
-                const response = await fetch(`/api/upload-pdf?filename=${encodeURIComponent(file.name)}`, {
+                const response = await fetch(getApiUrl(`/api/upload-pdf?filename=${encodeURIComponent(file.name)}`), {
                     method: 'POST',
                     body: file
                 });
@@ -8652,7 +8664,7 @@ async function sendAutomatedEmail({ to, subject, body, attachment = null }) {
                 Attachment: attachment
             };
 
-            const response = await fetch("/api/send-email", {
+            const response = await fetch(getApiUrl("/api/send-email"), {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"
