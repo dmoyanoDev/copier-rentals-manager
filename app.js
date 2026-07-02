@@ -1346,6 +1346,7 @@ function setupForms() {
         }
 
         const invoiceNumber = document.getElementById('reading-invoice-number').value.trim();
+        const invoiceDate = document.getElementById('reading-invoice-date').value;
         const isUnofficial = document.getElementById('reading-is-unofficial').checked;
         const creditNote = parseFloat(document.getElementById('reading-credit-note').value) || 0;
         const creditNoteReason = document.getElementById('reading-credit-note-reason').value.trim();
@@ -1370,6 +1371,7 @@ function setupForms() {
             final,
             status,
             invoiceNumber,
+            invoiceDate,
             isUnofficial,
             creditNote,
             creditNoteReason,
@@ -2481,6 +2483,7 @@ function openReadingModal(machineId, month, reading = null) {
         document.getElementById('reading-status').value = reading.status;
 
         document.getElementById('reading-invoice-number').value = reading.invoiceNumber || '';
+        document.getElementById('reading-invoice-date').value = reading.invoiceDate || '';
         document.getElementById('reading-is-unofficial').checked = reading.isUnofficial || false;
         document.getElementById('reading-credit-note').value = reading.creditNote || '';
         document.getElementById('reading-credit-note-reason').value = reading.creditNoteReason || '';
@@ -2497,6 +2500,7 @@ function openReadingModal(machineId, month, reading = null) {
         document.getElementById('reading-status').value = 'pending';
 
         document.getElementById('reading-invoice-number').value = '';
+        document.getElementById('reading-invoice-date').value = '';
         document.getElementById('reading-is-unofficial').checked = false;
         document.getElementById('reading-credit-note').value = '';
         document.getElementById('reading-credit-note-reason').value = '';
@@ -8635,6 +8639,26 @@ async function uploadBudgetPDF(budget, downloadToo = false) {
 
 // Generate PDF Report for Accounts (Client or Machine)
 async function generateReportPDF(activeReport, shouldUpload = false, downloadToo = false) {
+    // Helper to format month YYYY-MM to short month-YY (e.g. nov-24)
+    const formatPeriodShort = (monthStr) => {
+        if (!monthStr) return '-';
+        const [year, month] = monthStr.split('-');
+        const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+        const monthIndex = parseInt(month, 10) - 1;
+        const shortYear = year.slice(-2);
+        return `${months[monthIndex]}-${shortYear}`;
+    };
+
+    // Helper to format date YYYY-MM-DD to DD/MM/YYYY
+    const formatDateDisplay = (dateStr) => {
+        if (!dateStr) return '-';
+        const parts = dateStr.split('-');
+        if (parts.length === 3) {
+            return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+        return dateStr;
+    };
+
     // 1. Get the correct HTML content using the dedicated generators
     let reportHtmlContent = "";
     let reportDocTitle = "";
@@ -8643,9 +8667,136 @@ async function generateReportPDF(activeReport, shouldUpload = false, downloadToo
     if (activeReport.type === 'client') {
         const client = state.clients.find(c => c.id === activeReport.id);
         if (!client) return null;
-        reportHtmlContent = generateClientReportHtml(client);
-        reportDocTitle = `Reporte de Historial - Cliente: ${client.name}`;
-        reportDocType = `HISTORIAL CONSOLIDADO DE CLIENTE`;
+
+        // Readings for this client
+        const clientReadings = state.readings.filter(r => r.clientId === client.id);
+        clientReadings.sort((a, b) => (a.month || '').localeCompare(b.month || ''));
+        const pendingReadings = clientReadings.filter(r => r.status === 'pending');
+
+        const assignedMachines = state.machines.filter(m => m.clientId === client.id);
+        const machineNames = assignedMachines.map(m => `${m.brand} ${m.model}`.trim()).join(' / ');
+        const clientNameAndMachines = `${client.name}<br><small style="font-size:10px; font-weight:normal;">(${machineNames || 'Sin equipo'})</small>`;
+
+        let rowsHtml = "";
+        let totalSum = 0;
+
+        if (pendingReadings.length > 0) {
+            // Calculate pending invoices details
+            const readingsData = pendingReadings.map(r => {
+                const m = state.machines.find(mac => mac.id === r.machineId);
+                const abono = state.abonos.find(a => a.id === r.abonoId) || (m ? state.abonos.find(a => a.id === m.abonoId) : null);
+                const isUnofficial = r.isUnofficial || false;
+                const creditNote = r.creditNote || 0;
+                const debitNote = r.debitNote || 0;
+
+                const diff = Math.max(0, r.final - r.initial);
+                const exc = abono ? Math.max(0, diff - abono.limit) : 0;
+                const ivaRate = (!isUnofficial && m && m.applyIva && abono) ? (abono.ivaRate || 0) : 0;
+                const fixedCost = abono ? abono.price : 0;
+                const excessCost = abono ? exc * abono.excessPrice : 0;
+                const net = fixedCost + excessCost;
+                const iva = net * (ivaRate / 100);
+                const total = net * (1 + ivaRate / 100) - creditNote + debitNote;
+                const remaining = Math.max(0, total - (r.partialPaid || 0));
+
+                totalSum += remaining;
+
+                // Format period to short representation
+                const shortPeriod = formatPeriodShort(r.month);
+                
+                // Format invoice date
+                const displayDate = formatDateDisplay(r.invoiceDate || (r.month + '-28'));
+
+                return {
+                    invoiceNumber: r.invoiceNumber || (r.isUnofficial ? 'Recibo' : 'Pendiente'),
+                    period: shortPeriod,
+                    date: displayDate,
+                    amount: remaining
+                };
+            });
+
+            // Build rows
+            readingsData.forEach((data, index) => {
+                if (index === 0) {
+                    // First row renders CLIENTE and TOTALES with rowspan
+                    rowsHtml += `
+                        <tr>
+                            <td rowspan="${readingsData.length}" style="padding:15px; border:1px solid #000000; border-right:2px solid #000000; background-color:#fcd5b4; color:#000000; font-size:12px; font-weight:bold; text-transform:uppercase; vertical-align:middle; text-align:center; line-height:1.4;">
+                                ${clientNameAndMachines}
+                            </td>
+                            <td style="padding:10px; border:1px solid #000000; background-color:#ffc000; color:#000000; font-weight:bold; text-transform:uppercase; text-align:center;">
+                                ${data.invoiceNumber}
+                            </td>
+                            <td style="padding:10px; border:1px solid #000000; background-color:#ffc000; color:#000000; font-weight:bold; text-align:center;">
+                                ${data.period}
+                            </td>
+                            <td style="padding:10px; border:1px solid #000000; background-color:#ffffff; color:#000000; font-weight:bold; text-align:center;">
+                                ${data.date}
+                            </td>
+                            <td style="padding:10px; border:1px solid #000000; background-color:#ffffff; color:#000000; font-weight:bold; text-align:right; padding-right:15px;">
+                                ${formatCurrency(data.amount)}
+                            </td>
+                            <td rowspan="${readingsData.length}" style="padding:15px; border:1px solid #000000; background-color:#d9e1f2; color:#000000; font-size:14px; font-weight:800; vertical-align:middle; text-align:center;">
+                                ${formatCurrency(totalSum)}
+                            </td>
+                        </tr>
+                    `;
+                } else {
+                    // Subsequent rows only render the 4 middle cells
+                    rowsHtml += `
+                        <tr>
+                            <td style="padding:10px; border:1px solid #000000; background-color:#ffc000; color:#000000; font-weight:bold; text-transform:uppercase; text-align:center;">
+                                ${data.invoiceNumber}
+                            </td>
+                            <td style="padding:10px; border:1px solid #000000; background-color:#ffc000; color:#000000; font-weight:bold; text-align:center;">
+                                ${data.period}
+                            </td>
+                            <td style="padding:10px; border:1px solid #000000; background-color:#ffffff; color:#000000; font-weight:bold; text-align:center;">
+                                ${data.date}
+                            </td>
+                            <td style="padding:10px; border:1px solid #000000; background-color:#ffffff; color:#000000; font-weight:bold; text-align:right; padding-right:15px;">
+                                ${formatCurrency(data.amount)}
+                            </td>
+                        </tr>
+                    `;
+                }
+            });
+        } else {
+            rowsHtml = `
+                <tr>
+                    <td colspan="6" style="padding:20px; background-color:#dcfce7; color:#15803d; font-size:13px; font-weight:bold; text-align:center; border:1px solid #000000;">
+                        El cliente no registra saldo pendiente de pago. ¡Muchas gracias!
+                    </td>
+                </tr>
+            `;
+        }
+
+        reportHtmlContent = `
+            <div style="margin-top: 10px; margin-bottom: 20px;">
+                <div style="font-size: 13px; font-weight: bold; border-bottom: 2px solid #1e3a8a; padding-bottom: 6px; text-transform: uppercase; color: #1e3a8a; margin-bottom: 15px; letter-spacing: 0.5px;">
+                    📊 Estado de Cuenta Corriente (Detalle de Deuda Pendiente)
+                </div>
+                
+                <table class="client-statement-table" style="width:100%; border-collapse:collapse; font-family:'Inter', sans-serif; font-size:11px; border:2px solid #000000;">
+                    <thead>
+                        <tr style="background:#ffffff; color:#000000; border-bottom: 2px solid #000000;">
+                            <th style="padding:10px; border:1px solid #000000; font-weight:bold; text-align:center; width:26%;">CLIENTE</th>
+                            <th style="padding:10px; border:1px solid #000000; font-weight:bold; text-align:center; width:20%;">FACTURA</th>
+                            <th style="padding:10px; border:1px solid #000000; font-weight:bold; text-align:center; width:12%;">PERIODO</th>
+                            <th style="padding:10px; border:1px solid #000000; font-weight:bold; text-align:center; width:14%;">FECHA</th>
+                            <th style="padding:10px; border:1px solid #000000; font-weight:bold; text-align:center; width:16%;">MONTO</th>
+                            <th style="padding:10px; border:1px solid #000000; font-weight:bold; text-align:center; width:12%;">TOTALES</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                    </tbody>
+                </table>
+            </div>
+        `;
+        
+        reportDocTitle = `Estado de Cuenta Corriente - Cliente: ${client.name}`;
+        reportDocType = `ESTADO DE CUENTA CORRIENTE`;
     } else if (activeReport.type === 'machine') {
         const machine = state.machines.find(m => m.id === activeReport.id);
         if (!machine) return null;
@@ -8700,7 +8851,7 @@ async function generateReportPDF(activeReport, shouldUpload = false, downloadToo
                 color: #1e293b !important;
                 border-color: #cbd5e1 !important;
             }
-            #report-pdf-temp-element table {
+            #report-pdf-temp-element table:not(.client-statement-table) {
                 width: 100% !important;
                 table-layout: fixed !important;
                 border-collapse: collapse !important;
@@ -8712,51 +8863,52 @@ async function generateReportPDF(activeReport, shouldUpload = false, downloadToo
             }
             
             /* Table 1: Assigned Machines */
-            #report-pdf-temp-element table:nth-of-type(1) th:nth-child(1),
-            #report-pdf-temp-element table:nth-of-type(1) td:nth-child(1) { width: 25% !important; }
-            #report-pdf-temp-element table:nth-of-type(1) th:nth-child(2),
-            #report-pdf-temp-element table:nth-of-type(1) td:nth-child(2) { width: 18% !important; }
-            #report-pdf-temp-element table:nth-of-type(1) th:nth-child(3),
-            #report-pdf-temp-element table:nth-of-type(1) td:nth-child(3) { width: 12% !important; }
-            #report-pdf-temp-element table:nth-of-type(1) th:nth-child(4),
-            #report-pdf-temp-element table:nth-of-type(1) td:nth-child(4) { width: 18% !important; }
-            #report-pdf-temp-element table:nth-of-type(1) th:nth-child(5),
-            #report-pdf-temp-element table:nth-of-type(1) td:nth-child(5) { width: 15% !important; }
-            #report-pdf-temp-element table:nth-of-type(1) th:nth-child(6),
-            #report-pdf-temp-element table:nth-of-type(1) td:nth-child(6) { width: 12% !important; }
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(1) th:nth-child(1),
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(1) td:nth-child(1) { width: 25% !important; }
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(1) th:nth-child(2),
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(1) td:nth-child(2) { width: 18% !important; }
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(1) th:nth-child(3),
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(1) td:nth-child(3) { width: 12% !important; }
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(1) th:nth-child(4),
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(1) td:nth-child(4) { width: 18% !important; }
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(1) th:nth-child(5),
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(1) td:nth-child(5) { width: 15% !important; }
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(1) th:nth-child(6),
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(1) td:nth-child(6) { width: 12% !important; }
 
             /* Table 2: Ledger Table (Libro Mayor) */
-            #report-pdf-temp-element table:nth-of-type(2) th:nth-child(1),
-            #report-pdf-temp-element table:nth-of-type(2) td:nth-child(1) { width: 11% !important; }
-            #report-pdf-temp-element table:nth-of-type(2) th:nth-child(2),
-            #report-pdf-temp-element table:nth-of-type(2) td:nth-child(2) { width: 11% !important; }
-            #report-pdf-temp-element table:nth-of-type(2) th:nth-child(3),
-            #report-pdf-temp-element table:nth-of-type(2) td:nth-child(3) { width: 12% !important; }
-            #report-pdf-temp-element table:nth-of-type(2) th:nth-child(4),
-            #report-pdf-temp-element table:nth-of-type(2) td:nth-child(4) { width: 31% !important; word-wrap: break-word !important; }
-            #report-pdf-temp-element table:nth-of-type(2) th:nth-child(5),
-            #report-pdf-temp-element table:nth-of-type(2) td:nth-child(5) { width: 11% !important; }
-            #report-pdf-temp-element table:nth-of-type(2) th:nth-child(6),
-            #report-pdf-temp-element table:nth-of-type(2) td:nth-child(6) { width: 11% !important; }
-            #report-pdf-temp-element table:nth-of-type(2) th:nth-child(7),
-            #report-pdf-temp-element table:nth-of-type(2) td:nth-child(7) { width: 13% !important; }
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(2) th:nth-child(1),
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(2) td:nth-child(1) { width: 11% !important; }
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(2) th:nth-child(2),
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(2) td:nth-child(2) { width: 11% !important; }
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(2) th:nth-child(3),
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(2) td:nth-child(3) { width: 12% !important; }
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(2) th:nth-child(4),
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(2) td:nth-child(4) { width: 31% !important; word-wrap: break-word !important; }
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(2) th:nth-child(5),
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(2) td:nth-child(5) { width: 11% !important; }
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(2) th:nth-child(6),
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(2) td:nth-child(6) { width: 11% !important; }
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(2) th:nth-child(7),
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(2) td:nth-child(7) { width: 13% !important; }
 
             /* Table 3: Technical Service */
-            #report-pdf-temp-element table:nth-of-type(3) th:nth-child(1),
-            #report-pdf-temp-element table:nth-of-type(3) td:nth-child(1) { width: 12% !important; }
-            #report-pdf-temp-element table:nth-of-type(3) th:nth-child(2),
-            #report-pdf-temp-element table:nth-of-type(3) td:nth-child(2) { width: 22% !important; }
-            #report-pdf-temp-element table:nth-of-type(3) th:nth-child(3),
-            #report-pdf-temp-element table:nth-of-type(3) td:nth-child(3) { width: 13% !important; }
-            #report-pdf-temp-element table:nth-of-type(3) th:nth-child(4),
-            #report-pdf-temp-element table:nth-of-type(3) td:nth-child(4) { width: 41% !important; word-wrap: break-word !important; }
-            #report-pdf-temp-element table:nth-of-type(3) th:nth-child(5),
-            #report-pdf-temp-element table:nth-of-type(3) td:nth-child(5) { width: 12% !important; }
-            #report-pdf-temp-element tr {
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(3) th:nth-child(1),
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(3) td:nth-child(1) { width: 12% !important; }
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(3) th:nth-child(2),
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(3) td:nth-child(2) { width: 22% !important; }
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(3) th:nth-child(3),
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(3) td:nth-child(3) { width: 13% !important; }
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(3) th:nth-child(4),
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(3) td:nth-child(4) { width: 41% !important; word-wrap: break-word !important; }
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(3) th:nth-child(5),
+            #report-pdf-temp-element table:not(.client-statement-table):nth-of-type(3) td:nth-child(5) { width: 12% !important; }
+            
+            #report-pdf-temp-element table:not(.client-statement-table) tr {
                 background-color: #ffffff !important;
                 background: #ffffff !important;
             }
-            #report-pdf-temp-element th {
+            #report-pdf-temp-element table:not(.client-statement-table) th {
                 background-color: #f1f5f9 !important;
                 background: #f1f5f9 !important;
                 color: #0f172a !important;
@@ -8766,7 +8918,7 @@ async function generateReportPDF(activeReport, shouldUpload = false, downloadToo
                 padding: 8px 10px !important;
                 text-align: left !important;
             }
-            #report-pdf-temp-element td {
+            #report-pdf-temp-element table:not(.client-statement-table) td {
                 padding: 8px 10px !important;
                 border: 1px solid #cbd5e1 !important;
                 background-color: #ffffff !important;
@@ -8774,6 +8926,30 @@ async function generateReportPDF(activeReport, shouldUpload = false, downloadToo
                 color: #1e293b !important;
                 text-align: left !important;
             }
+
+            /* Custom Client Statement Table specific styling overrides */
+            #report-pdf-temp-element .client-statement-table {
+                width: 100% !important;
+                table-layout: fixed !important;
+                border-collapse: collapse !important;
+                border: 2px solid #000000 !important;
+            }
+            #report-pdf-temp-element .client-statement-table th {
+                border: 1px solid #000000 !important;
+                border-bottom: 2px solid #000000 !important;
+                background-color: #ffffff !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                font-weight: bold !important;
+                padding: 10px !important;
+                text-align: center !important;
+            }
+            #report-pdf-temp-element .client-statement-table td {
+                border: 1px solid #000000 !important;
+                color: #000000 !important;
+                vertical-align: middle !important;
+            }
+
             #report-pdf-temp-element h1, #report-pdf-temp-element h2, #report-pdf-temp-element h3, #report-pdf-temp-element h4 {
                 color: #1e3a8a !important;
                 margin-top: 20px !important;
