@@ -8635,80 +8635,160 @@ async function uploadBudgetPDF(budget, downloadToo = false) {
 
 // Generate PDF Report for Accounts (Client or Machine)
 async function generateReportPDF(activeReport, shouldUpload = false, downloadToo = false) {
-    const element = document.getElementById('report-printable-area');
-    if (!element) return null;
+    // 1. Get the correct HTML content using the dedicated generators
+    let reportHtmlContent = "";
+    let reportDocTitle = "";
+    let reportDocType = "";
+    
+    if (activeReport.type === 'client') {
+        const client = state.clients.find(c => c.id === activeReport.id);
+        if (!client) return null;
+        reportHtmlContent = generateClientReportHtml(client);
+        reportDocTitle = `Reporte de Historial - Cliente: ${client.name}`;
+        reportDocType = `HISTORIAL CONSOLIDADO DE CLIENTE`;
+    } else if (activeReport.type === 'machine') {
+        const machine = state.machines.find(m => m.id === activeReport.id);
+        if (!machine) return null;
+        reportHtmlContent = generateMachineReportHtml(machine);
+        reportDocTitle = `Reporte de Historial - Equipo: ${machine.brand || ''} ${machine.model} (${machine.serial})`;
+        reportDocType = `HISTORIAL CONSOLIDADO DE EQUIPO`;
+    } else {
+        return null;
+    }
 
-    // Create wrapper for off-screen rendering to ensure perfect page margins and avoid viewport cutting
+    // 2. Create the hidden wrapper (exactly like generateBudgetPDF)
     const wrapper = document.createElement('div');
-    wrapper.id = 'report-printable-area';
     wrapper.style.position = 'absolute';
     wrapper.style.left = '-9999px';
     wrapper.style.top = '0';
-    wrapper.style.width = '800px';
-    wrapper.style.padding = '40px';
-    wrapper.style.background = '#ffffff';
-    wrapper.style.color = '#1e293b';
-    wrapper.style.boxSizing = 'border-box';
-    
-    // Copy the inner HTML of the printable report area
-    wrapper.innerHTML = element.innerHTML;
-    
-    // Inject clean print-friendly stylesheet to override dark mode colors and ensure perfect high-contrast printing
-    const styleTag = document.createElement('style');
-    styleTag.innerHTML = `
-        #report-printable-area {
-            font-family: 'Inter', 'Outfit', sans-serif !important;
-            color: #1e293b !important;
-            background-color: #ffffff !important;
-        }
-        #report-printable-area * {
-            color: #1e293b !important;
-            border-color: #cbd5e1 !important;
-        }
-        #report-printable-area table {
-            width: 100% !important;
-            border-collapse: collapse !important;
-            margin-top: 15px !important;
-            margin-bottom: 20px !important;
-        }
-        #report-printable-area th {
-            background-color: #f8fafc !important;
-            color: #0f172a !important;
-            font-weight: 600 !important;
-            border-bottom: 2px solid #cbd5e1 !important;
-            padding: 8px 12px !important;
-            text-align: left !important;
-        }
-        #report-printable-area td {
-            padding: 8px 12px !important;
-            border-bottom: 1px solid #cbd5e1 !important;
-            text-align: left !important;
-        }
-        #report-printable-area h1, #report-printable-area h2, #report-printable-area h3, #report-printable-area h4 {
-            color: #1e3a8a !important;
-            margin-bottom: 8px !important;
-        }
-        #report-printable-area .badge {
-            padding: 3px 8px !important;
-            border-radius: 4px !important;
-            font-size: 11px !important;
-            font-weight: 600 !important;
-            display: inline-block !important;
-        }
-        #report-printable-area .badge.success, #report-printable-area [style*="background-color: var(--emerald)"] {
-            background-color: #dcfce7 !important;
-            color: #15803d !important;
-        }
-        #report-printable-area .badge.danger, #report-printable-area [style*="color: #dc2626"] {
-            background-color: #fee2e2 !important;
-            color: #b91c1c !important;
-        }
-    `;
-    wrapper.appendChild(styleTag);
+    wrapper.style.width = '750px';
+    wrapper.style.height = '1px';
+    wrapper.style.overflow = 'visible';
     document.body.appendChild(wrapper);
 
-    // Wait for all images inside the report to load
-    const images = wrapper.querySelectorAll('img');
+    // 3. Create the clean print element inside the wrapper
+    const element = document.createElement('div');
+    element.id = 'report-pdf-temp-element';
+    element.style.width = '750px';
+    element.style.padding = '40px';
+    element.style.background = '#ffffff';
+    element.style.color = '#1e293b';
+    element.style.boxSizing = 'border-box';
+    element.style.fontFamily = "'Outfit', 'Inter', 'Helvetica Neue', Arial, sans-serif";
+    element.style.fontSize = '12px';
+    element.style.lineHeight = '1.5';
+    wrapper.appendChild(element);
+
+    // Logo setup (exactly like generateBudgetPDF)
+    let logoHtml = "";
+    const companyLogo = document.getElementById('company-logo-img');
+    if (companyLogo && companyLogo.src && !companyLogo.src.includes('placeholder.png')) {
+        logoHtml = `<img src="${companyLogo.src}" alt="Logo" style="height: 48px; border-radius: 6px; object-fit: contain;">`;
+    } else {
+        logoHtml = `<div style="width: 48px; height: 48px; border-radius: 6px; background: #1e3a8a; color: white; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; font-family: 'Outfit', sans-serif;">M&S</div>`;
+    }
+
+    // Set the complete page template
+    element.innerHTML = `
+        <!-- Custom Styles to override all dark mode styles in table, columns and headers -->
+        <style>
+            #report-pdf-temp-element {
+                background-color: #ffffff !important;
+                color: #1e293b !important;
+            }
+            #report-pdf-temp-element * {
+                color: #1e293b !important;
+                border-color: #cbd5e1 !important;
+            }
+            #report-pdf-temp-element table {
+                width: 100% !important;
+                border-collapse: collapse !important;
+                margin-top: 15px !important;
+                margin-bottom: 25px !important;
+                font-size: 11px !important;
+            }
+            #report-pdf-temp-element th {
+                background-color: #f8fafc !important;
+                color: #0f172a !important;
+                font-weight: 600 !important;
+                border: 1px solid #cbd5e1 !important;
+                border-bottom: 2px solid #cbd5e1 !important;
+                padding: 8px 10px !important;
+                text-align: left !important;
+            }
+            #report-pdf-temp-element td {
+                padding: 8px 10px !important;
+                border: 1px solid #cbd5e1 !important;
+                text-align: left !important;
+            }
+            #report-pdf-temp-element h1, #report-pdf-temp-element h2, #report-pdf-temp-element h3, #report-pdf-temp-element h4 {
+                color: #1e3a8a !important;
+                margin-top: 20px !important;
+                margin-bottom: 10px !important;
+                font-family: 'Outfit', sans-serif !important;
+            }
+            #report-pdf-temp-element .badge {
+                padding: 2px 6px !important;
+                border-radius: 4px !important;
+                font-size: 9px !important;
+                font-weight: 600 !important;
+                display: inline-block !important;
+                border: 1px solid #cbd5e1 !important;
+                background-color: #f1f5f9 !important;
+            }
+            #report-pdf-temp-element .badge.success {
+                background-color: #dcfce7 !important;
+                color: #15803d !important;
+                border-color: #bbf7d0 !important;
+            }
+            #report-pdf-temp-element .badge.danger {
+                background-color: #fee2e2 !important;
+                color: #b91c1c !important;
+                border-color: #fca5a5 !important;
+            }
+            #report-pdf-temp-element .grid-container {
+                display: grid !important;
+                grid-template-columns: repeat(2, 1fr) !important;
+                gap: 15px !important;
+                margin-bottom: 20px !important;
+            }
+            #report-pdf-temp-element .card {
+                border: 1px solid #cbd5e1 !important;
+                background: #f8fafc !important;
+                border-radius: 6px !important;
+                padding: 15px !important;
+            }
+        </style>
+
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; border-bottom: 2px solid #1e3a8a; padding-bottom: 15px; margin-bottom: 25px;">
+            <div style="display: flex; align-items: center; gap: 15px;">
+                ${logoHtml}
+                <div>
+                    <h1 style="margin: 0; font-size: 20px; font-weight: 800; color: #1e3a8a; letter-spacing: -0.5px; line-height:1;">M&S TECNOLOGÍA DIGITAL</h1>
+                    <span style="font-size: 8px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Alquiler & Servicio Técnico</span>
+                </div>
+            </div>
+            <div style="text-align: right; font-size: 11px; color: #475569; line-height: 1.4;">
+                <strong style="color: #1e3a8a; font-size: 13px; letter-spacing: 0.5px; text-transform: uppercase;">${reportDocType}</strong><br>
+                Fecha de Emisión: ${new Date().toLocaleDateString('es-AR')}<br>
+                San Miguel de Tucumán
+            </div>
+        </div>
+
+        <!-- Dynamic Content -->
+        <div style="margin-top: 15px;">
+            ${reportHtmlContent}
+        </div>
+
+        <!-- Footer -->
+        <div style="margin-top: 40px; border-top: 1px solid #cbd5e1; padding-top: 15px; font-size: 10px; color: #64748b; text-align: center;">
+            Este reporte fue generado desde la plataforma oficial M&S Tecnología Digital.
+        </div>
+    `;
+
+    // Wait for images inside wrapper to load
+    const images = element.querySelectorAll('img');
     const imagePromises = Array.from(images).map(img => {
         if (img.complete) return Promise.resolve();
         return new Promise(resolve => {
@@ -8739,7 +8819,7 @@ async function generateReportPDF(activeReport, shouldUpload = false, downloadToo
     try {
         if (shouldUpload) {
             // Generate PDF as blob
-            const pdfBlob = await html2pdf().from(wrapper).set(opt).outputPdf('blob');
+            const pdfBlob = await html2pdf().from(element).set(opt).outputPdf('blob');
             
             // Store base64 representation globally for email enqueuing
             try {
@@ -8767,10 +8847,10 @@ async function generateReportPDF(activeReport, shouldUpload = false, downloadToo
 
             if (!uploadSuccess) {
                 // Force download locally
-                await html2pdf().from(wrapper).set(opt).save();
+                await html2pdf().from(element).set(opt).save();
                 showToast("Modo local: Reporte PDF descargado en tu dispositivo", "warning");
             } else if (downloadToo) {
-                await html2pdf().from(wrapper).set(opt).save();
+                await html2pdf().from(element).set(opt).save();
             }
 
             document.body.removeChild(wrapper);
@@ -8778,7 +8858,7 @@ async function generateReportPDF(activeReport, shouldUpload = false, downloadToo
             return uploadedUrl;
         } else {
             // Direct download
-            await html2pdf().from(wrapper).set(opt).save();
+            await html2pdf().from(element).set(opt).save();
             document.body.removeChild(wrapper);
             window.scrollTo(originalScrollX, originalScrollY);
             showToast("✓ Reporte PDF descargado con éxito", "success");
