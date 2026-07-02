@@ -7103,14 +7103,14 @@ function setupPresupuestos() {
             // If SMTP is disabled, we force a local download so they can attach it manually.
             const relativeUrl = await uploadBudgetPDF(currentBudget, !isSmtp);
             
-            if (isSmtp && relativeUrl) {
-                const pdfDownloadUrl = window.location.origin + relativeUrl;
+            if (isSmtp) {
+                const pdfDownloadUrl = relativeUrl ? (window.location.origin + relativeUrl) : null;
                 const body = generateBudgetPlainText(currentBudget, pdfDownloadUrl);
                 
-                showToast("Enviando presupuesto por email con PDF adjunto...", "info");
+                showToast("Enviando presupuesto por email...", "info");
                 await sendAutomatedEmail({ to: clientEmail, subject, body, attachment: relativeUrl });
             } else {
-                // Fallback to mailto link if SMTP is disabled or if the server upload failed.
+                // Fallback to mailto link only if SMTP is disabled.
                 // Make sure the PDF is downloaded locally.
                 if (!relativeUrl) {
                     await generateBudgetPDF(currentBudget, false); // triggers local download
