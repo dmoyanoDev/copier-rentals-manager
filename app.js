@@ -8643,41 +8643,30 @@ async function sendAutomatedEmail({ to, subject, body, attachment = null }) {
     }
 
     const htmlBody = body.replace(/\n/g, "<br>");
-    const isLocal = window.location.protocol === 'http:' || 
-                    window.location.hostname === 'localhost' || 
-                    window.location.hostname === '127.0.0.1' || 
-                    window.location.hostname.startsWith('192.168.') || 
-                    window.location.hostname.startsWith('10.');
+    const payload = {
+        Host: host,
+        Port: parseInt(port) || 587,
+        Username: user,
+        Password: pass,
+        To: to,
+        From: fromName ? `${fromName} <${fromEmail}>` : fromEmail,
+        Subject: subject,
+        Body: htmlBody,
+        Attachment: attachment
+    };
 
+    // 1. Try local server first (running on port 8000)
     try {
-        if (isLocal) {
-            // Local mode: use the PowerShell backend to send emails bypassing CORS & adblockers
-            const payload = {
-                Host: host,
-                Port: parseInt(port) || 587,
-                Username: user,
-                Password: pass,
-                To: to,
-                From: fromName ? `${fromName} <${fromEmail}>` : fromEmail,
-                Subject: subject,
-                Body: htmlBody,
-                Attachment: attachment
-            };
+        const localResponse = await fetch("http://localhost:8000/api/send-email", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+        });
 
-            const response = await fetch(getApiUrl("/api/send-email"), {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(payload)
-            });
-
-            if (!response.ok) {
-                const errText = await response.text();
-                throw new Error(errText || "Error en el servidor local SMTP");
-            }
-
-            const resText = await response.text();
+        if (localResponse.ok) {
+            const resText = await localResponse.text();
             if (resText === "OK") {
                 showToast(`Correo enviado automáticamente a: ${to}`, "success");
                 return { success: true, mode: 'smtp-local' };
@@ -8685,28 +8674,35 @@ async function sendAutomatedEmail({ to, subject, body, attachment = null }) {
                 throw new Error(resText);
             }
         } else {
-            // Production mode: use SMTPJS CDN library (Email.send)
-            if (typeof window.Email === 'undefined') {
-                throw new Error("SMTPJS library not loaded");
-            }
-            
-            const message = await Email.send({
-                Host: host,
-                Username: user,
-                Password: pass,
-                To: to,
-                From: fromName ? `${fromName} <${fromEmail}>` : fromEmail,
-                Subject: subject,
-                Body: htmlBody,
-                Attachments: attachment ? [{ name: "Presupuesto.pdf", path: attachment }] : []
-            });
+            const errText = await localResponse.text();
+            console.warn("Local server SMTP endpoint returned error status, trying SMTPJS fallback:", errText);
+        }
+    } catch (localErr) {
+        console.warn("Local server SMTP endpoint unreachable, trying SMTPJS fallback:", localErr);
+    }
 
-            if (message === "OK") {
-                showToast(`Correo enviado automáticamente a: ${to}`, "success");
-                return { success: true, mode: 'smtp-prod' };
-            } else {
-                throw new Error(message);
-            }
+    // 2. Production/Fallback mode: use SMTPJS CDN library
+    try {
+        if (typeof window.Email === 'undefined') {
+            throw new Error("SMTPJS library not loaded");
+        }
+        
+        const message = await window.Email.send({
+            Host: host,
+            Username: user,
+            Password: pass,
+            To: to,
+            From: fromName ? `${fromName} <${fromEmail}>` : fromEmail,
+            Subject: subject,
+            Body: htmlBody,
+            Attachments: attachment ? [{ name: "Presupuesto.pdf", path: attachment }] : []
+        });
+
+        if (message === "OK") {
+            showToast(`Correo enviado automáticamente a: ${to}`, "success");
+            return { success: true, mode: 'smtp-prod' };
+        } else {
+            throw new Error(message);
         }
     } catch (err) {
         console.error("SMTP sending failed:", err);
