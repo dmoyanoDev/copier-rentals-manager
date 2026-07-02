@@ -10,6 +10,16 @@ function getApiUrl(endpoint) {
     }
 }
 
+// Helper to convert Blob to Base64 data URI
+function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
 // State Management
 let state = {
     clients: [],
@@ -8532,6 +8542,13 @@ async function generateBudgetPDF(budget, shouldUpload = false, downloadToo = fal
             // Generate PDF as blob
             const pdfBlob = await html2pdf().from(element).set(opt).outputPdf('blob');
             
+            // Store base64 representation globally for Firestore email queuing
+            try {
+                window.lastGeneratedPDFBase64 = await blobToBase64(pdfBlob);
+            } catch (b64Err) {
+                console.error("Failed to convert PDF to base64:", b64Err);
+            }
+            
             let uploadedUrl = null;
             let uploadSuccess = false;
             const file = new File([pdfBlob], `presupuesto_${Date.now()}.pdf`, { type: 'application/pdf' });
@@ -8603,6 +8620,28 @@ async function sendAutomatedEmail({ to, subject, body, attachment = null }) {
     if (!host || !user || !pass || !fromEmail) {
         showToast("Error: Configuración SMTP incompleta.", "error");
         return { success: false, mode: 'error' };
+    }
+
+    // Cloud mode: Queue the email in Firestore if Firebase is active
+    if (firebaseActive && db) {
+        showToast("Encolando email en la nube...", "info");
+        try {
+            const emailDoc = {
+                to: to,
+                subject: subject,
+                body: body,
+                attachmentBase64: window.lastGeneratedPDFBase64 || null,
+                status: 'pending',
+                createdAt: new Date().toISOString()
+            };
+            
+            await db.collection('email_queue').add(emailDoc);
+            showToast("✓ Correo enviado con éxito (procesado en la nube)", "success");
+            window.lastGeneratedPDFBase64 = null; // reset
+            return { success: true, mode: 'firebase-queue' };
+        } catch (dbErr) {
+            console.warn("Failed to queue email in Firestore, falling back to direct sending:", dbErr);
+        }
     }
 
     // Define Email object inline to bypass ad-blockers and privacy blockers blocking smtpjs.com CDN scripts
