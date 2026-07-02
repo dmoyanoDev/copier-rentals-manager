@@ -7099,20 +7099,23 @@ function setupPresupuestos() {
         const subject = `Presupuesto de Alquiler - M&S Tecnología Digital`;
 
         try {
-            if (isSmtp) {
-                // Generate and upload PDF to attach it, no local download required
-                const relativeUrl = await uploadBudgetPDF(currentBudget, false);
-                const pdfDownloadUrl = relativeUrl ? (window.location.origin + relativeUrl) : null;
+            // If SMTP is enabled, we don't force a local download unless upload fails.
+            // If SMTP is disabled, we force a local download so they can attach it manually.
+            const relativeUrl = await uploadBudgetPDF(currentBudget, !isSmtp);
+            
+            if (isSmtp && relativeUrl) {
+                const pdfDownloadUrl = window.location.origin + relativeUrl;
                 const body = generateBudgetPlainText(currentBudget, pdfDownloadUrl);
                 
                 showToast("Enviando presupuesto por email con PDF adjunto...", "info");
                 await sendAutomatedEmail({ to: clientEmail, subject, body, attachment: relativeUrl });
             } else {
-                // Generate, upload, and trigger a local download so they can attach it manually in their mail client
-                const relativeUrl = await uploadBudgetPDF(currentBudget, true);
-                const pdfDownloadUrl = relativeUrl ? (window.location.origin + relativeUrl) : null;
-                const body = generateBudgetPlainText(currentBudget, pdfDownloadUrl);
-                
+                // Fallback to mailto link if SMTP is disabled or if the server upload failed.
+                // Make sure the PDF is downloaded locally.
+                if (!relativeUrl) {
+                    await generateBudgetPDF(currentBudget, false); // triggers local download
+                }
+                const body = generateBudgetPlainText(currentBudget, null);
                 window.location.href = `mailto:${clientEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
             }
         } catch (err) {
@@ -8514,11 +8517,34 @@ async function generateBudgetPDF(budget, shouldUpload = false, downloadToo = fal
 
     try {
         if (shouldUpload) {
-            // Generate PDF as blob and upload using outputPdf
+            // Generate PDF as blob
             const pdfBlob = await html2pdf().from(element).set(opt).outputPdf('blob');
             
-            if (downloadToo) {
-                // Also trigger download directly to device
+            let uploadedUrl = null;
+            let uploadSuccess = false;
+            const file = new File([pdfBlob], `presupuesto_${Date.now()}.pdf`, { type: 'application/pdf' });
+
+            try {
+                const response = await fetch(`/api/upload-pdf?filename=${encodeURIComponent(file.name)}`, {
+                    method: 'POST',
+                    body: file
+                });
+                if (response.ok) {
+                    uploadedUrl = await response.text();
+                    uploadSuccess = true;
+                } else {
+                    console.warn("Upload endpoint returned error status:", response.status);
+                }
+            } catch (uploadErr) {
+                console.warn("PDF upload request failed (possibly static host or offline server):", uploadErr);
+            }
+
+            if (!uploadSuccess) {
+                // Force download to device so user doesn't lose the document
+                await html2pdf().from(element).set(opt).save();
+                showToast("Modo local: PDF descargado en tu dispositivo", "warning");
+            } else if (downloadToo) {
+                // Also trigger download directly to device if requested
                 await html2pdf().from(element).set(opt).save();
             }
 
@@ -8526,16 +8552,7 @@ async function generateBudgetPDF(budget, shouldUpload = false, downloadToo = fal
 
             // Restore scroll position
             window.scrollTo(originalScrollX, originalScrollY);
-
-            const file = new File([pdfBlob], `presupuesto_${Date.now()}.pdf`, { type: 'application/pdf' });
-            const response = await fetch(`/api/upload-pdf?filename=${encodeURIComponent(file.name)}`, {
-                method: 'POST',
-                body: file
-            });
-
-            if (!response.ok) throw new Error("Error subiendo PDF al servidor");
-            const uploadedUrl = await response.text();
-            return uploadedUrl; // Returns the /fichas/presupuesto_XYZ.pdf URL path
+            return uploadedUrl; // Returns the /fichas/presupuesto_XYZ.pdf URL path or null
         } else {
             // Download directly to device
             await html2pdf().from(element).set(opt).save();
