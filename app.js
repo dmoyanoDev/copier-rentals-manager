@@ -8706,9 +8706,15 @@ async function generateReportPDF(activeReport, shouldUpload = false, downloadToo
                 margin-top: 15px !important;
                 margin-bottom: 25px !important;
                 font-size: 11px !important;
+                background-color: #ffffff !important;
+            }
+            #report-pdf-temp-element tr {
+                background-color: #ffffff !important;
+                background: #ffffff !important;
             }
             #report-pdf-temp-element th {
-                background-color: #f8fafc !important;
+                background-color: #f1f5f9 !important;
+                background: #f1f5f9 !important;
                 color: #0f172a !important;
                 font-weight: 600 !important;
                 border: 1px solid #cbd5e1 !important;
@@ -8719,6 +8725,9 @@ async function generateReportPDF(activeReport, shouldUpload = false, downloadToo
             #report-pdf-temp-element td {
                 padding: 8px 10px !important;
                 border: 1px solid #cbd5e1 !important;
+                background-color: #ffffff !important;
+                background: #ffffff !important;
+                color: #1e293b !important;
                 text-align: left !important;
             }
             #report-pdf-temp-element h1, #report-pdf-temp-element h2, #report-pdf-temp-element h3, #report-pdf-temp-element h4 {
@@ -8726,6 +8735,7 @@ async function generateReportPDF(activeReport, shouldUpload = false, downloadToo
                 margin-top: 20px !important;
                 margin-bottom: 10px !important;
                 font-family: 'Outfit', sans-serif !important;
+                background-color: transparent !important;
             }
             #report-pdf-temp-element .badge {
                 padding: 2px 6px !important;
@@ -8751,12 +8761,17 @@ async function generateReportPDF(activeReport, shouldUpload = false, downloadToo
                 grid-template-columns: repeat(2, 1fr) !important;
                 gap: 15px !important;
                 margin-bottom: 20px !important;
+                background-color: transparent !important;
             }
             #report-pdf-temp-element .card {
                 border: 1px solid #cbd5e1 !important;
+                background-color: #f8fafc !important;
                 background: #f8fafc !important;
                 border-radius: 6px !important;
                 padding: 15px !important;
+            }
+            #report-pdf-temp-element .card * {
+                background-color: transparent !important;
             }
         </style>
 
