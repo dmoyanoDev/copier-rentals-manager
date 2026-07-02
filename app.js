@@ -8661,7 +8661,7 @@ async function generateReportPDF(activeReport, shouldUpload = false, downloadToo
     wrapper.style.position = 'absolute';
     wrapper.style.left = '-9999px';
     wrapper.style.top = '0';
-    wrapper.style.width = '750px';
+    wrapper.style.width = '850px';
     wrapper.style.height = '1px';
     wrapper.style.overflow = 'visible';
     document.body.appendChild(wrapper);
@@ -8669,8 +8669,8 @@ async function generateReportPDF(activeReport, shouldUpload = false, downloadToo
     // 3. Create the clean print element inside the wrapper
     const element = document.createElement('div');
     element.id = 'report-pdf-temp-element';
-    element.style.width = '750px';
-    element.style.padding = '40px';
+    element.style.width = '850px';
+    element.style.padding = '30px';
     element.style.background = '#ffffff';
     element.style.color = '#1e293b';
     element.style.boxSizing = 'border-box';
@@ -8808,7 +8808,7 @@ async function generateReportPDF(activeReport, shouldUpload = false, downloadToo
 
     const reportName = activeReport.type === 'client' ? 'Estado_de_Cuenta' : 'Reporte_Tecnico';
     const opt = {
-        margin:       [15, 15, 15, 15],
+        margin:       [10, 10, 10, 10],
         filename:     `${reportName}_${Date.now()}.pdf`,
         image:        { type: 'jpeg', quality: 0.98 },
         html2canvas:  { scale: 2, useCORS: true, logging: false, scrollY: 0, scrollX: 0 },
