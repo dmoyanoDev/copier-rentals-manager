@@ -7,10 +7,21 @@ let state = {
     maintenance: [],
     users: [],
     currentUser: null,
+    presupuestos: [],
     settings: {
         reminder7Days: true,
         reminder3Days: true,
-        reminder1Day: true
+        reminder1Day: true,
+        smtp: {
+            enabled: false,
+            host: '',
+            port: '587',
+            user: '',
+            pass: '',
+            ssl: false,
+            fromEmail: '',
+            fromName: ''
+        }
     }
 };
 
@@ -71,6 +82,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Wire up Reports actions
     setupReports();
+
+    // Initialize budgets module
+    setupPresupuestos();
 
     // Wire up Rental Transitions
     setupRentalTransitions();
@@ -173,6 +187,7 @@ async function fetchCloudData() {
         state.maintenance = await fetchCollection('maintenance') || [];
         state.users = await fetchCollection('users');
         state.tickets = await fetchCollection('tickets') || [];
+        state.presupuestos = await fetchCollection('presupuestos') || [];
         
         // Load company logo if stored in Firestore
         const logoDoc = await db.collection('settings').doc('companyLogo').get();
@@ -187,6 +202,12 @@ async function fetchCloudData() {
                     state.companyLogo = localState.companyLogo;
                 }
             }
+        }
+        
+        
+        const settingsDoc = await db.collection('settings').doc('generalSettings').get();
+        if (settingsDoc.exists) {
+            state.settings = settingsDoc.data();
         }
         
         // Safeguard user admin
@@ -349,12 +370,25 @@ function loadFromLocalStorage() {
             if (!state.maintenance) state.maintenance = [];
             if (!state.users) state.users = [];
             if (!state.tickets) state.tickets = [];
+            if (!state.presupuestos) state.presupuestos = [];
             if (state.currentUser === undefined) state.currentUser = null;
             if (!state.settings) {
                 state.settings = {
                     reminder7Days: true,
                     reminder3Days: true,
                     reminder1Day: true
+                };
+            }
+            if (!state.settings.smtp) {
+                state.settings.smtp = {
+                    enabled: false,
+                    host: '',
+                    port: '587',
+                    user: '',
+                    pass: '',
+                    ssl: false,
+                    fromEmail: '',
+                    fromName: ''
                 };
             }
         } catch (e) {
@@ -679,6 +713,10 @@ function updateTitleText(tabName) {
             pageTitle.textContent = 'Área Técnica - Soporte';
             pageSubtitle.textContent = 'Pedidos de servicio técnico, insumos y repuestos registrados';
             break;
+        case 'presupuestos':
+            pageTitle.textContent = 'Generador de Presupuestos';
+            pageSubtitle.textContent = 'Cotizaciones automáticas de alquiler, venta de equipos, repuestos e insumos';
+            break;
     }
 }
 
@@ -735,6 +773,9 @@ function renderApp() {
             break;
         case 'technical-area':
             renderTechnicalAreaTab();
+            break;
+        case 'presupuestos':
+            renderPresupuestosTab();
             break;
     }
 }
@@ -1124,6 +1165,8 @@ function setupForms() {
         const applyIva = document.getElementById('machine-apply-iva').checked;
         const isAvailable = document.getElementById('machine-availability').value === 'true';
         const readingDay = parseInt(document.getElementById('machine-reading-day').value) || 10;
+        const pdfUrl = document.getElementById('machine-pdf-url').value;
+        const features = document.getElementById('machine-features').value;
 
         let finalStatus = status;
         if (status === 'Nuevo' && machineCounter > 0) {
@@ -1145,7 +1188,9 @@ function setupForms() {
             initialCounter: clientId ? initialCounter : 0,
             applyIva: clientId ? applyIva : false,
             readingDay: clientId ? readingDay : 10,
-            isAvailable
+            isAvailable,
+            pdfUrl: pdfUrl || '',
+            features: features || ''
         };
 
         if (id) {
@@ -1176,6 +1221,47 @@ function setupForms() {
             availSelect.disabled = false;
         }
     });
+
+    const machPdfFile = document.getElementById('machine-pdf-file');
+    if (machPdfFile) {
+        machPdfFile.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            showToast("Subiendo ficha técnica del equipo...", "info");
+            try {
+                const response = await fetch(`/api/upload-pdf?filename=${encodeURIComponent(file.name)}`, {
+                    method: 'POST',
+                    body: file
+                });
+
+                if (!response.ok) throw new Error("Error en la respuesta del servidor");
+
+                const relativeUrl = await response.text();
+                document.getElementById('machine-pdf-url').value = relativeUrl;
+                
+                const pdfStatusDiv = document.getElementById('machine-pdf-status');
+                const pdfLinkLabel = document.getElementById('machine-pdf-link');
+                pdfLinkLabel.href = relativeUrl;
+                pdfStatusDiv.style.display = 'flex';
+                
+                showToast("✓ Ficha técnica PDF del equipo vinculada con éxito", "success");
+            } catch (err) {
+                console.error("Machine PDF upload failed:", err);
+                showToast("Error al subir PDF: " + err.message, "error");
+            }
+        });
+    }
+
+    const btnMachPdfRemove = document.getElementById('btn-machine-pdf-remove');
+    if (btnMachPdfRemove) {
+        btnMachPdfRemove.onclick = () => {
+            if (machPdfFile) machPdfFile.value = '';
+            document.getElementById('machine-pdf-url').value = '';
+            document.getElementById('machine-pdf-status').style.display = 'none';
+            showToast("Ficha técnica desvinculada del equipo", "info");
+        };
+    }
 
     // Abono Form
     document.getElementById('form-abono').addEventListener('submit', async (e) => {
@@ -1712,6 +1798,102 @@ function setupActions() {
         notify1DayCheckbox.addEventListener('change', saveSettings);
     }
 
+    // SMTP Configuration Form Bindings
+    const smtpEnabledCheckbox = document.getElementById('setting-smtp-enabled');
+    const smtpHostInput = document.getElementById('smtp-host');
+    const smtpPortInput = document.getElementById('smtp-port');
+    const smtpUserInput = document.getElementById('smtp-user');
+    const smtpPassInput = document.getElementById('smtp-pass');
+    const smtpFromInput = document.getElementById('smtp-from');
+    const smtpNameInput = document.getElementById('smtp-name');
+    const smtpForm = document.getElementById('form-smtp-config');
+    const smtpTestBtn = document.getElementById('btn-smtp-test');
+
+    if (smtpForm && smtpEnabledCheckbox) {
+        // Load initial state
+        const smtp = state.settings?.smtp || {
+            enabled: false,
+            host: '',
+            port: '587',
+            user: '',
+            pass: '',
+            ssl: false,
+            fromEmail: '',
+            fromName: ''
+        };
+
+        smtpEnabledCheckbox.checked = smtp.enabled;
+        smtpHostInput.value = smtp.host || '';
+        smtpPortInput.value = smtp.port || '587';
+        smtpUserInput.value = smtp.user || '';
+        smtpPassInput.value = smtp.pass || '';
+        smtpFromInput.value = smtp.fromEmail || '';
+        smtpNameInput.value = smtp.fromName || '';
+
+        smtpForm.onsubmit = (e) => {
+            e.preventDefault();
+            if (!state.settings) state.settings = {};
+            state.settings.smtp = {
+                enabled: smtpEnabledCheckbox.checked,
+                host: smtpHostInput.value.trim(),
+                port: smtpPortInput.value.trim(),
+                user: smtpUserInput.value.trim(),
+                pass: smtpPassInput.value,
+                ssl: smtpPortInput.value.trim() === '465',
+                fromEmail: smtpFromInput.value.trim(),
+                fromName: smtpNameInput.value.trim()
+            };
+            saveToLocalStorage();
+            
+            // Sync to Firestore if active
+            if (firebaseActive && db) {
+                db.collection('settings').doc('generalSettings').set(state.settings).catch(err => {
+                    console.error("Error saving generalSettings to Firestore:", err);
+                });
+            }
+
+            showToast('Configuración SMTP guardada con éxito', 'success');
+        };
+
+        smtpTestBtn.onclick = async () => {
+            const host = smtpHostInput.value.trim();
+            const port = smtpPortInput.value.trim();
+            const user = smtpUserInput.value.trim();
+            const pass = smtpPassInput.value;
+            const fromEmail = smtpFromInput.value.trim();
+            const fromName = smtpNameInput.value.trim();
+
+            if (!host || !user || !pass || !fromEmail) {
+                showToast('Por favor completa los campos antes de probar', 'warning');
+                return;
+            }
+
+            showToast('Enviando correo de prueba...', 'info');
+
+            // Temporarily store credentials for testing
+            const prevSmtp = state.settings.smtp;
+            state.settings.smtp = {
+                enabled: true,
+                host,
+                port,
+                user,
+                pass,
+                ssl: port === '465',
+                fromEmail,
+                fromName
+            };
+
+            const res = await sendAutomatedEmail({
+                to: fromEmail,
+                subject: 'M&S - Correo de Prueba SMTP',
+                body: 'Este es un correo de prueba enviado desde tu sistema M&S para validar la configuración de tu servidor de correo.'
+            });
+
+            // Restore previous SMTP settings
+            state.settings.smtp = prevSmtp;
+        };
+    }
+
     // Modal tabs toggle logic inside rental detail modal
     const modalTabBtns = document.querySelectorAll('.modal-tab-btn');
     modalTabBtns.forEach(btn => {
@@ -2133,6 +2315,19 @@ function openMachineModal(machine = null) {
         document.getElementById('machine-apply-iva').checked = machine.applyIva || false;
         document.getElementById('machine-reading-day').value = machine.readingDay || 10;
 
+        // PDF and features
+        document.getElementById('machine-pdf-url').value = machine.pdfUrl || '';
+        document.getElementById('machine-features').value = machine.features || '';
+        
+        const pdfStatusDiv = document.getElementById('machine-pdf-status');
+        const pdfLinkLabel = document.getElementById('machine-pdf-link');
+        if (machine.pdfUrl) {
+            pdfLinkLabel.href = machine.pdfUrl;
+            pdfStatusDiv.style.display = 'flex';
+        } else {
+            pdfStatusDiv.style.display = 'none';
+        }
+
         const isAvailable = machine.isAvailable !== false;
         const availSelect = document.getElementById('machine-availability');
         availSelect.value = isAvailable ? 'true' : 'false';
@@ -2159,6 +2354,13 @@ function openMachineModal(machine = null) {
         document.getElementById('machine-install-counter').value = 0;
         document.getElementById('machine-apply-iva').checked = false;
         document.getElementById('machine-reading-day').value = 10;
+
+        // Reset PDF and features
+        document.getElementById('machine-pdf-url').value = '';
+        document.getElementById('machine-features').value = '';
+        document.getElementById('machine-pdf-status').style.display = 'none';
+        const fileInput = document.getElementById('machine-pdf-file');
+        if (fileInput) fileInput.value = '';
 
         const availSelect = document.getElementById('machine-availability');
         availSelect.value = 'true';
@@ -2544,6 +2746,42 @@ function openInvoiceModal(reading) {
                 waUrl = `https://wa.me/${clientPhone}?text=${encodedMsg}`;
             }
             window.open(waUrl, '_blank');
+        };
+    }
+
+    // Wire share via Email action
+    const emailShareBtn = document.getElementById('btn-share-email');
+    if (emailShareBtn) {
+        emailShareBtn.onclick = async () => {
+            const periodStr = formatPeriod(reading.month);
+            const machineName = `${machine.brand || ''} ${machine.model}`.trim();
+            const excessStr = excess > 0 
+                ? `\n*Copias Excedentes:* ${excess.toLocaleString('es-AR')} (${formatCurrency(abono.excessPrice)}/copia) -> *Subtotal exc:* ${formatCurrency(excessFee)}`
+                : '';
+            const ivaStr = (!isUnofficial && machine.applyIva && ivaRate > 0)
+                ? `\n*Subtotal Neto:* ${formatCurrency(netSubtotal)}\n*IVA (${ivaRate}%):* ${formatCurrency(ivaCost)}`
+                : '';
+            const adjustStr = (creditNote > 0 ? `\n*Nota de Crédito:* -${formatCurrency(creditNote)} (${reading.creditNoteReason || 'Descuento'})` : '') +
+                              (debitNote > 0 ? `\n*Nota de Débito:* +${formatCurrency(debitNote)} (${reading.debitNoteReason || 'Recargo'})` : '');
+
+            const subject = `Resumen de cobro de alquiler - Período ${periodStr}`;
+            const msg = `Estimado *${client.name}*,\nLe compartimos el resumen de cobro de alquiler para el período *${periodStr}*:\n\n` +
+                (reading.invoiceNumber ? `*Factura Nro:* ${reading.invoiceNumber}\n` : '') +
+                `*Equipo:* ${machineName} (S/N: ${machine.serial})\n` +
+                `*Lectura Inicial:* ${reading.initial.toLocaleString('es-AR')}\n` +
+                `*Lectura Final:* ${reading.final.toLocaleString('es-AR')}\n` +
+                `*Consumo del Mes:* ${copies.toLocaleString('es-AR')} copias\n\n` +
+                `*Abono Fijo:* ${formatCurrency(abono.price)} (Incluye ${abono.limit.toLocaleString('es-AR')} copias)${excessStr}${ivaStr}${adjustStr}\n` +
+                `-----------------------------------------\n` +
+                `*TOTAL A ABONAR:* ${formatCurrency(totalGeneral)}\n\n` +
+                `Por favor, envíe el comprobante de transferencia bancaria una vez realizado el pago. ¡Muchas gracias por su confianza!\n_M&S Tecnología Digital_`;
+
+            if (state.settings && state.settings.smtp && state.settings.smtp.enabled) {
+                showToast("Enviando correo automáticamente...", "info");
+                await sendAutomatedEmail({ to: client.email || "", subject, body: msg });
+            } else {
+                window.location.href = `mailto:${client.email || ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(msg)}`;
+            }
         };
     }
 
@@ -4378,9 +4616,21 @@ function setupFirebaseControls() {
                         }
                     }
                     
+                    // Upload presupuestos
+                    if (localState.presupuestos) {
+                        for (const b of localState.presupuestos) {
+                            await db.collection('presupuestos').doc(b.id).set(b);
+                        }
+                    }
+                    
                     // Upload logo
                     if (localState.companyLogo) {
                         await db.collection('settings').doc('companyLogo').set({ value: localState.companyLogo });
+                    }
+                    
+                    // Upload settings
+                    if (localState.settings) {
+                        await db.collection('settings').doc('generalSettings').set(localState.settings);
                     }
                     
                     showToast("Sincronización completa. Todos los datos locales están en la nube.", "success");
@@ -4447,6 +4697,9 @@ async function syncStateToFirestore() {
             
             if (state.companyLogo) {
                 await db.collection('settings').doc('companyLogo').set({ value: state.companyLogo });
+            }
+            if (state.settings) {
+                await db.collection('settings').doc('generalSettings').set(state.settings);
             }
         } catch (err) {
             console.error("Error syncing state to Firestore:", err);
@@ -5298,21 +5551,31 @@ function setupReports() {
     // Email share button
     const emailBtn = document.getElementById('btn-report-email');
     if (emailBtn) {
-        emailBtn.onclick = () => {
+        emailBtn.onclick = async () => {
             let subject = "";
             let body = "";
+            let toEmail = "";
             if (activeReport.type === 'client') {
                 const client = state.clients.find(c => c.id === activeReport.id);
                 if (!client) return;
                 subject = `Reporte Consolidado de Cliente - ${client.name}`;
                 body = generateClientReportPlainText(client);
+                toEmail = client.email || "";
             } else if (activeReport.type === 'machine') {
                 const machine = state.machines.find(m => m.id === activeReport.id);
                 if (!machine) return;
                 subject = `Reporte Técnico de Equipo - S/N ${machine.serial}`;
                 body = generateMachineReportPlainText(machine);
+                const client = state.clients.find(c => c.id === machine.clientId);
+                toEmail = client ? (client.email || "") : "";
             }
-            window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank');
+
+            if (state.settings && state.settings.smtp && state.settings.smtp.enabled) {
+                showToast("Enviando correo automáticamente...", "info");
+                await sendAutomatedEmail({ to: toEmail, subject, body });
+            } else {
+                window.location.href = `mailto:${toEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            }
         };
     }
 
@@ -6550,4 +6813,1836 @@ async function fixAccountingAuditBalances() {
     // Re-run audit to show fresh clean results!
     runAccountingAuditSuite();
 }
+
+// ==========================================
+// SISTEMA DE GENERACIÓN DE PRESUPUESTOS (M&S)
+// ==========================================
+let activeTiers = [
+    { copies: 3000, price: 118500, excessPrice: 39.5, includeIva: false, showPlusIva: false }
+];
+let activeAdditionalItems = [];
+
+function setupPresupuestos() {
+    const form = document.getElementById('form-presupuesto');
+    if (!form) return;
+
+    const templateSelect = document.getElementById('pres-template-type');
+    const clientSelect = document.getElementById('pres-client-select');
+    const customClientGroup = document.getElementById('pres-custom-client-group');
+    const machineSelect = document.getElementById('pres-machine-select');
+    const customMachineGroup = document.getElementById('pres-custom-machine-group');
+
+    const pdfFileInput = document.getElementById('pres-pdf-file');
+    const pdfUrlInput = document.getElementById('pres-pdf-url');
+    const pdfStatusDiv = document.getElementById('pres-pdf-status');
+    const pdfLinkLabel = document.getElementById('pres-pdf-link');
+    const pdfRemoveBtn = document.getElementById('btn-pres-pdf-remove');
+
+    // Change template type
+    templateSelect.onchange = () => {
+        updateBudgetPreview();
+    };
+
+    // Client change
+    clientSelect.onchange = () => {
+        const val = clientSelect.value;
+        if (val === 'new') {
+            customClientGroup.style.display = 'block';
+            document.getElementById('pres-client-cuit').value = '';
+        } else {
+            customClientGroup.style.display = 'none';
+            // Pre-fill CUIT if client has it
+            const client = state.clients.find(c => c.id === val);
+            if (client) {
+                document.getElementById('pres-client-cuit').value = client.cuit || '';
+            }
+        }
+        updateBudgetPreview();
+    };
+
+    // Machine change
+    machineSelect.onchange = () => {
+        const val = machineSelect.value;
+        if (val === 'new') {
+            customMachineGroup.style.display = 'block';
+            document.getElementById('pres-machine-model').value = '';
+            document.getElementById('pres-custom-features').value = '';
+            pdfUrlInput.value = '';
+            pdfStatusDiv.style.display = 'none';
+        } else if (val.startsWith('default-')) {
+            customMachineGroup.style.display = 'none';
+            // Default model specs
+            const isBrother = val === 'default-brother-5660';
+            const isRicoh = val === 'default-ricoh-430';
+
+            document.getElementById('pres-feat-ppm-check').checked = true;
+            document.getElementById('pres-feat-ppm-val').value = isBrother ? "Velocidad: hasta 48 ppm (A4) / 50 ppm (carta)" : (isRicoh ? "Velocidad: 45 ppm (carta)" : "Velocidad: hasta 42 ppm (negro)");
+
+            document.getElementById('pres-feat-platina-check').checked = true;
+            document.getElementById('pres-feat-platina-val').value = "Platina Oficio";
+
+            document.getElementById('pres-feat-doblefaz-check').checked = true;
+            document.getElementById('pres-feat-doblefaz-val').value = isRicoh ? "Doble faz automatico (SPDF de una pasada)" : "Doble faz automatico de original y copia";
+
+            document.getElementById('pres-feat-conectividad-check').checked = true;
+            document.getElementById('pres-feat-conectividad-val').value = "Conectividad: Red LAN, USB";
+
+            document.getElementById('pres-feat-pantalla-check').checked = isBrother || isRicoh;
+            document.getElementById('pres-feat-pantalla-val').value = isRicoh ? "Pantalla tactil inteligente color de 10.1\"" : (isBrother ? "Pantalla tactil a color de 3.5\"" : "Pantalla tactil color");
+
+            document.getElementById('pres-feat-adf-check').checked = true;
+            document.getElementById('pres-feat-adf-val').value = isBrother ? "Alimentador automatico de documentos (ADF) de 70 paginas" : (isRicoh ? "Alimentador automatico de documentos (ADF) de 50 hojas" : "Alimentador automatico (ADF)");
+
+            document.getElementById('pres-feat-escaner-check').checked = true;
+            document.getElementById('pres-feat-escaner-val').value = "Escaner a color";
+
+            let specs = "";
+            let fileUrl = "";
+            if (val === 'default-hp-432') {
+                specs = "Impresion, copia, escaneado y fax.\nResolucion: 1200 x 1200 ppp.\nProcesador 600 MHz.\nMemoria 256 MB.";
+                fileUrl = "/fichas/hp_laser_mfp_432fdn.pdf";
+            } else if (isBrother) {
+                specs = "Velocidad de escaneado de hasta 28 ipm.\nResolucion optica 1200 x 1200 ppp.\nProcesador Core dual 1.2 GHz.\nMemoria 512 MB.";
+                fileUrl = "/fichas/brother_dcp_l5660dn.pdf";
+            } else if (isRicoh) {
+                specs = "Impresion, copia, escaneo.\nResolucion: 1200 x 1200 dpi.\nProcesador Intel Atom 1.46 GHz.\nMemoria 2 GB / HDD 320 GB.";
+                fileUrl = "/fichas/ricoh_im_430f.pdf";
+            }
+            document.getElementById('pres-custom-features').value = specs;
+
+            pdfUrlInput.value = fileUrl;
+            pdfLinkLabel.href = fileUrl;
+            pdfStatusDiv.style.display = 'flex';
+        } else {
+            customMachineGroup.style.display = 'none';
+            // Pre-select features if existing machine in stock
+            const machine = state.machines.find(m => m.id === val);
+            if (machine) {
+                document.getElementById('pres-feat-ppm-check').checked = true;
+                document.getElementById('pres-feat-ppm-val').value = "43 ppm";
+                document.getElementById('pres-feat-platina-check').checked = true;
+                document.getElementById('pres-feat-platina-val').value = "Platina Oficio";
+                document.getElementById('pres-feat-doblefaz-check').checked = true;
+                document.getElementById('pres-feat-doblefaz-val').value = "Doble faz automatico (Original/Copia)";
+                document.getElementById('pres-feat-conectividad-check').checked = true;
+                document.getElementById('pres-feat-conectividad-val').value = "Conectividad: Red LAN, USB";
+                document.getElementById('pres-feat-pantalla-check').checked = false;
+                document.getElementById('pres-feat-pantalla-val').value = "Pantalla tactil color";
+                document.getElementById('pres-feat-adf-check').checked = true;
+                document.getElementById('pres-feat-adf-val').value = "Alimentador automatico (ADF)";
+                document.getElementById('pres-feat-escaner-check').checked = true;
+                document.getElementById('pres-feat-escaner-val').value = "Escaner a color";
+                document.getElementById('pres-custom-features').value = machine.features || '';
+                
+                if (machine.pdfUrl) {
+                    pdfUrlInput.value = machine.pdfUrl;
+                    pdfLinkLabel.href = machine.pdfUrl;
+                    pdfStatusDiv.style.display = 'flex';
+                } else {
+                    pdfUrlInput.value = '';
+                    pdfStatusDiv.style.display = 'none';
+                }
+            }
+        }
+        updateBudgetPreview();
+    };
+
+    // Budget PDF Upload
+    if (pdfFileInput) {
+        pdfFileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            showToast("Subiendo ficha técnica...", "info");
+            try {
+                const response = await fetch(`/api/upload-pdf?filename=${encodeURIComponent(file.name)}`, {
+                    method: 'POST',
+                    body: file
+                });
+
+                if (!response.ok) throw new Error("Error en la respuesta del servidor");
+
+                const relativeUrl = await response.text();
+                pdfUrlInput.value = relativeUrl;
+                pdfLinkLabel.href = relativeUrl;
+                pdfStatusDiv.style.display = 'flex';
+                showToast("✓ Ficha técnica PDF vinculada con éxito", "success");
+                updateBudgetPreview();
+            } catch (err) {
+                console.error("PDF upload failed:", err);
+                showToast("Error al subir PDF: " + err.message, "error");
+            }
+        });
+    }
+
+    if (pdfRemoveBtn) {
+        pdfRemoveBtn.onclick = () => {
+            if (pdfFileInput) pdfFileInput.value = '';
+            pdfUrlInput.value = '';
+            pdfStatusDiv.style.display = 'none';
+            showToast("Ficha técnica desvinculada", "info");
+            updateBudgetPreview();
+        };
+    }
+
+    // Wire up dynamic tiers addition
+    document.getElementById('btn-pres-add-tier').onclick = () => {
+        const lastTier = activeTiers[activeTiers.length - 1] || { copies: 3000, price: 118500, excessPrice: 39.5, includeIva: false, showPlusIva: false };
+        activeTiers.push({
+            copies: lastTier.copies + 2000,
+            price: Math.round(lastTier.price * 1.4),
+            excessPrice: Math.round(lastTier.excessPrice * 0.9 * 10) / 10,
+            includeIva: lastTier.includeIva || false,
+            showPlusIva: lastTier.showPlusIva || false
+        });
+        renderTiers();
+        updateBudgetPreview();
+    };
+
+    // Wire up dynamic additional items addition
+    document.getElementById('btn-pres-add-item').onclick = () => {
+        activeAdditionalItems.push({
+            type: 'Insumo',
+            description: '',
+            quantity: 1,
+            price: 0,
+            includeIva: false
+        });
+        renderAdditionalItems();
+        updateBudgetPreview();
+    };
+
+    // Form inputs change triggers preview update
+    const formInputs = [
+        'pres-client-name', 'pres-client-cuit', 'pres-machine-model',
+        'pres-feat-ppm-check', 'pres-feat-ppm-val',
+        'pres-feat-platina-check', 'pres-feat-platina-val',
+        'pres-feat-doblefaz-check', 'pres-feat-doblefaz-val',
+        'pres-feat-conectividad-check', 'pres-feat-conectividad-val',
+        'pres-feat-pantalla-check', 'pres-feat-pantalla-val',
+        'pres-feat-adf-check', 'pres-feat-adf-val',
+        'pres-feat-escaner-check', 'pres-feat-escaner-val',
+        'pres-custom-features',
+        'pres-cond-months', 'pres-cond-adjust', 'pres-cond-validity'
+    ];
+    formInputs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', updateBudgetPreview);
+            el.addEventListener('change', updateBudgetPreview);
+        }
+    });
+
+    // Clear form
+    document.getElementById('btn-pres-clear').onclick = () => {
+        form.reset();
+        activeTiers = [{ copies: 3000, price: 118500, excessPrice: 39.5, includeIva: false, showPlusIva: false }];
+        activeAdditionalItems = [];
+        customClientGroup.style.display = 'none';
+        customMachineGroup.style.display = 'none';
+        pdfUrlInput.value = '';
+        pdfStatusDiv.style.display = 'none';
+        if (pdfFileInput) pdfFileInput.value = '';
+        renderTiers();
+        renderAdditionalItems();
+        updateBudgetPreview();
+    };
+
+    // Download PDF Button
+    document.getElementById('btn-pres-download-pdf').onclick = async () => {
+        const currentBudget = getFormBudgetData();
+        showToast("Generando archivo PDF...", "info");
+        await generateBudgetPDF(currentBudget, false);
+    };
+
+    // Print button
+    document.getElementById('btn-pres-print').onclick = () => {
+        const currentBudget = getFormBudgetData();
+        printBudget(currentBudget);
+    };
+
+    // WhatsApp button
+    document.getElementById('btn-pres-whatsapp').onclick = async () => {
+        // Open blank window immediately inside the user click to bypass popup blockers
+        const win = window.open('', '_blank');
+        if (!win) {
+            showToast("Bloqueador de ventanas emergentes activo. Por favor permite popups para WhatsApp.", "warning");
+            return;
+        }
+        win.document.write("<html><head><title>Generando Presupuesto...</title></head><body style='font-family:sans-serif; text-align:center; padding-top:50px; color:#334155;'><h3>Generando y subiendo PDF...</h3><p>Por favor espera un momento.</p></body></html>");
+
+        try {
+            const currentBudget = getFormBudgetData();
+            // generate, upload to server, and also download locally so user can drag-and-drop it
+            const relativeUrl = await uploadBudgetPDF(currentBudget, true); 
+            const pdfDownloadUrl = relativeUrl ? (window.location.origin + relativeUrl) : null;
+            const msg = generateBudgetPlainText(currentBudget, pdfDownloadUrl);
+            win.location.href = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+        } catch (err) {
+            console.error("WhatsApp share failed:", err);
+            win.close();
+            showToast("Error al compartir por WhatsApp: " + err.message, "error");
+        }
+    };
+
+    // Email button
+    document.getElementById('btn-pres-email').onclick = async () => {
+        const currentBudget = getFormBudgetData();
+        
+        let clientEmail = "";
+        if (currentBudget.clientId !== 'new') {
+            const client = state.clients.find(c => c.id === currentBudget.clientId);
+            if (client) clientEmail = client.email || "";
+        }
+
+        const isSmtp = state.settings && state.settings.smtp && state.settings.smtp.enabled;
+        const subject = `Presupuesto de Alquiler - M&S Tecnología Digital`;
+
+        try {
+            if (isSmtp) {
+                // Generate and upload PDF to attach it, no local download required
+                const relativeUrl = await uploadBudgetPDF(currentBudget, false);
+                const pdfDownloadUrl = relativeUrl ? (window.location.origin + relativeUrl) : null;
+                const body = generateBudgetPlainText(currentBudget, pdfDownloadUrl);
+                
+                showToast("Enviando presupuesto por email con PDF adjunto...", "info");
+                await sendAutomatedEmail({ to: clientEmail, subject, body, attachment: relativeUrl });
+            } else {
+                // Generate, upload, and trigger a local download so they can attach it manually in their mail client
+                const relativeUrl = await uploadBudgetPDF(currentBudget, true);
+                const pdfDownloadUrl = relativeUrl ? (window.location.origin + relativeUrl) : null;
+                const body = generateBudgetPlainText(currentBudget, pdfDownloadUrl);
+                
+                window.location.href = `mailto:${clientEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            }
+        } catch (err) {
+            console.error("Email share failed:", err);
+            showToast("Error al compartir por email: " + err.message, "error");
+        }
+    };
+
+    // Submit form (Save Budget)
+    form.onsubmit = async (e) => {
+        e.preventDefault();
+        const budgetData = getFormBudgetData();
+        budgetData.id = 'budget-' + Date.now();
+        
+        state.presupuestos.push(budgetData);
+        saveToLocalStorage();
+
+        if (firebaseActive && db) {
+            await db.collection('presupuestos').doc(budgetData.id).set(budgetData).catch(err => {
+                console.error("Error saving budget to Firestore:", err);
+            });
+        }
+
+        showToast('Presupuesto guardado con éxito', 'success');
+        renderPresupuestosTab();
+    };
+
+    renderTiers();
+    renderAdditionalItems();
+    updateBudgetPreview();
+}
+
+function renderTiers() {
+    const container = document.getElementById('pres-tiers-container');
+    if (!container) return;
+    container.innerHTML = '';
+
+    activeTiers.forEach((tier, index) => {
+        const div = document.createElement('div');
+        div.className = 'tier-item mb-2 p-2 border rounded';
+        div.style.background = '#f8fafc';
+        div.style.border = '1px solid #e2e8f0';
+        div.innerHTML = `
+            <div class="flex justify-between align-center mb-1">
+                <span style="font-weight:600; font-size:12px; color:var(--text-secondary);">Rango ${index + 1}</span>
+                ${activeTiers.length > 1 ? `<button type="button" class="btn btn-link text-red p-0" onclick="removeTier(${index})" style="font-size:12px; text-decoration:none;">❌ Eliminar</button>` : ''}
+            </div>
+            <div class="grid grid-4 gap-2">
+                <div class="form-group">
+                    <label style="font-size:11px; font-weight:600;">Copias Incluidas</label>
+                    <input type="number" class="form-control form-control-sm tier-copies" value="${tier.copies}" data-index="${index}" style="padding:4px 8px; font-size:12px;">
+                </div>
+                <div class="form-group">
+                    <label style="font-size:11px; font-weight:600;">Precio Abono ($)</label>
+                    <input type="number" class="form-control form-control-sm tier-price" value="${tier.price}" data-index="${index}" style="padding:4px 8px; font-size:12px;">
+                </div>
+                <div class="form-group">
+                    <label style="font-size:11px; font-weight:600;">Precio Excedente ($)</label>
+                    <input type="number" step="0.01" class="form-control form-control-sm tier-excess" value="${tier.excessPrice}" data-index="${index}" style="padding:4px 8px; font-size:12px;">
+                </div>
+                <div class="form-group flex flex-column justify-center gap-1" style="min-height:50px;">
+                    <label class="checkbox-container" style="font-size:10px; margin-bottom: 2px; display:flex; align-items:center; gap:4px; font-weight:500;">
+                        <input type="checkbox" class="tier-iva-included" ${tier.includeIva ? 'checked' : ''} data-index="${index}"> IVA Incluido (suma 21%)
+                    </label>
+                    <label class="checkbox-container" style="font-size:10px; margin-bottom: 0; display:flex; align-items:center; gap:4px; font-weight:500;">
+                        <input type="checkbox" class="tier-plus-iva" ${tier.showPlusIva ? 'checked' : ''} data-index="${index}"> + IVA (solo texto)
+                    </label>
+                </div>
+            </div>
+        `;
+        container.appendChild(div);
+    });
+
+    // Re-bind listeners for change
+    container.querySelectorAll('.tier-copies').forEach(input => {
+        input.addEventListener('input', (e) => {
+            const idx = parseInt(e.target.dataset.index);
+            activeTiers[idx].copies = parseInt(e.target.value) || 0;
+            updateBudgetPreview();
+        });
+    });
+    container.querySelectorAll('.tier-price').forEach(input => {
+        input.addEventListener('input', (e) => {
+            const idx = parseInt(e.target.dataset.index);
+            activeTiers[idx].price = parseFloat(e.target.value) || 0;
+            updateBudgetPreview();
+        });
+    });
+    container.querySelectorAll('.tier-excess').forEach(input => {
+        input.addEventListener('input', (e) => {
+            const idx = parseInt(e.target.dataset.index);
+            activeTiers[idx].excessPrice = parseFloat(e.target.value) || 0;
+            updateBudgetPreview();
+        });
+    });
+    container.querySelectorAll('.tier-iva-included').forEach(input => {
+        input.addEventListener('change', (e) => {
+            const idx = parseInt(e.target.dataset.index);
+            activeTiers[idx].includeIva = e.target.checked;
+            if (e.target.checked) {
+                activeTiers[idx].showPlusIva = false;
+            }
+            renderTiers();
+            updateBudgetPreview();
+        });
+    });
+    container.querySelectorAll('.tier-plus-iva').forEach(input => {
+        input.addEventListener('change', (e) => {
+            const idx = parseInt(e.target.dataset.index);
+            activeTiers[idx].showPlusIva = e.target.checked;
+            if (e.target.checked) {
+                activeTiers[idx].includeIva = false;
+            }
+            renderTiers();
+            updateBudgetPreview();
+        });
+    });
+}
+
+window.removeTier = function(index) {
+    if (activeTiers.length > 1) {
+        activeTiers.splice(index, 1);
+        renderTiers();
+        updateBudgetPreview();
+    }
+};
+
+function renderAdditionalItems() {
+    const container = document.getElementById('pres-items-container');
+    if (!container) return;
+    container.innerHTML = '';
+
+    activeAdditionalItems.forEach((item, index) => {
+        const div = document.createElement('div');
+        div.className = 'item-row mb-2 p-2 border rounded';
+        div.style.background = '#f1f5f9';
+        div.style.border = '1px solid #cbd5e1';
+        div.innerHTML = `
+            <div class="flex justify-between align-center mb-1">
+                <span style="font-weight:600; font-size:12px; color:var(--text-secondary);">Concepto ${index + 1}</span>
+                <button type="button" class="btn btn-link text-red p-0" onclick="removeAdditionalItem(${index})" style="font-size:12px; text-decoration:none;">❌ Eliminar</button>
+            </div>
+            <div style="display: grid; grid-template-columns: 2fr 3fr 1.5fr 2fr 1.5fr; gap: 8px;">
+                <div class="form-group">
+                    <label style="font-size:11px; font-weight:600;">Tipo</label>
+                    <select class="form-control form-control-sm item-type" data-index="${index}">
+                        <option value="Insumo" ${item.type === 'Insumo' ? 'selected' : ''}>Insumo</option>
+                        <option value="Repuesto" ${item.type === 'Repuesto' ? 'selected' : ''}>Repuesto</option>
+                        <option value="Servicio Técnico" ${item.type === 'Servicio Técnico' ? 'selected' : ''}>Servicio Técnico</option>
+                        <option value="Venta de Equipo" ${item.type === 'Venta de Equipo' ? 'selected' : ''}>Venta de Equipo</option>
+                        <option value="Otro" ${item.type === 'Otro' ? 'selected' : ''}>Otro</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label style="font-size:11px; font-weight:600;">Descripción</label>
+                    <input type="text" class="form-control form-control-sm item-desc" value="${item.description || ''}" data-index="${index}" placeholder="Ej: Toner Negro" style="padding:4px 8px; font-size:12px; width:100%; box-sizing:border-box;">
+                </div>
+                <div class="form-group">
+                    <label style="font-size:11px; font-weight:600;">Cantidad</label>
+                    <input type="number" min="1" class="form-control form-control-sm item-qty" value="${item.quantity}" data-index="${index}" style="padding:4px 8px; font-size:12px; width:100%; box-sizing:border-box;">
+                </div>
+                <div class="form-group">
+                    <label style="font-size:11px; font-weight:600;">P. Unit ($)</label>
+                    <input type="number" class="form-control form-control-sm item-price" value="${item.price}" data-index="${index}" style="padding:4px 8px; font-size:12px; width:100%; box-sizing:border-box;">
+                </div>
+                <div class="form-group flex flex-column justify-end">
+                    <label class="checkbox-container" style="font-size:11px; margin-bottom: 6px;">
+                        <input type="checkbox" class="item-iva" ${item.includeIva ? 'checked' : ''} data-index="${index}"> IVA Incl.
+                    </label>
+                </div>
+            </div>
+        `;
+        container.appendChild(div);
+    });
+
+    // Re-bind listeners for change
+    container.querySelectorAll('.item-type').forEach(select => {
+        select.addEventListener('change', (e) => {
+            const idx = parseInt(e.target.dataset.index);
+            activeAdditionalItems[idx].type = e.target.value;
+            updateBudgetPreview();
+        });
+    });
+    container.querySelectorAll('.item-desc').forEach(input => {
+        input.addEventListener('input', (e) => {
+            const idx = parseInt(e.target.dataset.index);
+            activeAdditionalItems[idx].description = e.target.value;
+            updateBudgetPreview();
+        });
+    });
+    container.querySelectorAll('.item-qty').forEach(input => {
+        input.addEventListener('input', (e) => {
+            const idx = parseInt(e.target.dataset.index);
+            activeAdditionalItems[idx].quantity = parseInt(e.target.value) || 1;
+            updateBudgetPreview();
+        });
+    });
+    container.querySelectorAll('.item-price').forEach(input => {
+        input.addEventListener('input', (e) => {
+            const idx = parseInt(e.target.dataset.index);
+            activeAdditionalItems[idx].price = parseFloat(e.target.value) || 0;
+            updateBudgetPreview();
+        });
+    });
+    container.querySelectorAll('.item-iva').forEach(input => {
+        input.addEventListener('change', (e) => {
+            const idx = parseInt(e.target.dataset.index);
+            activeAdditionalItems[idx].includeIva = e.target.checked;
+            updateBudgetPreview();
+        });
+    });
+}
+
+window.removeAdditionalItem = function(index) {
+    activeAdditionalItems.splice(index, 1);
+    renderAdditionalItems();
+    updateBudgetPreview();
+};
+
+function getSelectedMachineModelName() {
+    const machineSelect = document.getElementById('pres-machine-select').value;
+    if (machineSelect === 'default-hp-432') return "HP Laser MFP 432fdn";
+    if (machineSelect === 'default-brother-5660') return "Brother DCP-L5660DN";
+    if (machineSelect === 'default-ricoh-430') return "Ricoh IM 430F";
+    if (machineSelect === 'new') {
+        return document.getElementById('pres-machine-model').value.trim() || "Fotocopiadora Multifunción";
+    }
+    const machine = state.machines.find(m => m.id === machineSelect);
+    return machine ? `${machine.brand} ${machine.model}` : "Fotocopiadora Multifunción";
+}
+
+function updateBudgetPreview() {
+    const previewContainer = document.getElementById('pres-sheet-preview');
+    if (!previewContainer) return;
+
+    const templateType = document.getElementById('pres-template-type').value;
+    const clientSelect = document.getElementById('pres-client-select').value;
+    
+    let clientName = "";
+    if (clientSelect === "new") {
+        clientName = document.getElementById('pres-client-name').value.trim() || "[Nombre del Cliente]";
+    } else {
+        const client = state.clients.find(c => c.id === clientSelect);
+        clientName = client ? client.name : "[Nombre del Cliente]";
+    }
+
+    const clientCuit = document.getElementById('pres-client-cuit').value.trim();
+
+    const machineModel = getSelectedMachineModelName();
+
+    let features = [];
+    const featureIds = ['ppm', 'platina', 'doblefaz', 'conectividad', 'pantalla', 'adf', 'escaner'];
+    featureIds.forEach(fid => {
+        const check = document.getElementById(`pres-feat-${fid}-check`);
+        const valInput = document.getElementById(`pres-feat-${fid}-val`);
+        if (check && check.checked && valInput) {
+            const val = valInput.value.trim();
+            if (val) features.push(val);
+        }
+    });
+
+    const customFeatText = document.getElementById('pres-custom-features').value.trim();
+    if (customFeatText) {
+        customFeatText.split('\n').forEach(line => {
+            if (line.trim()) features.push(line.trim());
+        });
+    }
+
+    // Conditions
+    const minTerm = document.getElementById('pres-cond-months').value;
+    const priceAdjust = document.getElementById('pres-cond-adjust').value;
+    const validity = document.getElementById('pres-cond-validity').value;
+
+    const dateStr = new Date().toLocaleDateString('es-AR', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+    });
+
+    const logoMarkup = state.companyLogo 
+        ? `<img src="${state.companyLogo}" style="max-height: 50px; border-radius: 4px; display: block;">`
+        : `<img src="logo.png" style="max-height: 50px; border-radius: 4px; display: block;">`;
+
+    // Render Tiers Table
+    let tiersRows = "";
+    activeTiers.forEach((t, i) => {
+        const calculatedPrice = t.includeIva ? (t.price * 1.21) : t.price;
+        const calculatedExcess = t.includeIva ? (t.excessPrice * 1.21) : t.excessPrice;
+
+        const formatPrice = formatCurrency(calculatedPrice);
+        const formatExcess = formatCurrency(calculatedExcess);
+        
+        let ivaLabel = "";
+        if (t.includeIva) {
+            ivaLabel = " (IVA incl.)";
+        } else if (t.showPlusIva) {
+            ivaLabel = " + IVA";
+        }
+
+        tiersRows += `
+            <tr style="border-bottom: 1px solid #e2e8f0; font-size:11px;">
+                <td style="padding: 8px 12px; font-weight:600; color:#1e3a8a;">Plan ${i + 1}</td>
+                <td style="padding: 8px 12px;">${t.copies.toLocaleString('es-AR')} copias</td>
+                <td style="padding: 8px 12px; font-weight:600;">${formatPrice} <small style="color:#64748b; font-weight:normal;">${ivaLabel}</small></td>
+                <td style="padding: 8px 12px;">${formatExcess} <small style="color:#64748b;">${ivaLabel}</small></td>
+            </tr>
+        `;
+    });
+
+    let tiersTableHtml = `
+        <div style="border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; margin-bottom: 15px;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                <thead>
+                    <tr style="background: #1e3a8a; color: white; font-size: 11px;">
+                        <th style="padding: 8px 12px; font-weight:600;">Rango</th>
+                        <th style="padding: 8px 12px; font-weight:600;">Copias Libres</th>
+                        <th style="padding: 8px 12px; font-weight:600;">Abono Base</th>
+                        <th style="padding: 8px 12px; font-weight:600;">Copia Excedente</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${tiersRows}
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    // Render Additional Concepts Table if any
+    let additionalItemsHtml = "";
+    if (activeAdditionalItems.length > 0) {
+        let itemsRows = "";
+        activeAdditionalItems.forEach(item => {
+            const formatPrice = formatCurrency(item.price);
+            const formatTotal = formatCurrency(item.quantity * item.price);
+            const ivaLabel = item.includeIva ? "IVA Incl." : "+ IVA";
+            itemsRows += `
+                <tr style="border-bottom: 1px solid #e2e8f0; font-size:11px;">
+                    <td style="padding: 8px 12px; font-weight:600; color:#475569;">${item.type}</td>
+                    <td style="padding: 8px 12px;">${item.description || 'Sin descripción'}</td>
+                    <td style="padding: 8px 12px; text-align: center;">${item.quantity}</td>
+                    <td style="padding: 8px 12px; text-align: right;">${formatPrice} <small style="color:#64748b; font-size:9px;">${ivaLabel}</small></td>
+                    <td style="padding: 8px 12px; text-align: right; font-weight:600;">${formatTotal}</td>
+                </tr>
+            `;
+        });
+
+        additionalItemsHtml = `
+            <div style="font-weight: bold; border-bottom: 2px solid #475569; padding-bottom: 4px; font-size: 12px; text-transform: uppercase; margin-top: 15px; margin-bottom: 8px; color: #475569; letter-spacing: 0.5px;">
+                💼 Conceptos Adicionales (Ventas y Servicios):
+            </div>
+            <div style="border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; margin-bottom: 15px;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                    <thead>
+                        <tr style="background: #475569; color: white; font-size: 11px;">
+                            <th style="padding: 8px 12px; font-weight:600;">Tipo</th>
+                            <th style="padding: 8px 12px; font-weight:600;">Descripción</th>
+                            <th style="padding: 8px 12px; font-weight:600; text-align: center;">Cant.</th>
+                            <th style="padding: 8px 12px; font-weight:600; text-align: right;">P. Unit.</th>
+                            <th style="padding: 8px 12px; font-weight:600; text-align: right;">Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${itemsRows}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    // Render Template Specific Block
+    let conditionsBlockHtml = "";
+    if (templateType === "publico") {
+        conditionsBlockHtml = `
+            <div style="margin-top: 15px; font-weight: bold; border-bottom: 1px solid #ddd; padding-bottom: 3px; text-transform: uppercase; color: #1e3a8a;">
+                🔧 Servicios incluidos:
+            </div>
+            <ul style="margin: 6px 0; padding-left: 20px; font-size:11px;">
+                <li>Suministro de todos los consumibles necesarios para el correcto funcionamiento del equipo.</li>
+                <li>Suministro de repuestos en caso de avería y desgaste del equipo.</li>
+                <li>Servicio técnico para el mantenimiento y reparación del equipo.</li>
+                <li>Asesoramiento sobre el manejo adecuado del equipo.</li>
+                <li>Instalación del equipo.</li>
+                <li>Capacitación del personal designado en el manejo del equipo, en el momento de la instalación.</li>
+            </ul>
+
+            <div style="margin-top: 15px; font-weight: bold; border-bottom: 1px solid #ddd; padding-bottom: 3px; text-transform: uppercase; color: #1e3a8a;">
+                ❌ No nos responsabilizamos por:
+            </div>
+            <ul style="margin: 6px 0; padding-left: 20px; font-size:11px;">
+                <li>El suministro de papel.</li>
+                <li>Desperfectos por mal uso del equipo o fallas eléctricas.</li>
+                <li>Roturas ocasionadas por el personal.</li>
+            </ul>
+        `;
+    } else {
+        conditionsBlockHtml = `
+            <div style="margin-top: 15px; font-weight: bold; border-bottom: 1px solid #ddd; padding-bottom: 3px; text-transform: uppercase; color: #1e3a8a;">
+                📋 Requisitos para realizar el contrato de alquiler:
+            </div>
+            <ul style="margin: 6px 0; padding-left: 20px; font-size:11px;">
+                <li>Foto o copia del DNI y constancia de CUIL o CUIT.</li>
+                <li>Constancia de domicilio del lugar donde se instalará el equipo.</li>
+                <li>Firma de contrato de alquiler no menor a 6 meses y pagaré de garantía.</li>
+            </ul>
+        `;
+    }
+
+    // PDF Notice
+    let pdfNoticeHtml = "";
+    const pdfUrl = document.getElementById('pres-pdf-url').value;
+    if (pdfUrl) {
+        pdfNoticeHtml = `
+            <div style="margin-top: 12px; background: #f0fdf4; padding: 8px 12px; border-radius: 6px; border: 1px solid #bbf7d0; font-size: 11px; color: #166534; display: flex; align-items: center; justify-content: space-between;">
+                <span>📄 <strong>Ficha técnica PDF vinculada:</strong> Descarga especificaciones en:</span>
+                <a href="${pdfUrl}" target="_blank" style="color:#15803d; text-decoration:underline; font-weight:600; margin-left:8px;">${pdfUrl}</a>
+            </div>
+        `;
+    }
+
+    // HTML Content for the letter sheet
+    previewContainer.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 12px; margin-bottom: 15px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                ${logoMarkup}
+                <div>
+                    <span style="font-weight: 800; font-size: 18px; color: #1e3a8a; display: block; letter-spacing: -0.5px; font-family: 'Outfit', sans-serif;">M&S TECNOLOGÍA DIGITAL</span>
+                    <span style="font-size: 8px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Alquiler & Servicio Técnico</span>
+                </div>
+            </div>
+            <div style="text-align: right; font-size: 11px; color: #475569; line-height: 1.3;">
+                <strong style="color: #1e3a8a; font-size: 12px;">PRESUPUESTO</strong><br>
+                San Miguel de Tucumán<br>
+                ${dateStr}
+            </div>
+        </div>
+
+        <div style="margin-bottom: 15px; background: #f8fafc; padding: 10px 15px; border-radius: 6px; border-left: 4px solid #1e3a8a; border: 1px solid #e2e8f0; border-left-width: 4px;">
+            <span style="font-weight: 700; color: #64748b; font-size: 9px; text-transform: uppercase;">Cliente / Destinatario:</span>
+            <div style="font-weight: bold; font-size: 14px; color: #0f172a; margin-top: 1px;">${clientName}</div>
+            ${clientCuit ? `<div style="font-size: 11px; color: #475569; margin-top: 2px;"><strong>CUIT:</strong> ${clientCuit}</div>` : ''}
+        </div>
+
+        <div style="margin-bottom: 15px; font-size: 12px; color:#334155;">
+            Tenemos el agrado de presentar a Uds. nuestra propuesta para el alquiler de fotocopiadoras multifunción <strong>${machineModel}</strong>.
+        </div>
+
+        <div style="font-weight: bold; border-bottom: 2px solid #1e3a8a; padding-bottom: 4px; font-size: 12px; text-transform: uppercase; color: #1e3a8a; margin-bottom: 8px; letter-spacing: 0.5px;">
+            ⚙️ Características del Equipo:
+        </div>
+        <ul style="margin: 6px 0 15px 0; padding-left: 0; list-style-type: none; line-height: 1.5; color:#334155;">
+            ${features.map(f => `<li style="margin-bottom: 3px;">✓ ${f}</li>`).join('')}
+        </ul>
+
+        <div style="font-weight: bold; border-bottom: 2px solid #1e3a8a; padding-bottom: 4px; font-size: 12px; text-transform: uppercase; color: #1e3a8a; margin-bottom: 8px; letter-spacing: 0.5px;">
+            💰 Alquiler y Planes:
+        </div>
+        ${tiersTableHtml}
+
+        ${additionalItemsHtml}
+
+        <div style="font-weight: bold; border-bottom: 2px solid #1e3a8a; padding-bottom: 4px; font-size: 12px; text-transform: uppercase; color: #1e3a8a; margin-bottom: 8px; letter-spacing: 0.5px;">
+            📋 Condiciones:
+        </div>
+        <div style="margin-top: 8px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; background: #f8fafc; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0; font-size: 11px; margin-bottom:15px;">
+            <div><strong>Plazo Mínimo:</strong><br>${minTerm}</div>
+            <div><strong>Actualización:</strong><br>${priceAdjust}</div>
+            <div><strong>Validez de Oferta:</strong><br>${validity}</div>
+        </div>
+
+        ${pdfNoticeHtml}
+
+        ${conditionsBlockHtml}
+
+        <div style="margin-top: 20px; text-align: center; font-size: 11px; color: #64748b; font-style: italic;">
+            Sin otro particular, en espera de una respuesta favorable, nos despedimos atentamente.-
+        </div>
+
+        <div style="margin-top: 25px; border-top: 2px dashed #e2e8f0; padding-top: 12px; font-size: 10px; line-height: 1.5; color: #475569;">
+            <div style="text-align: center; font-weight: bold; font-size: 11px; color: #1e3a8a; margin-bottom: 4px;">
+                M&S TECNOLOGIAS DIGITAL S.A.S
+            </div>
+            <div style="display: flex; justify-content: space-between; font-weight: 500;">
+                <span><strong>CUIT:</strong> 30-71906554-2</span>
+                <span><strong>Dirección:</strong> José Colombres 392, S. M. de Tucumán</span>
+                <span><strong>Contacto:</strong> 381-4309217 / 2332653</span>
+            </div>
+        </div>
+    `;
+}
+
+function printBudget(budget) {
+    const printWindow = window.open('', '_blank', 'width=800,height=1000');
+    if (!printWindow) {
+        showToast("Error al abrir ventana de impresión. Revisa tu bloqueador de ventanas emergentes.", "error");
+        return;
+    }
+
+    const dateStr = new Date(budget.date).toLocaleDateString('es-AR', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+    });
+
+    const logoHtml = state.companyLogo 
+        ? `<img src="${state.companyLogo}" style="max-height: 60px; border-radius: 4px;">`
+        : `<img src="logo.png" style="max-height: 60px; border-radius: 4px;">`;
+
+    const featuresHtml = budget.features.map(f => `<li style="margin-bottom: 4px; font-size:12px; list-style-type:none;">✓ ${f}</li>`).join('');
+
+    // Render Tiers Table
+    let tiersRows = "";
+    budget.tiers.forEach((t, i) => {
+        const calculatedPrice = t.includeIva ? (t.price * 1.21) : t.price;
+        const calculatedExcess = t.includeIva ? (t.excessPrice * 1.21) : t.excessPrice;
+
+        const formatPrice = formatCurrency(calculatedPrice);
+        const formatExcess = formatCurrency(calculatedExcess);
+        
+        let ivaLabel = "";
+        if (t.includeIva) {
+            ivaLabel = " (IVA incl.)";
+        } else if (t.showPlusIva) {
+            ivaLabel = " + IVA";
+        }
+
+        tiersRows += `
+            <tr style="border-bottom: 1px solid #e2e8f0;">
+                <td style="padding: 10px 15px; font-weight:600; color:#1e3a8a;">Plan ${i + 1}</td>
+                <td style="padding: 10px 15px;">${t.copies.toLocaleString('es-AR')} copias</td>
+                <td style="padding: 10px 15px; font-weight:600;">${formatPrice} <small style="color:#64748b; font-weight:normal;">${ivaLabel}</small></td>
+                <td style="padding: 10px 15px;">${formatExcess} <small style="color:#64748b;">${ivaLabel}</small></td>
+            </tr>
+        `;
+    });
+
+    let tiersTableHtml = `
+        <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-bottom: 20px;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size:12px;">
+                <thead>
+                    <tr style="background: #1e3a8a; color: white;">
+                        <th style="padding: 10px 15px; font-weight:600;">Rango</th>
+                        <th style="padding: 10px 15px; font-weight:600;">Copias Libres</th>
+                        <th style="padding: 10px 15px; font-weight:600;">Abono Base</th>
+                        <th style="padding: 10px 15px; font-weight:600;">Copia Excedente</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${tiersRows}
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    // Render Additional Concepts
+    let additionalItemsHtml = "";
+    if (budget.additionalItems && budget.additionalItems.length > 0) {
+        let itemsRows = "";
+        budget.additionalItems.forEach(item => {
+            const formatPrice = formatCurrency(item.price);
+            const formatTotal = formatCurrency(item.quantity * item.price);
+            const ivaLabel = item.includeIva ? "IVA Incl." : "+ IVA";
+            itemsRows += `
+                <tr style="border-bottom: 1px solid #e2e8f0;">
+                    <td style="padding: 10px 15px; font-weight:600; color:#475569;">${item.type}</td>
+                    <td style="padding: 10px 15px;">${item.description || 'Sin descripción'}</td>
+                    <td style="padding: 10px 15px; text-align: center;">${item.quantity}</td>
+                    <td style="padding: 10px 15px; text-align: right;">${formatPrice} <small style="color:#64748b; font-size:9px;">${ivaLabel}</small></td>
+                    <td style="padding: 10px 15px; text-align: right; font-weight:600;">${formatTotal}</td>
+                </tr>
+            `;
+        });
+
+        additionalItemsHtml = `
+            <div style="font-weight: bold; border-bottom: 2px solid #475569; padding-bottom: 5px; font-size: 13px; text-transform: uppercase; margin-top: 25px; margin-bottom: 10px; color:#475569; letter-spacing: 0.5px; page-break-inside: avoid;">
+                💼 Conceptos Adicionales (Ventas y Servicios):
+            </div>
+            <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-bottom: 20px; page-break-inside: avoid;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left; font-size:12px;">
+                    <thead>
+                        <tr style="background: #475569; color: white;">
+                            <th style="padding: 10px 15px; font-weight:600;">Tipo</th>
+                            <th style="padding: 10px 15px; font-weight:600;">Descripción</th>
+                            <th style="padding: 10px 15px; font-weight:600; text-align: center;">Cant.</th>
+                            <th style="padding: 10px 15px; font-weight:600; text-align: right;">P. Unit.</th>
+                            <th style="padding: 10px 15px; font-weight:600; text-align: right;">Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${itemsRows}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    let conditionsHtml = "";
+    if (budget.type === "publico") {
+        conditionsHtml = `
+            <div style="margin-top: 25px; font-weight: bold; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 13px; text-transform: uppercase; color:#1e3a8a; page-break-inside: avoid;">
+                Servicios incluidos:
+            </div>
+            <ul style="margin: 10px 0; padding-left: 20px; font-size:12px; line-height: 1.6; page-break-inside: avoid;">
+                <li style="margin-bottom:4px;">Suministro de todos los consumibles necesarios para el correcto funcionamiento del equipo.</li>
+                <li style="margin-bottom:4px;">Suministro de repuestos en caso de avería y desgaste del equipo.</li>
+                <li style="margin-bottom:4px;">Servicio técnico para el mantenimiento y reparación del equipo.</li>
+                <li style="margin-bottom:4px;">Asesoramiento sobre el manejo adecuado del equipo.</li>
+                <li style="margin-bottom:4px;">Instalación del equipo.</li>
+                <li style="margin-bottom:4px;">Capacitación del personal designado en el manejo del equipo.</li>
+            </ul>
+
+            <div style="margin-top: 20px; font-weight: bold; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 13px; text-transform: uppercase; color:#1e3a8a; page-break-inside: avoid;">
+                No nos responsabilizamos por:
+            </div>
+            <ul style="margin: 10px 0; padding-left: 20px; font-size:12px; line-height: 1.6; page-break-inside: avoid;">
+                <li style="margin-bottom:4px;">El suministro de papel.</li>
+                <li style="margin-bottom:4px;">Desperfectos por mal uso del equipo o fallas eléctricas.</li>
+                <li style="margin-bottom:4px;">Roturas ocasionadas por el personal.</li>
+            </ul>
+        `;
+    } else {
+        conditionsHtml = `
+            <div style="margin-top: 25px; font-weight: bold; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 13px; text-transform: uppercase; color:#1e3a8a; page-break-inside: avoid;">
+                📋 Requisitos para realizar el contrato de alquiler:
+            </div>
+            <ul style="margin: 8px 0; padding-left: 20px; font-size:12px; line-height: 1.6; page-break-inside: avoid;">
+                <li>Foto o copia del DNI y constancia de CUIL o CUIT.</li>
+                <li>Constancia de domicilio del lugar donde se instalará el equipo.</li>
+                <li>Firma de contrato de alquiler no menor a 6 meses y pagaré de garantía.</li>
+            </ul>
+        `;
+    }
+
+    let pdfNoticeHtml = "";
+    if (budget.pdfUrl) {
+        const origin = window.location.origin;
+        pdfNoticeHtml = `
+            <div style="margin-top: 20px; background: #f0fdf4; padding: 12px 15px; border-radius: 8px; border: 1px solid #bbf7d0; font-size: 12px; color: #166534; text-align: center; page-break-inside: avoid;">
+                📄 <strong>Ficha Técnica Oficial del Equipo Adjunta:</strong><br>
+                <a href="${origin}${budget.pdfUrl}" target="_blank" style="color:#15803d; text-decoration:underline; font-weight:bold;">${origin}${budget.pdfUrl}</a>
+            </div>
+        `;
+    }
+
+    const printHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>Presupuesto M&S - ${budget.clientName}</title>
+            <style>
+                @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+                body {
+                    font-family: 'Outfit', 'Helvetica Neue', Arial, sans-serif;
+                    color: #1e293b;
+                    margin: 0;
+                    padding: 40px;
+                    line-height: 1.6;
+                    font-size: 12px;
+                }
+                .flex-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                }
+                .flex-center {
+                    display: flex;
+                    align-items: center;
+                }
+                .logo-section {
+                    border-bottom: 2px solid #1e3a8a;
+                    padding-bottom: 15px;
+                    margin-bottom: 25px;
+                }
+                .client-box {
+                    margin-bottom: 25px;
+                    background: #f8fafc;
+                    padding: 15px 20px;
+                    border-radius: 8px;
+                    border: 1px solid #e2e8f0;
+                    border-left: 5px solid #1e3a8a;
+                }
+                .conditions-summary {
+                    margin-top: 20px;
+                    display: grid;
+                    grid-template-columns: repeat(3, 1fr);
+                    gap: 15px;
+                    background: #f8fafc;
+                    padding: 12px 15px;
+                    border-radius: 8px;
+                    border: 1px solid #e2e8f0;
+                    font-size: 11px;
+                }
+                .footer-box {
+                    margin-top: 40px;
+                    border-top: 2px dashed #cbd5e1;
+                    padding-top: 20px;
+                    font-size: 11px;
+                    color: #475569;
+                    page-break-inside: avoid;
+                }
+                @media print {
+                    body {
+                        padding: 0;
+                    }
+                    .page-break-before {
+                        page-break-before: always;
+                    }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="flex-row logo-section">
+                <div class="flex-center" style="gap: 15px;">
+                    ${logoHtml}
+                    <div>
+                        <div style="font-weight: 800; font-size: 22px; color: #1e3a8a; letter-spacing: -0.5px;">M&S TECNOLOGÍA DIGITAL</div>
+                        <div style="font-size: 9px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Alquiler & Servicio Técnico</div>
+                    </div>
+                </div>
+                <div style="text-align: right; font-size: 11px; color: #475569; line-height: 1.4;">
+                    <strong style="color: #1e3a8a; font-size: 14px;">PRESUPUESTO</strong><br>
+                    Fecha: ${dateStr}<br>
+                    San Miguel de Tucumán
+                </div>
+            </div>
+
+            <div class="client-box">
+                <div style="font-weight: 700; color: #64748b; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Cliente / Destinatario:</div>
+                <div style="font-weight: 700; font-size: 16px; color: #0f172a; margin-top: 2px;">${budget.clientName}</div>
+                ${budget.clientCuit ? `<div style="font-size: 12px; color: #475569; margin-top: 4px;"><strong>CUIT:</strong> ${budget.clientCuit}</div>` : ''}
+            </div>
+
+            <div style="margin-bottom: 25px; font-size: 13px; color: #334155;">
+                Tenemos el agrado de presentar a ustedes nuestra propuesta formal para el alquiler de fotocopiadoras multifunción <strong>${budget.machineModel}</strong>.
+            </div>
+
+            <div style="font-weight: bold; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 13px; text-transform: uppercase; margin-bottom: 10px; color:#1e3a8a; letter-spacing: 0.5px;">
+                ⚙️ Características del Equipo:
+            </div>
+            <ul style="margin: 10px 0 25px 0; padding-left: 0; list-style-type: none; line-height: 1.6; color:#334155;">
+                ${featuresHtml}
+            </ul>
+
+            <div style="font-weight: bold; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 13px; text-transform: uppercase; margin-bottom: 10px; color:#1e3a8a; letter-spacing: 0.5px; page-break-inside: avoid;">
+                💰 Alquiler y Planes de Copiado:
+            </div>
+            ${tiersTableHtml}
+
+            ${additionalItemsHtml}
+
+            <div style="font-weight: bold; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 13px; text-transform: uppercase; margin-bottom: 10px; color:#1e3a8a; letter-spacing: 0.5px; page-break-inside: avoid;">
+                📋 Condiciones Comerciales:
+            </div>
+            <div class="conditions-summary" style="page-break-inside: avoid;">
+                <div><strong>Plazo Mínimo Contrato:</strong><br>${budget.conditions.minTerm}</div>
+                <div><strong>Ajuste de Precios:</strong><br>${budget.conditions.priceAdjust}</div>
+                <div><strong>Validez de Oferta:</strong><br>${budget.conditions.validity}</div>
+            </div>
+
+            ${pdfNoticeHtml}
+
+            ${conditionsHtml}
+
+            <div style="margin-top: 35px; text-align: center; font-size: 12px; color: #64748b; font-style: italic; page-break-inside: avoid;">
+                Sin otro particular, en espera de una respuesta favorable, nos despedimos atentamente.-
+            </div>
+
+            <div class="footer-box">
+                <div style="text-align: center; font-weight: bold; font-size: 12px; color: #1e3a8a; margin-bottom: 6px; font-family: 'Outfit', sans-serif;">
+                    M&S TECNOLOGIAS DIGITAL S.A.S
+                </div>
+                <div class="flex-row" style="font-weight: 500;">
+                    <span><strong>CUIT:</strong> 30-71906554-2</span>
+                    <span><strong>Dirección:</strong> José Colombres 392, S. M. de Tucumán</span>
+                    <span><strong>Contacto:</strong> 381-4309217 / 2332653</span>
+                </div>
+                <div style="text-align: center; margin-top: 4px; font-weight: 500;">
+                    <strong>Email:</strong> mys_tec_digital@yahoo.com
+                </div>
+            </div>
+        </body>
+        </html>
+    `;
+
+    printWindow.document.write(printHtml);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+    }, 500);
+}
+
+function getFormBudgetData() {
+    const templateType = document.getElementById('pres-template-type').value;
+    const clientSelect = document.getElementById('pres-client-select').value;
+    
+    let clientName = "";
+    if (clientSelect === "new") {
+        clientName = document.getElementById('pres-client-name').value.trim() || "Cliente Eventual";
+    } else {
+        const client = state.clients.find(c => c.id === clientSelect);
+        clientName = client ? client.name : "Cliente Eventual";
+    }
+
+    const clientCuit = document.getElementById('pres-client-cuit').value.trim();
+
+    const machineModel = getSelectedMachineModelName();
+    const machineSelect = document.getElementById('pres-machine-select').value;
+
+    // Features
+    let features = [];
+    const featureIds = ['ppm', 'platina', 'doblefaz', 'conectividad', 'pantalla', 'adf', 'escaner'];
+    featureIds.forEach(fid => {
+        const check = document.getElementById(`pres-feat-${fid}-check`);
+        const valInput = document.getElementById(`pres-feat-${fid}-val`);
+        if (check && check.checked && valInput) {
+            const val = valInput.value.trim();
+            if (val) features.push(val);
+        }
+    });
+
+    const customFeatText = document.getElementById('pres-custom-features').value.trim();
+    if (customFeatText) {
+        customFeatText.split('\n').forEach(line => {
+            if (line.trim()) features.push(line.trim());
+        });
+    }
+
+    const pdfUrl = document.getElementById('pres-pdf-url').value;
+
+    return {
+        date: new Date().toISOString().split('T')[0],
+        type: templateType,
+        clientId: clientSelect,
+        clientName,
+        clientCuit,
+        machineId: machineSelect,
+        machineModel,
+        features,
+        pdfUrl,
+        tiers: JSON.parse(JSON.stringify(activeTiers)),
+        additionalItems: JSON.parse(JSON.stringify(activeAdditionalItems)),
+        conditions: {
+            minTerm: document.getElementById('pres-cond-months').value,
+            priceAdjust: document.getElementById('pres-cond-adjust').value,
+            validity: document.getElementById('pres-cond-validity').value
+        }
+    };
+}
+
+function renderPresupuestosTab() {
+    // Populate Clients Select
+    const clientSelect = document.getElementById('pres-client-select');
+    if (clientSelect) {
+        const prevVal = clientSelect.value;
+        clientSelect.innerHTML = '<option value="new">-- Escribir Cliente Nuevo --</option>';
+        state.clients.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            opt.textContent = c.name;
+            clientSelect.appendChild(opt);
+        });
+        if (prevVal) clientSelect.value = prevVal;
+    }
+
+    // Populate Machines Select
+    const machineSelect = document.getElementById('pres-machine-select');
+    if (machineSelect) {
+        const prevVal = machineSelect.value;
+        machineSelect.innerHTML = `
+            <option value="new">-- Escribir Modelo Nuevo --</option>
+            <optgroup label="Modelos sugeridos con Ficha Técnica">
+                <option value="default-hp-432">HP Laser MFP 432fdn</option>
+                <option value="default-brother-5660">Brother DCP-L5660DN</option>
+                <option value="default-ricoh-430">Ricoh IM 430F</option>
+            </optgroup>
+        `;
+        
+        const optGroup = document.createElement('optgroup');
+        optGroup.label = "Equipos en Stock";
+        
+        const models = [];
+        state.machines.forEach(m => {
+            const desc = `${m.brand} ${m.model}`;
+            if (!models.includes(desc)) {
+                models.push(desc);
+                const opt = document.createElement('option');
+                opt.value = m.id;
+                opt.textContent = `${desc} (S/N: ${m.serial})`;
+                optGroup.appendChild(opt);
+            }
+        });
+        if (optGroup.children.length > 0) {
+            machineSelect.appendChild(optGroup);
+        }
+        if (prevVal) machineSelect.value = prevVal;
+    }
+
+    // Render Saved Budgets History Log
+    const tbody = document.getElementById('pres-history-tbody');
+    if (tbody) {
+        tbody.innerHTML = '';
+        const sorted = (state.presupuestos || []).slice().sort((a, b) => new Date(b.date) - new Date(a.date));
+        
+        if (sorted.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-secondary">No hay presupuestos guardados.</td></tr>';
+            return;
+        }
+
+        sorted.forEach(p => {
+            const dateFmt = new Date(p.date).toLocaleDateString('es-AR');
+            const typeFmt = p.type === 'publico' ? 'Ente Público' : 'Particular';
+            const tiersSummary = p.tiers.map(t => `${t.copies.toLocaleString('es-AR')} copias`).join(' / ');
+            
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><strong>${dateFmt}</strong></td>
+                <td>${p.clientName}</td>
+                <td><span class="badge ${p.type === 'publico' ? 'badge-primary' : 'badge-secondary'}">${typeFmt}</span></td>
+                <td>${p.machineModel}</td>
+                <td><small>${tiersSummary}</small></td>
+                <td>
+                    <div class="flex gap-1">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="loadSavedBudget('${p.id}')">📂 Cargar</button>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="printSavedBudget('${p.id}')">🖨️ Imprimir</button>
+                        <button type="button" class="btn btn-danger btn-sm" onclick="deleteSavedBudget('${p.id}')">🗑️ Eliminar</button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+}
+
+window.loadSavedBudget = function(id) {
+    const p = state.presupuestos.find(b => b.id === id);
+    if (!p) return;
+
+    document.getElementById('pres-template-type').value = p.type;
+    
+    // Trigger change event to toggle group visibility
+    const clientSelect = document.getElementById('pres-client-select');
+    clientSelect.value = p.clientId;
+    if (p.clientId === 'new') {
+        document.getElementById('pres-custom-client-group').style.display = 'block';
+        document.getElementById('pres-client-name').value = p.clientName;
+    } else {
+        document.getElementById('pres-custom-client-group').style.display = 'none';
+    }
+    document.getElementById('pres-client-cuit').value = p.clientCuit || '';
+
+    const machineSelect = document.getElementById('pres-machine-select');
+    machineSelect.value = p.machineId;
+    if (p.machineId === 'new') {
+        document.getElementById('pres-custom-machine-group').style.display = 'block';
+        document.getElementById('pres-machine-model').value = p.machineModel;
+    } else {
+        document.getElementById('pres-custom-machine-group').style.display = 'none';
+    }
+
+    // Prefill features
+    document.getElementById('pres-feat-ppm-check').checked = p.features.some(f => f.includes("ppm"));
+    const ppmVal = p.features.find(f => f.includes("ppm")) || "43 ppm";
+    document.getElementById('pres-feat-ppm-val').value = ppmVal;
+
+    document.getElementById('pres-feat-platina-check').checked = p.features.some(f => f.includes("Platina") || f.includes("platina"));
+    const platinaVal = p.features.find(f => f.includes("Platina") || f.includes("platina")) || "Platina Oficio";
+    document.getElementById('pres-feat-platina-val').value = platinaVal;
+
+    document.getElementById('pres-feat-doblefaz-check').checked = p.features.some(f => f.includes("Doble faz") || f.includes("doble faz"));
+    const doblefazVal = p.features.find(f => f.includes("Doble faz") || f.includes("doble faz")) || "Doble faz automatico (Original/Copia)";
+    document.getElementById('pres-feat-doblefaz-val').value = doblefazVal;
+
+    document.getElementById('pres-feat-conectividad-check').checked = p.features.some(f => f.includes("Conectividad") || f.includes("conectividad"));
+    const conectividadVal = p.features.find(f => f.includes("Conectividad") || f.includes("conectividad")) || "Conectividad: Red LAN, USB";
+    document.getElementById('pres-feat-conectividad-val').value = conectividadVal;
+
+    document.getElementById('pres-feat-pantalla-check').checked = p.features.some(f => f.includes("Pantalla") || f.includes("pantalla"));
+    const pantallaVal = p.features.find(f => f.includes("Pantalla") || f.includes("pantalla")) || "Pantalla tactil color";
+    document.getElementById('pres-feat-pantalla-val').value = pantallaVal;
+
+    document.getElementById('pres-feat-adf-check').checked = p.features.some(f => f.includes("Alimentador") || f.includes("ADF") || f.includes("adf"));
+    const adfVal = p.features.find(f => f.includes("Alimentador") || f.includes("ADF") || f.includes("adf")) || "Alimentador automatico (ADF)";
+    document.getElementById('pres-feat-adf-val').value = adfVal;
+
+    document.getElementById('pres-feat-escaner-check').checked = p.features.some(f => f.includes("Escáner") || f.includes("escaner") || f.includes("Escaner"));
+    const escanerVal = p.features.find(f => f.includes("Escáner") || f.includes("escaner") || f.includes("Escaner")) || "Escaner a color";
+    document.getElementById('pres-feat-escaner-val').value = escanerVal;
+
+    // Extract custom features (those not matching defaults)
+    const customs = p.features.filter(f => 
+        !f.includes("ppm") && 
+        !f.includes("Platina") && 
+        !f.includes("platina") && 
+        !f.includes("Doble faz") && 
+        !f.includes("Conectividad") && 
+        !f.includes("Pantalla") && 
+        !f.includes("Alimentador") && 
+        !f.includes("ADF") && 
+        !f.includes("Escáner") && 
+        !f.includes("escaner") &&
+        !f.includes("Escaner")
+    );
+    document.getElementById('pres-custom-features').value = customs.join('\n');
+
+    // Load PDF
+    const pdfUrlInput = document.getElementById('pres-pdf-url');
+    const pdfStatusDiv = document.getElementById('pres-pdf-status');
+    const pdfLinkLabel = document.getElementById('pres-pdf-link');
+    pdfUrlInput.value = p.pdfUrl || '';
+    if (p.pdfUrl) {
+        pdfLinkLabel.href = p.pdfUrl;
+        pdfStatusDiv.style.display = 'flex';
+    } else {
+        pdfStatusDiv.style.display = 'none';
+    }
+
+    activeTiers = JSON.parse(JSON.stringify(p.tiers));
+    activeAdditionalItems = JSON.parse(JSON.stringify(p.additionalItems || []));
+    
+    document.getElementById('pres-cond-months').value = p.conditions.minTerm;
+    document.getElementById('pres-cond-adjust').value = p.conditions.priceAdjust;
+    document.getElementById('pres-cond-validity').value = p.conditions.validity;
+
+    renderTiers();
+    renderAdditionalItems();
+    updateBudgetPreview();
+    showToast("Presupuesto cargado en el editor", "info");
+};
+
+window.printSavedBudget = function(id) {
+    const p = state.presupuestos.find(b => b.id === id);
+    if (p) printBudget(p);
+};
+
+window.deleteSavedBudget = async function(id) {
+    if (confirm("¿Está seguro de que desea eliminar este presupuesto del historial?")) {
+        state.presupuestos = state.presupuestos.filter(b => b.id !== id);
+        saveToLocalStorage();
+
+        if (firebaseActive && db) {
+            await db.collection('presupuestos').doc(id).delete().catch(err => {
+                console.error("Error deleting budget in Firestore:", err);
+            });
+        }
+
+        showToast("Presupuesto eliminado", "info");
+        renderPresupuestosTab();
+    }
+};
+
+function generateBudgetPlainText(p, pdfDownloadUrl = null) {
+    const dateFmt = new Date(p.date).toLocaleDateString('es-AR');
+    let msg = `📊 *PRESUPUESTO - M&S TECNOLOGÍA DIGITAL*\n` +
+              `*Fecha:* ${dateFmt}\n` +
+              `*Cliente:* ${p.clientName}\n` +
+              (p.clientCuit ? `*CUIT:* ${p.clientCuit}\n` : '') +
+              `*Equipo:* ${p.machineModel}\n\n`;
+
+    if (pdfDownloadUrl) {
+        msg += `📥 *DESCARGAR PRESUPUESTO OFICIAL (PDF):*\n${pdfDownloadUrl}\n\n`;
+    } else if (p.pdfUrl) {
+        const origin = window.location.origin;
+        msg += `📄 *FICHA TÉCNICA OFICIAL (PDF):* ${origin}${p.pdfUrl}\n\n`;
+    }
+
+    msg += `-----------------------------------------\n` +
+           `⚙️ *CARACTERÍSTICAS DEL EQUIPO:*\n` +
+           p.features.map(f => `• ${f}`).join('\n') + `\n\n` +
+           `-----------------------------------------\n` +
+           `💰 *ALQUILER Y PLANES DE COPIAS:*\n`;
+
+    p.tiers.forEach((t, i) => {
+        const calculatedPrice = t.includeIva ? (t.price * 1.21) : t.price;
+        const calculatedExcess = t.includeIva ? (t.excessPrice * 1.21) : t.excessPrice;
+
+        const price = formatCurrency(calculatedPrice);
+        const excess = formatCurrency(calculatedExcess);
+        
+        let ivaLabel = "";
+        if (t.includeIva) {
+            ivaLabel = "IVA incl.";
+        } else if (t.showPlusIva) {
+            ivaLabel = "+ IVA";
+        }
+
+        msg += `*Plan ${i + 1} (${t.copies.toLocaleString('es-AR')} copias):*\n` +
+               `  - Alquiler mínimo: ${price} ${ivaLabel}\n` +
+               `  - Copia excedente: ${excess} ${ivaLabel ? (ivaLabel + ' c/u') : 'c/u'}\n`;
+    });
+
+    if (p.additionalItems && p.additionalItems.length > 0) {
+        msg += `\n-----------------------------------------\n` +
+               `💼 *CONCEPTOS ADICIONALES (VENTAS Y SERVICIOS):*\n`;
+        p.additionalItems.forEach(item => {
+            const price = formatCurrency(item.price);
+            const subtotal = formatCurrency(item.quantity * item.price);
+            const ivaLabel = item.includeIva ? "IVA incl." : "+ IVA";
+            msg += `• *${item.type}* - ${item.description || 'Sin desc'}\n` +
+                   `  Cant: ${item.quantity} - P.Unit: ${price} ${ivaLabel} - Total: ${subtotal}\n`;
+        });
+    }
+
+    msg += `\n-----------------------------------------\n` +
+           `📋 *CONDICIONES DE CONTRATACIÓN:*\n` +
+           `• Periodo mínimo de alquiler: ${p.conditions.minTerm}\n` +
+           `• Actualización de precios: ${p.conditions.priceAdjust}\n` +
+           `• Validez de la oferta: ${p.conditions.validity}\n\n`;
+
+    if (p.type === 'publico') {
+        msg += `🔧 *SERVICIOS INCLUIDOS:*\n` +
+               `- Consumibles, repuestos e instalación técnica sin cargo.\n` +
+               `- Mantenimiento preventivo y correctivo.\n\n` +
+               `❌ *NO INCLUYE:*\n` +
+               `- Papel ni daños por mal uso / fallas eléctricas.\n\n`;
+    } else {
+        msg += `📎 *REQUISITOS PARA EL CONTRATO:*\n` +
+               `- DNI, CUIT/CUIL, constancia de domicilio y firma de pagaré.\n` +
+               `- Alquiler no menor a 6 meses.\n\n`;
+    }
+
+    msg += `🌐 *Contacto M&S:*\n` +
+           `- Tel: 381-4309217 / 2332653\n` +
+           `- Dirección: José Colombres 392, S. M. de Tucumán\n` +
+           `- Email: mys_tec_digital@yahoo.com`;
+    return msg;
+}
+
+async function generateBudgetPDF(budget, shouldUpload = false, downloadToo = false) {
+    // Create temporary wrapper to hide the element off-screen in the real DOM
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'absolute';
+    wrapper.style.left = '-9999px';
+    wrapper.style.top = '0';
+    wrapper.style.width = '700px';
+    wrapper.style.height = '1px';
+    wrapper.style.overflow = 'visible';
+    document.body.appendChild(wrapper);
+
+    // Create the beautifully styled budget element inside the wrapper
+    const element = document.createElement('div');
+    element.id = 'my-pdf-temp-element';
+    element.style.width = '700px';
+    element.style.padding = '40px';
+    element.style.background = 'white';
+    element.style.boxSizing = 'border-box';
+    element.style.fontFamily = "'Outfit', 'Helvetica Neue', Arial, sans-serif";
+    element.style.color = '#1e293b';
+    element.style.fontSize = '12px';
+    element.style.lineHeight = '1.6';
+    wrapper.appendChild(element);
+
+    const dateStr = new Date(budget.date).toLocaleDateString('es-AR', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+    });
+
+    const logoHtml = state.companyLogo 
+        ? `<img src="${state.companyLogo}" style="max-height: 60px; border-radius: 4px;">`
+        : `<img src="logo.png" style="max-height: 60px; border-radius: 4px;">`;
+
+    const featuresHtml = budget.features.map(f => `<li style="margin-bottom: 4px; font-size:12px; list-style-type: none; padding-left: 0;">✓ ${f}</li>`).join('');
+
+    // Render Tiers Table Rows
+    let tiersRows = "";
+    budget.tiers.forEach((t, i) => {
+        const calculatedPrice = t.includeIva ? (t.price * 1.21) : t.price;
+        const calculatedExcess = t.includeIva ? (t.excessPrice * 1.21) : t.excessPrice;
+
+        const formatPrice = formatCurrency(calculatedPrice);
+        const formatExcess = formatCurrency(calculatedExcess);
+        
+        let ivaLabel = "";
+        if (t.includeIva) {
+            ivaLabel = " (IVA incl.)";
+        } else if (t.showPlusIva) {
+            ivaLabel = " + IVA";
+        }
+
+        tiersRows += `
+            <tr style="border-bottom: 1px solid #e2e8f0;">
+                <td style="padding: 10px 15px; font-weight: 600; color: #1e3a8a;">Plan ${i + 1}</td>
+                <td style="padding: 10px 15px;">${t.copies.toLocaleString('es-AR')} copias</td>
+                <td style="padding: 10px 15px; font-weight: 600;">${formatPrice} <small style="color: #64748b; font-weight:normal;">${ivaLabel}</small></td>
+                <td style="padding: 10px 15px;">${formatExcess} <small style="color: #64748b;">${ivaLabel}</small></td>
+            </tr>
+        `;
+    });
+
+    // Render Additional Items Table Rows
+    let additionalRows = "";
+    let additionalSection = "";
+    if (budget.additionalItems && budget.additionalItems.length > 0) {
+        budget.additionalItems.forEach(item => {
+            const formatPrice = formatCurrency(item.price);
+            const formatTotal = formatCurrency(item.quantity * item.price);
+            const ivaLabel = item.includeIva ? "IVA Incl." : "+ IVA";
+            additionalRows += `
+                <tr style="border-bottom: 1px solid #e2e8f0;">
+                    <td style="padding: 10px 15px; font-weight: 600; color: #475569;">${item.type}</td>
+                    <td style="padding: 10px 15px;">${item.description || 'Sin descripción'}</td>
+                    <td style="padding: 10px 15px; text-align: center;">${item.quantity}</td>
+                    <td style="padding: 10px 15px; text-align: right;">${formatPrice} <small style="color: #64748b; font-size:9px;">${ivaLabel}</small></td>
+                    <td style="padding: 10px 15px; text-align: right; font-weight: 600;">${formatTotal}</td>
+                </tr>
+            `;
+        });
+
+        additionalSection = `
+            <div style="font-weight: bold; border-bottom: 2px solid #475569; padding-bottom: 5px; font-size: 13px; text-transform: uppercase; margin-top: 25px; margin-bottom: 10px; color: #475569; letter-spacing: 0.5px;">
+                💼 Conceptos Adicionales (Ventas y Servicios):
+            </div>
+            <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-bottom: 20px;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 11px;">
+                    <thead>
+                        <tr style="background: #475569; color: white;">
+                            <th style="padding: 10px 15px; font-weight: 600;">Tipo</th>
+                            <th style="padding: 10px 15px; font-weight: 600;">Descripción</th>
+                            <th style="padding: 10px 15px; font-weight: 600; text-align: center;">Cant.</th>
+                            <th style="padding: 10px 15px; font-weight: 600; text-align: right;">P. Unit.</th>
+                            <th style="padding: 10px 15px; font-weight: 600; text-align: right;">Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${additionalRows}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    // Conditions Block
+    let conditionsBlock = "";
+    if (budget.type === "publico") {
+        conditionsBlock = `
+            <div style="font-weight: bold; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 13px; text-transform: uppercase; margin-top: 25px; margin-bottom: 10px; color: #1e3a8a;">
+                🔧 Servicios Incluidos:
+            </div>
+            <ul style="margin: 8px 0; padding-left: 20px; font-size: 11px; line-height: 1.6;">
+                <li>Suministro de todos los consumibles necesarios para el correcto funcionamiento del equipo.</li>
+                <li>Suministro de repuestos en caso de avería y desgaste del equipo.</li>
+                <li>Servicio técnico para el mantenimiento y reparación del equipo.</li>
+                <li>Asesoramiento sobre el manejo adecuado del equipo.</li>
+                <li>Instalación del equipo.</li>
+                <li>Capacitación del personal designado en el manejo del equipo en el momento de la instalación.</li>
+            </ul>
+
+            <div style="font-weight: bold; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 13px; text-transform: uppercase; margin-top: 20px; margin-bottom: 10px; color: #1e3a8a;">
+                ❌ No incluye:
+            </div>
+            <ul style="margin: 8px 0; padding-left: 20px; font-size: 11px; line-height: 1.6;">
+                <li>El suministro de papel.</li>
+                <li>Desperfectos por mal uso del equipo o fallas eléctricas.</li>
+                <li>Roturas ocasionadas por el personal.</li>
+            </ul>
+        `;
+    } else {
+        conditionsBlock = `
+            <div style="font-weight: bold; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 13px; text-transform: uppercase; margin-top: 25px; margin-bottom: 10px; color: #1e3a8a;">
+                📋 Requisitos para el Alquiler:
+            </div>
+            <ul style="margin: 8px 0; padding-left: 20px; font-size: 11px; line-height: 1.6;">
+                <li>Copia del DNI y Constancia de CUIT/CUIL.</li>
+                <li>Constancia de domicilio del lugar de instalación del equipo.</li>
+                <li>Contrato mínimo de alquiler no menor a 6 meses.</li>
+                <li>Firma de pagaré de garantía y contrato de comodato comercial.</li>
+            </ul>
+        `;
+    }
+
+    let pdfNoticeHtml = "";
+    if (budget.pdfUrl) {
+        const origin = window.location.origin;
+        pdfNoticeHtml = `
+            <div style="margin-top: 15px; margin-bottom: 15px; background: #f0fdf4; padding: 10px 15px; border-radius: 6px; border: 1px solid #bbf7d0; font-size: 11px; color: #166534; display: flex; align-items: center; justify-content: space-between;">
+                <span>📄 <strong>Ficha técnica oficial adjunta:</strong> Descarga especificaciones en:</span>
+                <a href="${origin}${budget.pdfUrl}" target="_blank" style="color:#15803d; text-decoration:underline; font-weight:bold; margin-left: 8px;">${origin}${budget.pdfUrl}</a>
+            </div>
+        `;
+    }
+
+    element.innerHTML = `
+        <div style="display: flex; justify-content: space-between; border-bottom: 2px solid #1e3a8a; padding-bottom: 15px; margin-bottom: 20px;">
+            <div style="display: flex; align-items: center; gap: 15px;">
+                ${logoHtml}
+                <div>
+                    <h1 style="margin: 0; font-size: 22px; font-weight: 800; color: #1e3a8a; letter-spacing: -0.5px;">M&S TECNOLOGÍA DIGITAL</h1>
+                    <span style="font-size: 9px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Alquiler & Servicio Técnico</span>
+                </div>
+            </div>
+            <div style="text-align: right; font-size: 11px; color: #475569; line-height: 1.4;">
+                <strong style="color: #1e3a8a; font-size:14px; letter-spacing: 0.5px;">PRESUPUESTO</strong><br>
+                Fecha: ${dateStr}<br>
+                San Miguel de Tucumán
+            </div>
+        </div>
+
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-left: 5px solid #1e3a8a; border-radius: 6px; padding: 12px 16px; margin-bottom: 20px;">
+            <span style="font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Cliente / Destinatario</span>
+            <div style="font-size: 15px; font-weight: 700; color: #0f172a; margin-top: 2px;">${budget.clientName}</div>
+            ${budget.clientCuit ? `<div style="font-size: 11px; color: #475569; margin-top: 3px;"><strong>CUIT:</strong> ${budget.clientCuit}</div>` : ''}
+        </div>
+
+        <div style="margin-bottom: 15px; font-size: 12px; color: #334155;">
+            Tenemos el agrado de presentar a ustedes nuestra propuesta formal para el alquiler de fotocopiadoras multifunción <strong>${budget.machineModel}</strong>.
+        </div>
+
+        <div style="font-weight: bold; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 13px; text-transform: uppercase; margin-bottom: 10px; color: #1e3a8a; letter-spacing: 0.5px;">
+            ⚙️ Especificaciones del Equipo:
+        </div>
+        <ul style="margin: 8px 0 20px 0; padding-left: 0; line-height: 1.6; color: #334155; list-style-type: none;">
+            ${budget.features.map(f => `<li style="margin-bottom: 4px;">✓ ${f}</li>`).join('')}
+        </ul>
+
+        <div style="font-weight: bold; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 13px; text-transform: uppercase; margin-bottom: 10px; color: #1e3a8a; letter-spacing: 0.5px;">
+            💰 Alquiler y Planes de Copiado:
+        </div>
+        <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-bottom: 20px;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 11px;">
+                <thead>
+                    <tr style="background: #1e3a8a; color: white;">
+                        <th style="padding: 10px 15px; font-weight: 600;">Plan / Rango</th>
+                        <th style="padding: 10px 15px; font-weight: 600;">Copias Libres</th>
+                        <th style="padding: 10px 15px; font-weight: 600;">Abono Base</th>
+                        <th style="padding: 10px 15px; font-weight: 600;">Copia Excedente</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${tiersRows}
+                </tbody>
+            </table>
+        </div>
+
+        ${additionalSection}
+
+        <div style="font-weight: bold; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; font-size: 13px; text-transform: uppercase; margin-bottom: 10px; color: #1e3a8a; letter-spacing: 0.5px;">
+            📋 Condiciones Comerciales:
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; background: #f8fafc; padding: 12px; border-radius: 6px; border: 1px solid #e2e8f0; font-size: 11px; margin-bottom: 20px;">
+            <div><strong>Plazo Mínimo Contrato:</strong><br>${budget.conditions.minTerm}</div>
+            <div><strong>Ajuste de Precios:</strong><br>${budget.conditions.priceAdjust}</div>
+            <div><strong>Validez de Oferta:</strong><br>${budget.conditions.validity}</div>
+        </div>
+
+        ${pdfNoticeHtml}
+
+        ${conditionsBlock}
+
+        <div style="margin-top: 30px; text-align: center; font-size: 11px; color: #64748b; font-style: italic;">
+            Sin otro particular, en espera de una respuesta favorable, nos despedimos atentamente.-
+        </div>
+
+        <div style="margin-top: 40px; border-top: 2px dashed #cbd5e1; padding-top: 20px; font-size: 10px; line-height: 1.6; color: #475569;">
+            <div style="text-align: center; font-weight: 800; font-size: 12px; color: #1e3a8a; margin-bottom: 6px; font-family: 'Outfit', sans-serif;">
+                M&S TECNOLOGIAS DIGITAL S.A.S
+            </div>
+            <div style="display: flex; justify-content: space-between; font-weight: 500;">
+                <span><strong>CUIT:</strong> 30-71906554-2</span>
+                <span><strong>Dirección:</strong> José Colombres 392, S. M. de Tucumán</span>
+                <span><strong>Contacto:</strong> 381-4309217 / 2332653</span>
+            </div>
+            <div style="text-align: center; margin-top: 4px; font-weight: 500;">
+                <strong>Email:</strong> mys_tec_digital@yahoo.com
+            </div>
+        </div>
+    `;
+
+    // Wrapper is already appended to body, element is inside wrapper
+
+    // Wait for all images to finish loading completely
+    const images = element.querySelectorAll('img');
+    const imagePromises = Array.from(images).map(img => {
+        if (img.complete) return Promise.resolve();
+        return new Promise(resolve => {
+            img.onload = resolve;
+            img.onerror = resolve; // proceed even on error
+        });
+    });
+    await Promise.all(imagePromises);
+
+    // Wait for browser layout pass to calculate dimensions
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    await new Promise(resolve => setTimeout(resolve, 150)); // 150ms safety layout buffer
+
+    const originalScrollY = window.scrollY;
+    const originalScrollX = window.scrollX;
+    window.scrollTo(0, 0);
+
+    const opt = {
+        margin:       [10, 10, 10, 10], // standard 10mm margins for A4
+        filename:     `Presupuesto_${budget.clientName.replace(/\s+/g, '_')}.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true, logging: false, scrollY: 0, scrollX: 0 },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
+    };
+
+    try {
+        if (shouldUpload) {
+            // Generate PDF as blob and upload using outputPdf
+            const pdfBlob = await html2pdf().from(element).set(opt).outputPdf('blob');
+            
+            if (downloadToo) {
+                // Also trigger download directly to device
+                await html2pdf().from(element).set(opt).save();
+            }
+
+            document.body.removeChild(wrapper);
+
+            // Restore scroll position
+            window.scrollTo(originalScrollX, originalScrollY);
+
+            const file = new File([pdfBlob], `presupuesto_${Date.now()}.pdf`, { type: 'application/pdf' });
+            const response = await fetch(`/api/upload-pdf?filename=${encodeURIComponent(file.name)}`, {
+                method: 'POST',
+                body: file
+            });
+
+            if (!response.ok) throw new Error("Error subiendo PDF al servidor");
+            const uploadedUrl = await response.text();
+            return uploadedUrl; // Returns the /fichas/presupuesto_XYZ.pdf URL path
+        } else {
+            // Download directly to device
+            await html2pdf().from(element).set(opt).save();
+            document.body.removeChild(wrapper);
+            
+            // Restore scroll position
+            window.scrollTo(originalScrollX, originalScrollY);
+            showToast("✓ Archivo PDF descargado con éxito", "success");
+            return null;
+        }
+    } catch (err) {
+        console.error("html2pdf generation failed:", err);
+        if (document.body.contains(wrapper)) document.body.removeChild(wrapper);
+        
+        // Restore scroll position
+        window.scrollTo(originalScrollX, originalScrollY);
+        showToast("Error al exportar PDF: " + err.message, "error");
+        return null;
+    }
+}
+
+async function uploadBudgetPDF(budget, downloadToo = false) {
+    showToast("Generando y subiendo PDF oficial...", "info");
+    const relativeUrl = await generateBudgetPDF(budget, true, downloadToo);
+    return relativeUrl ? (relativeUrl) : null;
+}
+
+async function sendAutomatedEmail({ to, subject, body, attachment = null }) {
+    if (!state.settings || !state.settings.smtp || !state.settings.smtp.enabled) {
+        console.warn("SMTP email not enabled or configured.");
+        return { success: false, mode: 'fallback' };
+    }
+
+    const { host, port, user, pass, fromEmail, fromName } = state.settings.smtp;
+
+    if (!host || !user || !pass || !fromEmail) {
+        showToast("Error: Configuración SMTP incompleta.", "error");
+        return { success: false, mode: 'error' };
+    }
+
+    const htmlBody = body.replace(/\n/g, "<br>");
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+    try {
+        if (isLocal) {
+            // Local mode: use the PowerShell backend to send emails bypassing CORS & adblockers
+            const payload = {
+                Host: host,
+                Port: parseInt(port) || 587,
+                Username: user,
+                Password: pass,
+                To: to,
+                From: fromName ? `${fromName} <${fromEmail}>` : fromEmail,
+                Subject: subject,
+                Body: htmlBody,
+                Attachment: attachment
+            };
+
+            const response = await fetch("/api/send-email", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(errText || "Error en el servidor local SMTP");
+            }
+
+            const resText = await response.text();
+            if (resText === "OK") {
+                showToast(`Correo enviado automáticamente a: ${to}`, "success");
+                return { success: true, mode: 'smtp-local' };
+            } else {
+                throw new Error(resText);
+            }
+        } else {
+            // Production mode: use SMTPJS CDN library (Email.send)
+            if (typeof Email === 'undefined') {
+                throw new Error("SMTPJS library not loaded");
+            }
+            
+            const message = await Email.send({
+                Host: host,
+                Username: user,
+                Password: pass,
+                To: to,
+                From: fromName ? `${fromName} <${fromEmail}>` : fromEmail,
+                Subject: subject,
+                Body: htmlBody,
+                Attachments: attachment ? [{ name: "Presupuesto.pdf", path: attachment }] : []
+            });
+
+            if (message === "OK") {
+                showToast(`Correo enviado automáticamente a: ${to}`, "success");
+                return { success: true, mode: 'smtp-prod' };
+            } else {
+                throw new Error(message);
+            }
+        }
+    } catch (err) {
+        console.error("SMTP sending failed:", err);
+        showToast("Error de envío SMTP: " + err.message, "error");
+        return { success: false, mode: 'error', error: err.message };
+    }
+}
+
 
