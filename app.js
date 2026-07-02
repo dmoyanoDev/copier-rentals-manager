@@ -5575,28 +5575,52 @@ function setupReports() {
     if (emailBtn) {
         emailBtn.onclick = async () => {
             let subject = "";
-            let body = "";
             let toEmail = "";
             if (activeReport.type === 'client') {
                 const client = state.clients.find(c => c.id === activeReport.id);
                 if (!client) return;
-                subject = `Reporte Consolidado de Cliente - ${client.name}`;
-                body = generateClientReportPlainText(client);
+                subject = `Estado de Cuenta Corriente - ${client.name}`;
                 toEmail = client.email || "";
             } else if (activeReport.type === 'machine') {
                 const machine = state.machines.find(m => m.id === activeReport.id);
                 if (!machine) return;
-                subject = `Reporte Técnico de Equipo - S/N ${machine.serial}`;
-                body = generateMachineReportPlainText(machine);
+                subject = `Reporte Tecnico de Equipo - S/N ${machine.serial}`;
                 const client = state.clients.find(c => c.id === machine.clientId);
                 toEmail = client ? (client.email || "") : "";
             }
 
-            if (state.settings && state.settings.smtp && state.settings.smtp.enabled) {
-                showToast("Enviando correo automáticamente...", "info");
-                await sendAutomatedEmail({ to: toEmail, subject, body });
-            } else {
-                window.location.href = `mailto:${toEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            const isSmtp = state.settings && state.settings.smtp && state.settings.smtp.enabled;
+
+            try {
+                // Generate and upload PDF report. If SMTP is disabled, force local download!
+                const relativeUrl = await generateReportPDF(activeReport, true, !isSmtp);
+                
+                let body = "";
+                if (activeReport.type === 'client') {
+                    const client = state.clients.find(c => c.id === activeReport.id);
+                    body = `Estimado cliente,\nLe adjuntamos el Estado de Cuenta Corriente consolidado correspondiente a su cuenta de alquiler.\n\n` +
+                           `Por favor, revise el documento PDF adjunto. Si tiene alguna duda o consulta, responda a este correo.\n\n` +
+                           `Muchas gracias por su confianza.\n_M&S Tecnologia Digital_`;
+                } else {
+                    const machine = state.machines.find(m => m.id === activeReport.id);
+                    body = `Estimado cliente,\nLe adjuntamos el Reporte Tecnico del equipo S/N ${machine.serial}.\n\n` +
+                           `Por favor, revise el documento PDF adjunto.\n\n` +
+                           `Muchas gracias por su confianza.\n_M&S Tecnologia Digital_`;
+                }
+
+                if (isSmtp) {
+                    showToast("Enviando reporte por email...", "info");
+                    await sendAutomatedEmail({ to: toEmail, subject, body, attachment: relativeUrl });
+                } else {
+                    // Fallback to mailto if SMTP is disabled
+                    if (!relativeUrl) {
+                        await generateReportPDF(activeReport, false); // force download if upload failed
+                    }
+                    window.location.href = `mailto:${toEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                }
+            } catch (err) {
+                console.error("Failed to share report via email:", err);
+                showToast("Error al enviar reporte: " + err.message, "error");
             }
         };
     }
@@ -8607,6 +8631,112 @@ async function uploadBudgetPDF(budget, downloadToo = false) {
     showToast("Generando y subiendo PDF oficial...", "info");
     const relativeUrl = await generateBudgetPDF(budget, true, downloadToo);
     return relativeUrl ? (relativeUrl) : null;
+}
+
+// Generate PDF Report for Accounts (Client or Machine)
+async function generateReportPDF(activeReport, shouldUpload = false, downloadToo = false) {
+    const element = document.getElementById('report-printable-area');
+    if (!element) return null;
+
+    // Create wrapper for off-screen rendering to ensure perfect page margins and avoid viewport cutting
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'absolute';
+    wrapper.style.left = '-9999px';
+    wrapper.style.top = '0';
+    wrapper.style.width = '800px';
+    wrapper.style.padding = '40px';
+    wrapper.style.background = '#ffffff';
+    wrapper.style.color = '#000000';
+    wrapper.style.boxSizing = 'border-box';
+    
+    // Copy the inner HTML of the printable report area
+    wrapper.innerHTML = element.innerHTML;
+    document.body.appendChild(wrapper);
+
+    // Wait for all images inside the report to load
+    const images = wrapper.querySelectorAll('img');
+    const imagePromises = Array.from(images).map(img => {
+        if (img.complete) return Promise.resolve();
+        return new Promise(resolve => {
+            img.onload = resolve;
+            img.onerror = resolve;
+        });
+    });
+    await Promise.all(imagePromises);
+
+    // Wait for layout
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    await new Promise(resolve => setTimeout(resolve, 150));
+
+    const originalScrollY = window.scrollY;
+    const originalScrollX = window.scrollX;
+    window.scrollTo(0, 0);
+
+    const reportName = activeReport.type === 'client' ? 'Estado_de_Cuenta' : 'Reporte_Tecnico';
+    const opt = {
+        margin:       [15, 15, 15, 15],
+        filename:     `${reportName}_${Date.now()}.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true, logging: false, scrollY: 0, scrollX: 0 },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
+    };
+
+    try {
+        if (shouldUpload) {
+            // Generate PDF as blob
+            const pdfBlob = await html2pdf().from(wrapper).set(opt).outputPdf('blob');
+            
+            // Store base64 representation globally for email enqueuing
+            try {
+                window.lastGeneratedPDFBase64 = await blobToBase64(pdfBlob);
+            } catch (b64Err) {
+                console.error("Failed to convert report PDF to base64:", b64Err);
+            }
+
+            let uploadedUrl = null;
+            let uploadSuccess = false;
+            const file = new File([pdfBlob], `${reportName}_${Date.now()}.pdf`, { type: 'application/pdf' });
+
+            try {
+                const response = await fetch(getApiUrl(`/api/upload-pdf?filename=${encodeURIComponent(file.name)}`), {
+                    method: 'POST',
+                    body: file
+                });
+                if (response.ok) {
+                    uploadedUrl = await response.text();
+                    uploadSuccess = true;
+                }
+            } catch (uploadErr) {
+                console.warn("Report PDF upload failed:", uploadErr);
+            }
+
+            if (!uploadSuccess) {
+                // Force download locally
+                await html2pdf().from(wrapper).set(opt).save();
+                showToast("Modo local: Reporte PDF descargado en tu dispositivo", "warning");
+            } else if (downloadToo) {
+                await html2pdf().from(wrapper).set(opt).save();
+            }
+
+            document.body.removeChild(wrapper);
+            window.scrollTo(originalScrollX, originalScrollY);
+            return uploadedUrl;
+        } else {
+            // Direct download
+            await html2pdf().from(wrapper).set(opt).save();
+            document.body.removeChild(wrapper);
+            window.scrollTo(originalScrollX, originalScrollY);
+            showToast("✓ Reporte PDF descargado con éxito", "success");
+            return null;
+        }
+    } catch (err) {
+        console.error("Report PDF generation failed:", err);
+        if (document.body.contains(wrapper)) document.body.removeChild(wrapper);
+        window.scrollTo(originalScrollX, originalScrollY);
+        showToast("Error al exportar PDF del reporte: " + err.message, "error");
+        return null;
+    }
 }
 
 async function sendAutomatedEmail({ to, subject, body, attachment = null }) {
