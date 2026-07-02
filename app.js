@@ -8593,8 +8593,49 @@ async function sendAutomatedEmail({ to, subject, body, attachment = null }) {
         return { success: false, mode: 'error' };
     }
 
+    // Define Email object inline to bypass ad-blockers and privacy blockers blocking smtpjs.com CDN scripts
+    if (typeof window.Email === 'undefined') {
+        window.Email = {
+            send: function (a) {
+                return new Promise(function (b, c) {
+                    a.nocache = Math.random();
+                    var d = JSON.stringify(a);
+                    window.Email.ajax("https://smtpjs.com/v3/smtpjs.aspx?", d, function (e) {
+                        b(e);
+                    });
+                });
+            },
+            ajax: function (a, b, c) {
+                var d = window.Email.createCORSRequest("POST", a);
+                if (!d) return c("Error: CORS not supported");
+                d.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+                d.onload = function () {
+                    var e = d.responseText;
+                    c(e);
+                };
+                d.send(b);
+            },
+            createCORSRequest: function (a, b) {
+                var c = new XMLHttpRequest();
+                if ("withCredentials" in c) {
+                    c.open(a, b, true);
+                } else if (typeof XDomainRequest !== "undefined") {
+                    c = new XDomainRequest();
+                    c.open(a, b);
+                } else {
+                    c = null;
+                }
+                return c;
+            }
+        };
+    }
+
     const htmlBody = body.replace(/\n/g, "<br>");
-    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const isLocal = window.location.protocol === 'http:' || 
+                    window.location.hostname === 'localhost' || 
+                    window.location.hostname === '127.0.0.1' || 
+                    window.location.hostname.startsWith('192.168.') || 
+                    window.location.hostname.startsWith('10.');
 
     try {
         if (isLocal) {
@@ -8633,7 +8674,7 @@ async function sendAutomatedEmail({ to, subject, body, attachment = null }) {
             }
         } else {
             // Production mode: use SMTPJS CDN library (Email.send)
-            if (typeof Email === 'undefined') {
+            if (typeof window.Email === 'undefined') {
                 throw new Error("SMTPJS library not loaded");
             }
             
