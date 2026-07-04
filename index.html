@@ -438,46 +438,174 @@
 
             <!-- Tab: Readings & Invoices -->
             <section id="tab-readings" class="tab-content">
-                <div class="filter-bar">
-                    <div class="filter-group">
-                        <label for="filter-reading-status">Filtrar por Cobro:</label>
-                        <select id="filter-reading-status" class="form-control">
-                            <option value="all">Todos los Estados</option>
-                            <option value="pending">Pendientes de Pago</option>
-                            <option value="paid">Cobrados</option>
-                            <option value="unregistered">Sin Lectura Cargada</option>
-                        </select>
+                <!-- 1. KPIs Row -->
+                <div class="kpi-row-billing">
+                    <div class="kpi-card-billing highlight-warning">
+                        <span class="kpi-title">Falta Lectura</span>
+                        <span class="kpi-value" id="kpi-billing-pending-readings">0</span>
                     </div>
-                    <div class="filter-group">
-                        <label for="search-reading-client">Buscar Cliente:</label>
-                        <input type="text" id="search-reading-client" class="form-control" placeholder="Nombre de cliente...">
+                    <div class="kpi-card-billing highlight-danger">
+                        <span class="kpi-title">Lecturas Observadas</span>
+                        <span class="kpi-value" id="kpi-billing-flagged-readings">0</span>
+                    </div>
+                    <div class="kpi-card-billing highlight-primary">
+                        <span class="kpi-title">Facturado (Mes)</span>
+                        <span class="kpi-value" id="kpi-billing-total-invoiced">$0,00</span>
+                    </div>
+                    <div class="kpi-card-billing highlight-danger">
+                        <span class="kpi-title">Pendiente Cobro</span>
+                        <span class="kpi-value" id="kpi-billing-total-unpaid">$0,00</span>
+                    </div>
+                    <div class="kpi-card-billing highlight-success">
+                        <span class="kpi-title">Cobrado (Mes)</span>
+                        <span class="kpi-value" id="kpi-billing-total-collected">$0,00</span>
+                    </div>
+                    <div class="kpi-card-billing highlight-primary">
+                        <span class="kpi-title">Saldo a Cobrar</span>
+                        <span class="kpi-value" id="kpi-billing-total-outstanding">$0,00</span>
+                    </div>
+                    <div class="kpi-card-billing highlight-warning">
+                        <span class="kpi-title">Consumos Anómalos</span>
+                        <span class="kpi-value" id="kpi-billing-abnormal-consumption">0</span>
+                    </div>
+                </div>
+
+                <!-- 2. Advanced Invoicing Filter Bar -->
+                <div class="filter-bar" style="display:flex; flex-direction:column; gap:10px; padding:15px; background-color:var(--bg-secondary); border-radius:8px; border:1px solid var(--border-color);">
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:10px; width:100%;">
+                        <div class="filter-group">
+                            <label for="filter-billing-month" style="font-size:11px; margin-bottom:3px; font-weight:600;">Mes:</label>
+                            <select id="filter-billing-month" class="form-control" style="font-size:12px; height:32px; padding:4px 8px;">
+                                <option value="all">Todos los Meses</option>
+                                <option value="01">Enero</option>
+                                <option value="02">Febrero</option>
+                                <option value="03">Marzo</option>
+                                <option value="04">Abril</option>
+                                <option value="05">Mayo</option>
+                                <option value="06">Junio</option>
+                                <option value="07">Julio</option>
+                                <option value="08">Agosto</option>
+                                <option value="09">Septiembre</option>
+                                <option value="10">Octubre</option>
+                                <option value="11">Noviembre</option>
+                                <option value="12">Diciembre</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-billing-year" style="font-size:11px; margin-bottom:3px; font-weight:600;">Año:</label>
+                            <select id="filter-billing-year" class="form-control" style="font-size:12px; height:32px; padding:4px 8px;">
+                                <option value="all">Todos los Años</option>
+                                <option value="2024">2024</option>
+                                <option value="2025">2025</option>
+                                <option value="2026">2026</option>
+                                <option value="2027">2027</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-billing-read-status" style="font-size:11px; margin-bottom:3px; font-weight:600;">Est. Lectura:</label>
+                            <select id="filter-billing-read-status" class="form-control" style="font-size:12px; height:32px; padding:4px 8px;">
+                                <option value="all">Todos</option>
+                                <option value="pendiente">Pendiente</option>
+                                <option value="cargada">Cargada</option>
+                                <option value="observada">Observada</option>
+                                <option value="validada">Validada</option>
+                                <option value="deleted">Papelera (Anulado)</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-billing-bill-status" style="font-size:11px; margin-bottom:3px; font-weight:600;">Est. Factura:</label>
+                            <select id="filter-billing-bill-status" class="form-control" style="font-size:12px; height:32px; padding:4px 8px;">
+                                <option value="all">Todos</option>
+                                <option value="borrador">Borrador</option>
+                                <option value="facturada">Facturada</option>
+                                <option value="enviada">Enviada</option>
+                                <option value="vencida">Vencida</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-billing-coll-status" style="font-size:11px; margin-bottom:3px; font-weight:600;">Est. Cobro:</label>
+                            <select id="filter-billing-coll-status" class="form-control" style="font-size:12px; height:32px; padding:4px 8px;">
+                                <option value="all">Todos</option>
+                                <option value="pendiente">Pendiente</option>
+                                <option value="parcial">Parcial</option>
+                                <option value="cobrado">Cobrado</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-billing-abono" style="font-size:11px; margin-bottom:3px; font-weight:600;">Plan/Abono:</label>
+                            <select id="filter-billing-abono" class="form-control" style="font-size:12px; height:32px; padding:4px 8px;">
+                                <option value="all">Todos</option>
+                                <!-- Populated dynamically -->
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div style="display:grid; grid-template-columns: 1fr 1.2fr 1.2fr 130px; gap:10px; width:100%; align-items:end;">
+                        <div class="filter-group">
+                            <label for="filter-billing-alerts" style="font-size:11px; margin-bottom:3px; font-weight:600;">Alertas Auditoría:</label>
+                            <select id="filter-billing-alerts" class="form-control" style="font-size:12px; height:32px; padding:4px 8px;">
+                                <option value="all">Todas las filas</option>
+                                <option value="with-alerts">Solo con Alertas/Anomalías</option>
+                                <option value="no-alerts">Sin Alertas/Anomalías</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label style="font-size:11px; margin-bottom:3px; font-weight:600; display:block;">Rango Consumo (Copias):</label>
+                            <div style="display:flex; gap:4px; align-items:center;">
+                                <input type="number" id="filter-billing-copies-min" class="form-control" placeholder="Min" style="font-size:12px; height:32px; padding:4px 8px;">
+                                <span style="font-size:11px; color:var(--text-secondary);">-</span>
+                                <input type="number" id="filter-billing-copies-max" class="form-control" placeholder="Max" style="font-size:12px; height:32px; padding:4px 8px;">
+                            </div>
+                        </div>
+                        <div class="filter-group">
+                            <label style="font-size:11px; margin-bottom:3px; font-weight:600; display:block;">Rango Facturado ($):</label>
+                            <div style="display:flex; gap:4px; align-items:center;">
+                                <input type="number" id="filter-billing-total-min" class="form-control" placeholder="Min" style="font-size:12px; height:32px; padding:4px 8px;">
+                                <span style="font-size:11px; color:var(--text-secondary);">-</span>
+                                <input type="number" id="filter-billing-total-max" class="form-control" placeholder="Max" style="font-size:12px; height:32px; padding:4px 8px;">
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-sm" id="btn-clear-billing-filters" style="font-size:12px; height:32px; display:flex; align-items:center; justify-content:center; gap:4px; font-weight:600;">
+                            🧹 Limpiar Filtros
+                        </button>
+                    </div>
+
+                    <div style="display:flex; gap:10px; width:100%; align-items:center; margin-top:5px; border-top:1px dashed var(--border-color); padding-top:10px;">
+                        <div style="flex-grow:1; position:relative;">
+                            <input type="text" id="search-billing-query" class="form-control" placeholder="Buscar por Cliente, Máquina, N° de Serie, N° de Factura..." style="font-size:13px; height:34px; padding-left:12px; width:100%;">
+                        </div>
                     </div>
                 </div>
 
                 <div class="dashboard-card mt-3">
                     <div class="card-header">
                         <h2>Listado de Facturación y Lecturas</h2>
-                        <button class="btn btn-secondary btn-sm" id="btn-sync-previous-readings">
+                        <button type="button" class="btn btn-secondary btn-sm" id="btn-sync-previous-readings">
                             Copiar Lecturas Finales como Iniciales
                         </button>
                     </div>
                     <div class="card-body">
                         <div class="table-container">
-                            <table class="table" id="readings-table">
+                            <table class="table" id="readings-table" style="font-size:11px;">
                                 <thead>
                                     <tr>
-                                        <th>Cliente</th>
-                                        <th>Máquina</th>
-                                        <th>Abono</th>
+                                        <th onclick="setBillingSort('client')" style="cursor:pointer;" title="Ordenar por Cliente">Cliente ⇅</th>
+                                        <th>Máquina / Serie</th>
+                                        <th>Abono / Plan</th>
                                         <th>L. Inicial</th>
                                         <th>L. Final</th>
-                                        <th>Consumo</th>
-                                        <th>Excedente</th>
+                                        <th onclick="setBillingSort('copies')" style="cursor:pointer;" title="Ordenar por Consumo">Consumo ⇅</th>
+                                        <th>Inc.</th>
+                                        <th>Exc.</th>
+                                        <th>P. Exc</th>
                                         <th>Monto Fijo</th>
-                                        <th>Monto Exced.</th>
+                                        <th>Monto Exc.</th>
                                         <th>IVA</th>
-                                        <th>Total</th>
-                                        <th>Estado</th>
+                                        <th onclick="setBillingSort('total')" style="cursor:pointer;" title="Ordenar por Total">Total ⇅</th>
+                                        <th onclick="setBillingSort('readStatus')" style="cursor:pointer;" title="Ordenar por Estado Lectura">Est. Lectura ⇅</th>
+                                        <th onclick="setBillingSort('billStatus')" style="cursor:pointer;" title="Ordenar por Estado Factura">Est. Facturación ⇅</th>
+                                        <th onclick="setBillingSort('collStatus')" style="cursor:pointer;" title="Ordenar por Estado Cobranza">Est. Cobranza ⇅</th>
+                                        <th>Alertas</th>
                                         <th>Acciones</th>
                                     </tr>
                                 </thead>
@@ -1638,12 +1766,38 @@
                     </div>
                 </div>
 
+                <div class="form-row" style="margin-top: 15px;">
+                    <div class="form-group col-4">
+                        <label for="reading-read-status">Estado de Lectura <span class="required">*</span></label>
+                        <select id="reading-read-status" class="form-control" required>
+                            <option value="pendiente">Pendiente</option>
+                            <option value="cargada">Cargada</option>
+                            <option value="observada">Observada</option>
+                            <option value="validada">Validada</option>
+                        </select>
+                    </div>
+                    <div class="form-group col-4">
+                        <label for="reading-bill-status">Estado de Facturación <span class="required">*</span></label>
+                        <select id="reading-bill-status" class="form-control" required>
+                            <option value="borrador">Borrador</option>
+                            <option value="facturada">Facturada</option>
+                            <option value="enviada">Enviada</option>
+                            <option value="vencida">Vencida</option>
+                        </select>
+                    </div>
+                    <div class="form-group col-4">
+                        <label for="reading-coll-status">Estado de Cobranza <span class="required">*</span></label>
+                        <select id="reading-coll-status" class="form-control" required>
+                            <option value="pendiente">Pendiente</option>
+                            <option value="parcial">Parcial</option>
+                            <option value="cobrado">Cobrado</option>
+                        </select>
+                    </div>
+                </div>
+
                 <div class="form-group mt-3">
-                    <label for="reading-status">Estado de Pago</label>
-                    <select id="reading-status" class="form-control">
-                        <option value="pending">Pendiente de Pago</option>
-                        <option value="paid">Cobrado / Pagado</option>
-                    </select>
+                    <label for="reading-comments">Comentarios / Observaciones</label>
+                    <textarea id="reading-comments" class="form-control" rows="2" placeholder="Notas sobre anomalías, acuerdos de pago, etc..."></textarea>
                 </div>
 
                 <div class="modal-footer mt-4">
@@ -1651,6 +1805,129 @@
                     <button type="submit" class="btn btn-primary">Guardar Lectura</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Modal: Detalle de Lectura y Facturación Auditables -->
+    <div id="modal-reading-detail" class="modal" style="z-index: 1105;">
+        <div class="modal-content large" style="max-width: 850px;">
+            <div class="modal-header">
+                <h3>Detalle de Lectura y Facturación</h3>
+                <span class="close-modal" id="close-modal-reading-detail">&times;</span>
+            </div>
+            <div class="modal-body" style="padding: 20px; font-size: 13px;">
+                <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px;">
+                    <!-- Left Column: Calculation Transparency and Fields -->
+                    <div style="display: flex; flex-direction: column; gap: 12px; border-right: 1px solid var(--border-color); padding-right: 20px;">
+                        <h4 style="margin: 0; font-size: 12px; font-weight: 700; color: var(--indigo); border-bottom: 1px dashed var(--border-color); padding-bottom: 6px; text-transform: uppercase;">📋 Información General</h4>
+                        <div style="display: grid; grid-template-columns: 120px 1fr; gap: 6px;">
+                            <span class="text-secondary-light">Cliente:</span>
+                            <span id="detail-read-client" class="font-bold-title">-</span>
+                            <span class="text-secondary-light">Máquina:</span>
+                            <span id="detail-read-machine">-</span>
+                            <span class="text-secondary-light">N° de Serie:</span>
+                            <span id="detail-read-serial" class="text-xs font-semibold">-</span>
+                            <span class="text-secondary-light">Plan / Abono:</span>
+                            <span id="detail-read-abono">-</span>
+                        </div>
+
+                        <h4 style="margin: 10px 0 0 0; font-size: 12px; font-weight: 700; color: var(--indigo); border-bottom: 1px dashed var(--border-color); padding-bottom: 6px; text-transform: uppercase;">📊 Estados y Fechas</h4>
+                        <div style="display: grid; grid-template-columns: 120px 1fr; gap: 6px;">
+                            <span class="text-secondary-light">Est. Lectura:</span>
+                            <span id="detail-read-status-badge">-</span>
+                            <span class="text-secondary-light">Est. Facturación:</span>
+                            <span id="detail-bill-status-badge">-</span>
+                            <span class="text-secondary-light">Est. Cobranza:</span>
+                            <span id="detail-coll-status-badge">-</span>
+                            <span class="text-secondary-light">Fecha Lectura:</span>
+                            <span id="detail-read-date">-</span>
+                            <span class="text-secondary-light">N° Factura:</span>
+                            <span id="detail-read-invoice-num">-</span>
+                            <span class="text-secondary-light">Fecha Emisión:</span>
+                            <span id="detail-read-invoice-date">-</span>
+                            <span class="text-secondary-light">Vencimiento:</span>
+                            <span id="detail-read-due-date">-</span>
+                            <span class="text-secondary-light">Fecha Cobro:</span>
+                            <span id="detail-read-collect-date">-</span>
+                            <span class="text-secondary-light">Operador / Usuario:</span>
+                            <span id="detail-read-user" class="font-semibold">-</span>
+                        </div>
+
+                        <h4 style="margin: 10px 0 0 0; font-size: 12px; font-weight: 700; color: var(--indigo); border-bottom: 1px dashed var(--border-color); padding-bottom: 6px; text-transform: uppercase;">📝 Alertas y Comentarios</h4>
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                            <div id="detail-read-alerts-container"></div>
+                            <span class="text-secondary-light" style="font-weight:600;">Comentarios:</span>
+                            <div id="detail-read-comments" style="background-color:rgba(255,255,255,0.02); border:1px solid var(--border-color); padding:8px; border-radius:6px; min-height:40px; font-style:italic;">-</div>
+                        </div>
+
+                        <h4 style="margin: 10px 0 0 0; font-size: 12px; font-weight: 700; color: var(--indigo); border-bottom: 1px dashed var(--border-color); padding-bottom: 6px; text-transform: uppercase;">🧮 Transparencia del Cálculo</h4>
+                        <div class="audit-formula-box" id="detail-read-calc-box">
+                            <!-- Populated dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Timeline & Payment Quick form -->
+                    <div style="display: flex; flex-direction: column; gap: 15px;">
+                        <div style="background-color: var(--bg-secondary); border: 1px solid var(--border-color); padding: 14px; border-radius: 8px;">
+                            <h4 style="margin: 0 0 10px 0; font-size: 12px; font-weight: 700; color: var(--indigo); border-bottom: 1px dashed var(--border-color); padding-bottom: 6px; text-transform: uppercase;">⚙️ Acciones Rápidas</h4>
+                            
+                            <div style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">
+                                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
+                                    <button type="button" class="btn btn-secondary btn-sm" id="btn-quick-validate-read" style="font-size:11px; padding:6px;">Validar Lectura</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="btn-quick-send-invoice" style="font-size:11px; padding:6px;">Marcar Enviada</button>
+                                </div>
+                                <div class="form-group" style="margin-top:4px;">
+                                    <label for="quick-invoice-number" style="font-size:11px; font-weight:600; margin-bottom:2px;">N° Factura:</label>
+                                    <input type="text" id="quick-invoice-number" class="form-control" style="font-size:12px; height:28px; padding:2px 8px;" placeholder="Ej: A-0001-00001234">
+                                </div>
+                                <div class="form-group">
+                                    <label for="quick-invoice-date" style="font-size:11px; font-weight:600; margin-bottom:2px;">Fecha Emisión:</label>
+                                    <input type="date" id="quick-invoice-date" class="form-control" style="font-size:12px; height:28px; padding:2px 8px;">
+                                </div>
+                                <button type="button" class="btn btn-primary btn-sm" id="btn-quick-generate-invoice" style="font-size:11px; padding:6px; font-weight:600;">Generar / Emitir Factura</button>
+                            </div>
+                        </div>
+
+                        <div style="background-color: var(--bg-secondary); border: 1px solid var(--border-color); padding: 14px; border-radius: 8px;">
+                            <h4 style="margin: 0 0 10px 0; font-size: 12px; font-weight: 700; color: var(--indigo); border-bottom: 1px dashed var(--border-color); padding-bottom: 6px; text-transform: uppercase;">💰 Registrar Cobro</h4>
+                            <div style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">
+                                <div class="form-group">
+                                    <label for="quick-pay-amount" style="font-size:11px; font-weight:600; margin-bottom:2px;">Monto a pagar ($):</label>
+                                    <input type="number" id="quick-pay-amount" class="form-control" style="font-size:12px; height:28px; padding:2px 8px;" placeholder="Ej: 45000">
+                                </div>
+                                <div class="form-group">
+                                    <label for="quick-pay-method" style="font-size:11px; font-weight:600; margin-bottom:2px;">Método de Pago:</label>
+                                    <select id="quick-pay-method" class="form-control" style="font-size:11px; height:28px; padding:2px 8px;">
+                                        <option value="Efectivo">Efectivo</option>
+                                        <option value="Transferencia">Transferencia Bancaria</option>
+                                        <option value="Cheque">Cheque</option>
+                                        <option value="Otro">Otro</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="quick-pay-comment" style="font-size:11px; font-weight:600; margin-bottom:2px;">Comentario / Recibo:</label>
+                                    <input type="text" id="quick-pay-comment" class="form-control" style="font-size:12px; height:28px; padding:2px 8px;" placeholder="Ej: Recibo N° 451">
+                                </div>
+                                <button type="button" class="btn btn-success btn-sm" id="btn-quick-save-payment" style="font-size:11px; padding:6px; font-weight:600;">Registrar Cobro</button>
+                            </div>
+                        </div>
+
+                        <div style="background-color: var(--bg-secondary); border: 1px solid var(--border-color); padding: 14px; border-radius: 8px;">
+                            <h4 style="margin: 0 0 10px 0; font-size: 12px; font-weight: 700; color: var(--indigo); border-bottom: 1px dashed var(--border-color); padding-bottom: 6px; text-transform: uppercase;">⏳ Línea de Tiempo (Bitácora)</h4>
+                            <div class="audit-timeline" id="detail-read-timeline">
+                                <!-- Timeline items dynamic -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="border-top: 1px solid var(--border-color); padding-top: 10px; display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <button type="button" class="btn btn-secondary btn-sm" id="btn-edit-read-modal">Editar Completo</button>
+                    <button type="button" class="btn btn-danger btn-sm" id="btn-quick-delete-read" style="margin-left: 8px;">Anular / Papelera</button>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-close-reading-detail-modal">Cerrar</button>
+            </div>
         </div>
     </div>
 

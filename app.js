@@ -261,6 +261,7 @@ async function fetchCloudData() {
         state.tickets = tickets || [];
         state.presupuestos = presupuestos || [];
         migrateTickets();
+        migrateReadings();
         
         // Load company logo and general settings in parallel
         const [logoDoc, settingsDoc] = await Promise.all([
@@ -491,30 +492,10 @@ function loadFromLocalStorage() {
         ];
     }
 
-    // Migrate readings without clientId or abonoId
-    let migrated = false;
-    state.readings.forEach(r => {
-        let changed = false;
-        if (!r.clientId || !r.abonoId) {
-            const machine = state.machines.find(m => m.id === r.machineId);
-            if (machine) {
-                if (!r.clientId && machine.clientId) {
-                    r.clientId = machine.clientId;
-                    changed = true;
-                }
-                if (!r.abonoId && machine.abonoId) {
-                    r.abonoId = machine.abonoId;
-                    changed = true;
-                }
-            }
-        }
-        if (changed) {
-            dbSet('readings', r.id, r);
-            migrated = true;
-        }
-    });
+    // Migrate readings and tickets
+    const readingsMigrated = migrateReadings();
     migrateTickets();
-    if (migrated) {
+    if (readingsMigrated) {
         saveToLocalStorage();
     }
 }
@@ -564,6 +545,245 @@ function logTicketHistory(ticket, action, comment = '') {
         action: action,
         comment: comment.trim()
     });
+}
+
+// Helper to migrate and normalize readings into the new 3-layer state model
+function migrateReadings() {
+    if (!state.readings) state.readings = [];
+    let migrated = false;
+    state.readings = state.readings.map(r => {
+        let changed = false;
+
+        // Populate clientId / abonoId if missing (from machine)
+        if (!r.clientId || !r.abonoId) {
+            const machine = state.machines.find(m => m.id === r.machineId);
+            if (machine) {
+                if (!r.clientId && machine.clientId) {
+                    r.clientId = machine.clientId;
+                    changed = true;
+                }
+                if (!r.abonoId && machine.abonoId) {
+                    r.abonoId = machine.abonoId;
+                    changed = true;
+                }
+            }
+        }
+
+        // Migrate status (paid / pending) to three-layer state model
+        if (!r.readingStatus) {
+            if (r.status === 'paid') {
+                r.readingStatus = 'validada';
+            } else if (r.final !== undefined && r.final !== null && r.final !== r.initial) {
+                r.readingStatus = 'cargada';
+            } else {
+                r.readingStatus = 'pendiente';
+            }
+            changed = true;
+        }
+
+        if (!r.billingStatus) {
+            if (r.status === 'paid') {
+                r.billingStatus = 'facturada';
+            } else {
+                r.billingStatus = 'borrador';
+            }
+            changed = true;
+        }
+
+        if (!r.collectionStatus) {
+            if (r.status === 'paid') {
+                r.collectionStatus = 'cobrado';
+            } else {
+                r.collectionStatus = 'pendiente';
+            }
+            changed = true;
+        }
+
+        if (r.deleted === undefined) {
+            r.deleted = false;
+            changed = true;
+        }
+
+        if (r.comments === undefined) {
+            r.comments = '';
+            changed = true;
+        }
+
+        if (!r.user) {
+            r.user = 'Sistema';
+            changed = true;
+        }
+
+        if (!r.history) {
+            r.history = [{
+                date: new Date().toISOString().split('T')[0],
+                time: new Date().toTimeString().split(' ')[0].substring(0, 5),
+                user: 'Sistema',
+                action: 'Migración',
+                comment: 'Migrado automáticamente al modelo de 3 capas'
+            }];
+            changed = true;
+        }
+
+        // Setup dates fallback
+        if (!r.readingDate && r.final) {
+            r.readingDate = r.invoiceDate || new Date().toISOString().split('T')[0];
+            changed = true;
+        }
+
+        if (r.billingStatus === 'facturada' && !r.invoiceDate) {
+            r.invoiceDate = new Date().toISOString().split('T')[0];
+            changed = true;
+        }
+
+        if (r.invoiceDate && !r.dueDate) {
+            const d = new Date(r.invoiceDate);
+            d.setDate(d.getDate() + 10);
+            r.dueDate = d.toISOString().split('T')[0];
+            changed = true;
+        }
+
+        if (r.collectionStatus === 'cobrado' && !r.paymentDate) {
+            r.paymentDate = new Date().toISOString().split('T')[0];
+            changed = true;
+        }
+
+        if (r.paymentAmount === undefined) {
+            if (r.collectionStatus === 'cobrado') {
+                const abono = state.abonos.find(a => a.id === r.abonoId);
+                if (abono) {
+                    const diff = Math.max(0, r.final - r.initial);
+                    const exc = Math.max(0, diff - abono.limit);
+                    const machine = state.machines.find(m => m.id === r.machineId);
+                    const applyIva = machine ? machine.applyIva : false;
+                    const ivaRate = (applyIva && !r.isUnofficial) ? (abono.ivaRate || 0) : 0;
+                    const creditNote = parseFloat(r.creditNote) || 0;
+                    const debitNote = parseFloat(r.debitNote) || 0;
+                    const excCost = exc * abono.excessPrice;
+                    const netCost = abono.price + excCost;
+                    const ivaCost = netCost * (ivaRate / 100);
+                    r.paymentAmount = netCost + ivaCost - creditNote + debitNote;
+                } else {
+                    r.paymentAmount = 0;
+                }
+            } else {
+                r.paymentAmount = 0;
+            }
+            changed = true;
+        }
+
+        if (changed) {
+            migrated = true;
+            dbSet('readings', r.id, r);
+        }
+
+        return r;
+    });
+
+    return migrated;
+}
+
+// Helper to log changes to the readings/billing history timeline
+function logReadingHistory(reading, action, comment = '') {
+    if (!reading.history) reading.history = [];
+    const today = new Date();
+    const dateStr = today.toISOString().split('T')[0];
+    const timeStr = today.toTimeString().split(' ')[0].substring(0, 5);
+    const userStr = state.currentUser ? (state.currentUser.fullname || state.currentUser.username) : 'Sistema';
+    
+    reading.history.push({
+        date: dateStr,
+        time: timeStr,
+        user: userStr,
+        action: action,
+        comment: comment.trim()
+    });
+}
+
+// Automated audit logic for business rules validation
+function auditReading(reading) {
+    const alerts = [];
+    if (!reading || reading.final === undefined || reading.final === null) {
+        return alerts;
+    }
+    
+    const initial = parseInt(reading.initial) || 0;
+    const final = parseInt(reading.final) || 0;
+    const diff = final - initial;
+    
+    // 1. Final < Initial
+    if (final < initial) {
+        alerts.push({
+            type: 'danger',
+            message: 'Lectura final es menor que la lectura inicial.'
+        });
+    }
+
+    // 2. Initial === 0 with extremely high Final (e.g. > 10,000)
+    if (initial === 0 && final > 10000) {
+        alerts.push({
+            type: 'danger',
+            message: 'Lectura inicial está en cero y la lectura final es extremadamente alta.'
+        });
+    }
+    
+    const machine = state.machines.find(m => m.id === reading.machineId);
+    const abono = state.abonos.find(a => a.id === reading.abonoId || (machine ? machine.abonoId : ''));
+    
+    if (abono) {
+        // 3. Excedente desproporcionado (excess > 3x limit)
+        const limit = abono.limit || 0;
+        const excess = Math.max(0, diff - limit);
+        if (limit > 0 && excess > limit * 3) {
+            alerts.push({
+                type: 'warning',
+                message: `El excedente (${excess.toLocaleString('es-AR')}) es desproporcionado respecto al límite del plan (${limit.toLocaleString('es-AR')}).`
+            });
+        }
+        
+        // Calculate total outside credit/debit note
+        const excCost = excess * abono.excessPrice;
+        const netCost = abono.price + excCost;
+        const applyIva = machine ? machine.applyIva : false;
+        const ivaRate = (applyIva && !reading.isUnofficial) ? (abono.ivaRate || 0) : 0;
+        const ivaCost = netCost * (ivaRate / 100);
+        const creditNote = parseFloat(reading.creditNote) || 0;
+        const debitNote = parseFloat(reading.debitNote) || 0;
+        const total = netCost + ivaCost - creditNote + debitNote;
+        
+        // 4. Total fuera de rango normal
+        if (total > 500000 || total > abono.price * 4) {
+            alerts.push({
+                type: 'warning',
+                message: `El monto total (${formatCurrency(total)}) está fuera de rango normal respecto al precio base (${formatCurrency(abono.price)}).`
+            });
+        }
+    }
+    
+    // 5. Consumo excesivamente alto respecto al histórico
+    if (machine) {
+        const historicalReadings = state.readings.filter(r => r.machineId === machine.id && r.id !== reading.id && r.final !== undefined && r.final > r.initial && !r.deleted);
+        if (historicalReadings.length >= 2) {
+            const sum = historicalReadings.reduce((acc, curr) => acc + (curr.final - curr.initial), 0);
+            const avg = sum / historicalReadings.length;
+            if (avg > 0 && diff > avg * 2) {
+                alerts.push({
+                    type: 'warning',
+                    message: `Consumo mensual (${diff.toLocaleString('es-AR')}) supera en más del 100% el promedio histórico (${Math.round(avg).toLocaleString('es-AR')}).`
+                });
+            }
+        }
+    }
+    
+    // 6. Datos faltantes antes de facturar
+    if (reading.billingStatus === 'facturada' && (!reading.invoiceNumber || !reading.invoiceDate)) {
+        alerts.push({
+            type: 'warning',
+            message: 'Estado es Facturada pero no se ingresó número de factura o fecha de emisión.'
+        });
+    }
+    
+    return alerts;
 }
 
 // Demo Data Setup
@@ -1424,7 +1644,11 @@ function setupForms() {
         const month = document.getElementById('reading-month').value;
         const initial = parseInt(document.getElementById('reading-initial').value) || 0;
         const final = parseInt(document.getElementById('reading-final').value) || 0;
-        const status = document.getElementById('reading-status').value;
+        
+        const readingStatus = document.getElementById('reading-read-status').value;
+        const billingStatus = document.getElementById('reading-bill-status').value;
+        const collectionStatus = document.getElementById('reading-coll-status').value;
+        const comments = document.getElementById('reading-comments').value.trim();
 
         if (final < initial) {
             showToast('La lectura final no puede ser menor a la lectura inicial', 'error');
@@ -1434,11 +1658,13 @@ function setupForms() {
         const machine = state.machines.find(m => m.id === machineId);
         let resolvedClientId = '';
         let resolvedAbonoId = '';
+        let existing = null;
+        
         if (id) {
-            const existingReading = state.readings.find(r => r.id === id);
-            if (existingReading) {
-                resolvedClientId = existingReading.clientId;
-                resolvedAbonoId = existingReading.abonoId;
+            existing = state.readings.find(r => r.id === id);
+            if (existing) {
+                resolvedClientId = existing.clientId;
+                resolvedAbonoId = existing.abonoId;
             }
         }
         if (!resolvedClientId && machine) {
@@ -1457,12 +1683,22 @@ function setupForms() {
         const debitNoteReason = document.getElementById('reading-debit-note-reason').value.trim();
         
         let invoiceFile = window.tempReadingFileBase64 || '';
-        if (id && !invoiceFile) {
-            const existingReading = state.readings.find(r => r.id === id);
-            if (existingReading && existingReading.invoiceFile) {
-                invoiceFile = existingReading.invoiceFile;
-            }
+        if (id && !invoiceFile && existing) {
+            invoiceFile = existing.invoiceFile || '';
         }
+
+        // Calculate total amount to cache or set paymentAmount
+        const abono = state.abonos.find(a => a.id === resolvedAbonoId);
+        const diff = Math.max(0, final - initial);
+        const limit = abono ? abono.limit : 0;
+        const excess = Math.max(0, diff - limit);
+        const fixedCost = abono ? abono.price : 0;
+        const excessCost = excess * (abono ? abono.excessPrice : 0);
+        const netCost = fixedCost + excessCost;
+        const applyIva = machine ? machine.applyIva : false;
+        const ivaRate = (applyIva && !isUnofficial && abono) ? (abono.ivaRate || 0) : 0;
+        const ivaCost = netCost * (ivaRate / 100);
+        const total = netCost + ivaCost - creditNote + debitNote;
 
         const readingData = {
             id: id || ('read-' + Date.now()),
@@ -1472,7 +1708,11 @@ function setupForms() {
             month,
             initial,
             final,
-            status,
+            status: collectionStatus === 'cobrado' ? 'paid' : 'pending',
+            readingStatus,
+            billingStatus,
+            collectionStatus,
+            comments,
             invoiceNumber,
             invoiceDate,
             isUnofficial,
@@ -1480,20 +1720,72 @@ function setupForms() {
             creditNoteReason,
             debitNote,
             debitNoteReason,
-            invoiceFile
+            invoiceFile,
+            deleted: existing ? (existing.deleted || false) : false
         };
 
-        if (id) {
-            const existingReading = state.readings.find(r => r.id === id);
-            if (existingReading) {
-                readingData.partialPaid = existingReading.partialPaid || 0;
-                readingData.paymentMethod = existingReading.paymentMethod || '';
-                readingData.paymentReference = existingReading.paymentReference || '';
-                readingData.paymentDate = existingReading.paymentDate || '';
-                readingData.bankReconciled = existingReading.bankReconciled || false;
-                readingData.bankReconciliationDate = existingReading.bankReconciliationDate || '';
+        // Date calculation fallbacks
+        readingData.readingDate = existing ? (existing.readingDate || new Date().toISOString().split('T')[0]) : new Date().toISOString().split('T')[0];
+        
+        if (billingStatus === 'facturada' || billingStatus === 'enviada') {
+            readingData.invoiceDate = invoiceDate || existing?.invoiceDate || new Date().toISOString().split('T')[0];
+            if (readingData.invoiceDate) {
+                const d = new Date(readingData.invoiceDate);
+                d.setDate(d.getDate() + 10);
+                readingData.dueDate = existing?.dueDate || d.toISOString().split('T')[0];
+            }
+        } else {
+            readingData.invoiceDate = '';
+            readingData.dueDate = '';
+        }
+
+        if (collectionStatus === 'cobrado') {
+            readingData.paymentDate = existing?.paymentDate || new Date().toISOString().split('T')[0];
+            readingData.paymentAmount = total;
+        } else if (collectionStatus === 'parcial') {
+            readingData.paymentAmount = existing ? (existing.paymentAmount || 0) : 0;
+            readingData.paymentDate = existing?.paymentDate || '';
+        } else {
+            readingData.paymentAmount = 0;
+            readingData.paymentDate = '';
+        }
+
+        // Trazabilidad timeline logs
+        readingData.history = existing ? (existing.history || []) : [];
+        if (!existing) {
+            logReadingHistory(readingData, 'Carga Lectura', `Contador inicial: ${initial}, final: ${final}. Estado de lectura: ${readingStatus}`);
+        } else {
+            const changes = [];
+            if (existing.initial !== initial || existing.final !== final) {
+                changes.push(`Lecturas actualizadas de [${existing.initial} - ${existing.final}] a [${initial} - ${final}]`);
+            }
+            if (existing.readingStatus !== readingStatus) {
+                changes.push(`Estado Lectura: ${existing.readingStatus} -> ${readingStatus}`);
+            }
+            if (existing.billingStatus !== billingStatus) {
+                changes.push(`Estado Factura: ${existing.billingStatus} -> ${billingStatus}`);
+            }
+            if (existing.collectionStatus !== collectionStatus) {
+                changes.push(`Estado Cobro: ${existing.collectionStatus} -> ${collectionStatus}`);
+            }
+            if (changes.length > 0) {
+                logReadingHistory(readingData, 'Actualización', changes.join(', '));
             }
         }
+
+        // Keep other payment tracking fields
+        if (existing) {
+            readingData.paymentMethod = existing.paymentMethod || '';
+            readingData.paymentReference = existing.paymentReference || '';
+            readingData.bankReconciled = existing.bankReconciled || false;
+            readingData.bankReconciliationDate = existing.bankReconciliationDate || '';
+        } else {
+            readingData.paymentMethod = '';
+            readingData.paymentReference = '';
+            readingData.bankReconciled = false;
+            readingData.bankReconciliationDate = '';
+        }
+
         window.tempReadingFileBase64 = '';
 
         if (id) {
@@ -1509,16 +1801,16 @@ function setupForms() {
 
         dbSet('readings', readingData.id, readingData);
 
-        // Propagate logged final counter to update active machine current counter record
+        // Propagate counter to machine
         const machineIdx = state.machines.findIndex(m => m.id === machineId);
         if (machineIdx !== -1) {
-            let machine = state.machines[machineIdx];
-            machine.machineCounter = final;
-            if (machine.status === 'Nuevo' && final > 0) {
-                machine.status = 'Usado';
+            let machineObj = state.machines[machineIdx];
+            machineObj.machineCounter = final;
+            if (machineObj.status === 'Nuevo' && final > 0) {
+                machineObj.status = 'Usado';
                 showToast('El equipo era Nuevo y al tener contador mayor a 0, cambió a Usado automáticamente', 'info');
             }
-            dbSet('machines', machineId, machine);
+            dbSet('machines', machineId, machineObj);
         }
 
         closeAllModals();
@@ -1786,6 +2078,182 @@ function setupActions() {
     document.getElementById('btn-sync-previous-readings').addEventListener('click', () => {
         syncFinalReadings();
     });
+
+    // Readings & Invoicing Detail Modal Event Handlers
+    const closeReadingDetail = () => {
+        const detailModal = document.getElementById('modal-reading-detail');
+        if (detailModal) detailModal.style.display = 'none';
+    };
+    
+    const closeDetailSpan = document.getElementById('close-modal-reading-detail');
+    if (closeDetailSpan) closeDetailSpan.onclick = closeReadingDetail;
+
+    const closeDetailBtn = document.getElementById('btn-close-reading-detail-modal');
+    if (closeDetailBtn) closeDetailBtn.onclick = closeReadingDetail;
+
+    const editReadModalBtn = document.getElementById('btn-edit-read-modal');
+    if (editReadModalBtn) {
+        editReadModalBtn.onclick = () => {
+            const readingId = window.activeDetailReadingId;
+            if (readingId) {
+                closeReadingDetail();
+                editReadingTrigger(readingId);
+            }
+        };
+    }
+
+    const quickValidateBtn = document.getElementById('btn-quick-validate-read');
+    if (quickValidateBtn) {
+        quickValidateBtn.onclick = () => {
+            const readingId = window.activeDetailReadingId;
+            if (!readingId) return;
+            const reading = state.readings.find(r => r.id === readingId);
+            if (reading) {
+                reading.readingStatus = 'validada';
+                logReadingHistory(reading, 'Validación', 'Lectura validada administrativamente.');
+                dbSet('readings', reading.id, reading);
+                saveToLocalStorage();
+                showToast('Lectura validada con éxito', 'success');
+                openReadingDetailModal(readingId);
+                renderReadingsTab();
+            }
+        };
+    }
+
+    const quickSendBtn = document.getElementById('btn-quick-send-invoice');
+    if (quickSendBtn) {
+        quickSendBtn.onclick = () => {
+            const readingId = window.activeDetailReadingId;
+            if (!readingId) return;
+            const reading = state.readings.find(r => r.id === readingId);
+            if (reading) {
+                reading.billingStatus = 'enviada';
+                logReadingHistory(reading, 'Factura Enviada', 'Factura enviada al cliente.');
+                dbSet('readings', reading.id, reading);
+                saveToLocalStorage();
+                showToast('Factura marcada como enviada', 'success');
+                openReadingDetailModal(readingId);
+                renderReadingsTab();
+            }
+        };
+    }
+
+    const quickGenInvoiceBtn = document.getElementById('btn-quick-generate-invoice');
+    if (quickGenInvoiceBtn) {
+        quickGenInvoiceBtn.onclick = () => {
+            const readingId = window.activeDetailReadingId;
+            if (!readingId) return;
+            const reading = state.readings.find(r => r.id === readingId);
+            if (reading) {
+                const invNum = document.getElementById('quick-invoice-number').value.trim();
+                const invDate = document.getElementById('quick-invoice-date').value;
+                if (!invNum || !invDate) {
+                    showToast('Por favor completa el número y fecha de factura', 'error');
+                    return;
+                }
+                reading.invoiceNumber = invNum;
+                reading.invoiceDate = invDate;
+                reading.billingStatus = 'facturada';
+                
+                const d = new Date(invDate);
+                d.setDate(d.getDate() + 10);
+                reading.dueDate = d.toISOString().split('T')[0];
+
+                logReadingHistory(reading, 'Facturación', `Factura N° ${invNum} emitida el ${invDate}. Vence el ${reading.dueDate}`);
+                dbSet('readings', reading.id, reading);
+                saveToLocalStorage();
+                showToast('Factura emitida correctamente', 'success');
+                openReadingDetailModal(readingId);
+                renderReadingsTab();
+            }
+        };
+    }
+
+    const quickSavePaymentBtn = document.getElementById('btn-quick-save-payment');
+    if (quickSavePaymentBtn) {
+        quickSavePaymentBtn.onclick = () => {
+            const readingId = window.activeDetailReadingId;
+            if (!readingId) return;
+            const reading = state.readings.find(r => r.id === readingId);
+            if (reading) {
+                const payAmt = parseFloat(document.getElementById('quick-pay-amount').value) || 0;
+                const method = document.getElementById('quick-pay-method').value;
+                const comment = document.getElementById('quick-pay-comment').value.trim();
+
+                if (payAmt <= 0) {
+                    showToast('Monto de pago debe ser mayor a cero', 'error');
+                    return;
+                }
+
+                const machine = state.machines.find(m => m.id === reading.machineId);
+                const abono = state.abonos.find(a => a.id === reading.abonoId);
+                const initial = reading.initial;
+                const final = reading.final !== null ? reading.final : initial;
+                const diff = Math.max(0, final - initial);
+                const excess = Math.max(0, diff - (abono ? abono.limit : 0));
+                const fixedCost = abono ? abono.price : 0;
+                const excessCost = excess * (abono ? abono.excessPrice : 0);
+                const netCost = fixedCost + excessCost;
+                const applyIva = machine ? machine.applyIva : false;
+                const ivaRate = (applyIva && !reading.isUnofficial && abono) ? (abono.ivaRate || 0) : 0;
+                const ivaCost = netCost * (ivaRate / 100);
+                const creditNote = parseFloat(reading.creditNote) || 0;
+                const debitNote = parseFloat(reading.debitNote) || 0;
+                const total = netCost + ivaCost - creditNote + debitNote;
+
+                const previousPaid = parseFloat(reading.paymentAmount) || 0;
+                const newPaid = previousPaid + payAmt;
+                reading.paymentAmount = newPaid;
+                reading.paymentMethod = method;
+                reading.paymentReference = comment;
+                reading.paymentDate = new Date().toISOString().split('T')[0];
+
+                if (newPaid >= total) {
+                    reading.collectionStatus = 'cobrado';
+                    reading.status = 'paid';
+                    logReadingHistory(reading, 'Cobro Completo', `Monto pagado: ${formatCurrency(payAmt)} (Total acumulado: ${formatCurrency(newPaid)}). Método: ${method}. Ref: ${comment}`);
+                } else {
+                    reading.collectionStatus = 'parcial';
+                    reading.status = 'pending';
+                    logReadingHistory(reading, 'Cobro Parcial', `Monto pagado: ${formatCurrency(payAmt)} (Total acumulado: ${formatCurrency(newPaid)}). Resta: ${formatCurrency(total - newPaid)}. Método: ${method}. Ref: ${comment}`);
+                }
+
+                dbSet('readings', reading.id, reading);
+                saveToLocalStorage();
+                showToast('Cobro registrado con éxito', 'success');
+                openReadingDetailModal(readingId);
+                renderReadingsTab();
+            }
+        };
+    }
+
+    const quickDeleteReadBtn = document.getElementById('btn-quick-delete-read');
+    if (quickDeleteReadBtn) {
+        quickDeleteReadBtn.onclick = () => {
+            const readingId = window.activeDetailReadingId;
+            if (!readingId) return;
+            const reading = state.readings.find(r => r.id === readingId);
+            if (reading) {
+                if (reading.deleted) {
+                    reading.deleted = false;
+                    logReadingHistory(reading, 'Restauración', 'Lectura restaurada de la papelera.');
+                    showToast('Lectura restaurada con éxito', 'success');
+                } else {
+                    if (confirm('¿Seguro que deseas mover esta lectura/factura a la papelera lógica? No se eliminarán los datos históricos pero ya no aparecerá en el listado activo.')) {
+                        reading.deleted = true;
+                        logReadingHistory(reading, 'Anulación', 'Movido a papelera lógica.');
+                        showToast('Lectura movida a la papelera', 'warning');
+                    } else {
+                        return;
+                    }
+                }
+                dbSet('readings', reading.id, reading);
+                saveToLocalStorage();
+                openReadingDetailModal(readingId);
+                renderReadingsTab();
+            }
+        };
+    }
 
     // Data backups
     document.getElementById('btn-export-data').addEventListener('click', exportDataToJSON);
@@ -2333,7 +2801,22 @@ async function syncFinalReadings() {
                 month: currentMonth,
                 initial: prevReading.final,
                 final: prevReading.final, // set same temporarily
-                status: 'pending'
+                status: 'pending',
+                readingStatus: 'pendiente',
+                billingStatus: 'borrador',
+                collectionStatus: 'pendiente',
+                deleted: false,
+                comments: '',
+                user: state.currentUser ? (state.currentUser.fullname || state.currentUser.username) : 'Sistema',
+                readingDate: new Date().toISOString().split('T')[0],
+                paymentAmount: 0,
+                history: [{
+                    date: new Date().toISOString().split('T')[0],
+                    time: new Date().toTimeString().split(' ')[0].substring(0, 5),
+                    user: state.currentUser ? (state.currentUser.fullname || state.currentUser.username) : 'Sistema',
+                    action: 'Carga Inicial Copiada',
+                    comment: `Inicializado con el contador final de ${formatPeriod(prevMonthStr)}: ${prevReading.final}`
+                }]
             };
             state.readings.push(newReading);
             syncedReadings.push(newReading);
@@ -2620,7 +3103,11 @@ function openReadingModal(machineId, month, reading = null) {
         document.getElementById('reading-id').value = reading.id;
         document.getElementById('reading-initial').value = reading.initial;
         document.getElementById('reading-final').value = reading.final;
-        document.getElementById('reading-status').value = reading.status;
+        
+        document.getElementById('reading-read-status').value = reading.readingStatus || 'cargada';
+        document.getElementById('reading-bill-status').value = reading.billingStatus || 'borrador';
+        document.getElementById('reading-coll-status').value = reading.collectionStatus || 'pendiente';
+        document.getElementById('reading-comments').value = reading.comments || '';
 
         document.getElementById('reading-invoice-number').value = reading.invoiceNumber || '';
         document.getElementById('reading-invoice-date').value = reading.invoiceDate || '';
@@ -2636,8 +3123,12 @@ function openReadingModal(machineId, month, reading = null) {
     } else {
         document.getElementById('reading-id').value = '';
         document.getElementById('reading-initial').value = defaultInitial;
-        document.getElementById('reading-final').value = defaultInitial; // default matching
-        document.getElementById('reading-status').value = 'pending';
+        document.getElementById('reading-final').value = defaultInitial; 
+        
+        document.getElementById('reading-read-status').value = 'pendiente';
+        document.getElementById('reading-bill-status').value = 'borrador';
+        document.getElementById('reading-coll-status').value = 'pendiente';
+        document.getElementById('reading-comments').value = '';
 
         document.getElementById('reading-invoice-number').value = '';
         document.getElementById('reading-invoice-date').value = '';
@@ -3664,6 +4155,215 @@ window.addReadingTrigger = (machineId) => {
     openReadingModal(machineId, currentMonth);
 };
 
+window.openReadingDetailModal = (readingId) => {
+    closeAllModals();
+    const reading = state.readings.find(r => r.id === readingId);
+    if (!reading) {
+        showToast('Error: No se encontró el registro de lectura', 'error');
+        return;
+    }
+
+    const machine = state.machines.find(m => m.id === reading.machineId);
+    const client = state.clients.find(c => c.id === reading.clientId);
+    const abono = state.abonos.find(a => a.id === reading.abonoId);
+
+    if (!machine || !client || !abono) {
+        showToast('Error: Faltan referencias clave para esta lectura', 'error');
+        return;
+    }
+
+    // Cache active reading ID globally in window for quick action callbacks
+    window.activeDetailReadingId = readingId;
+
+    // Fill Client Info
+    document.getElementById('detail-read-client').textContent = client.name;
+    document.getElementById('detail-read-machine').textContent = `${machine.brand || ''} ${machine.model}`;
+    document.getElementById('detail-read-serial').textContent = machine.serial;
+    document.getElementById('detail-read-abono').textContent = `${abono.name} (${formatCurrency(abono.price)} base, límite ${abono.limit.toLocaleString('es-AR')} copias)`;
+
+    // Badges & Fields
+    const readBadge = document.getElementById('detail-read-status-badge');
+    const billBadge = document.getElementById('detail-bill-status-badge');
+    const collBadge = document.getElementById('detail-coll-status-badge');
+
+    readBadge.className = `badge badge-read-${reading.readingStatus}`;
+    readBadge.textContent = reading.readingStatus.toUpperCase();
+
+    billBadge.className = `badge badge-bill-${reading.billingStatus}`;
+    billBadge.textContent = reading.billingStatus.toUpperCase();
+
+    collBadge.className = `badge badge-coll-${reading.collectionStatus}`;
+    collBadge.textContent = reading.collectionStatus.toUpperCase();
+
+    document.getElementById('detail-read-date').textContent = reading.readingDate || '-';
+    document.getElementById('detail-read-invoice-num').textContent = reading.invoiceNumber || 'No asignado';
+    document.getElementById('detail-read-invoice-date').textContent = reading.invoiceDate || '-';
+    document.getElementById('detail-read-due-date').textContent = reading.dueDate || '-';
+    document.getElementById('detail-read-collect-date').textContent = reading.paymentDate || '-';
+    document.getElementById('detail-read-user').textContent = reading.user || 'Sistema';
+    document.getElementById('detail-read-comments').textContent = reading.comments || 'Sin comentarios cargados.';
+
+    // Alertas validation display
+    const alertsContainer = document.getElementById('detail-read-alerts-container');
+    alertsContainer.innerHTML = '';
+    const calculatedAlerts = auditReading(reading);
+    if (calculatedAlerts.length > 0) {
+        calculatedAlerts.forEach(al => {
+            const div = document.createElement('div');
+            div.style.padding = '8px';
+            div.style.fontSize = '11px';
+            div.style.borderRadius = '4px';
+            div.style.marginBottom = '4px';
+            div.style.fontWeight = '600';
+            if (al.type === 'danger') {
+                div.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+                div.style.color = '#ef4444';
+                div.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+            } else {
+                div.style.backgroundColor = 'rgba(245, 158, 11, 0.15)';
+                div.style.color = '#f59e0b';
+                div.style.border = '1px solid rgba(245, 158, 11, 0.3)';
+            }
+            div.textContent = `⚠️ ${al.message}`;
+            alertsContainer.appendChild(div);
+        });
+    } else {
+        const div = document.createElement('div');
+        div.style.color = 'var(--emerald)';
+        div.style.fontSize = '11px';
+        div.style.fontWeight = '600';
+        div.textContent = '✅ Sin alertas de auditoría detectadas.';
+        alertsContainer.appendChild(div);
+    }
+
+    // Calculations transparency step-by-step
+    const calcBox = document.getElementById('detail-read-calc-box');
+    const diff = Math.max(0, reading.final - reading.initial);
+    const limit = abono.limit;
+    const excess = Math.max(0, diff - limit);
+    const fixedFee = abono.price;
+    const excessFee = excess * abono.excessPrice;
+    const netCost = fixedFee + excessFee;
+    const ivaRate = (machine.applyIva && !reading.isUnofficial) ? (abono.ivaRate || 0) : 0;
+    const ivaCost = netCost * (ivaRate / 100);
+    const creditNote = parseFloat(reading.creditNote) || 0;
+    const debitNote = parseFloat(reading.debitNote) || 0;
+    const total = netCost + ivaCost - creditNote + debitNote;
+
+    calcBox.innerHTML = `
+        <h5>Liquidación Período ${formatPeriod(reading.month)}</h5>
+        <div class="audit-step">
+            <span>Copias iniciales:</span>
+            <span>${reading.initial.toLocaleString('es-AR')}</span>
+        </div>
+        <div class="audit-step">
+            <span>Copias finales:</span>
+            <span>${reading.final.toLocaleString('es-AR')}</span>
+        </div>
+        <div class="audit-step">
+            <span>Consumo real copias (Final - Inicial):</span>
+            <strong>${diff.toLocaleString('es-AR')} copias</strong>
+        </div>
+        <div class="audit-step">
+            <span>Copias incluidas abono:</span>
+            <span>${limit.toLocaleString('es-AR')} copias</span>
+        </div>
+        <div class="audit-step">
+            <span>Copias excedentes cobrables (Consumo - Incluidas):</span>
+            <span class="${excess > 0 ? 'text-amber font-semibold' : ''}">${excess.toLocaleString('es-AR')} copias</span>
+        </div>
+        <div class="audit-step">
+            <span>Abono fijo base mensual:</span>
+            <span>${formatCurrency(fixedFee)}</span>
+        </div>
+        <div class="audit-step">
+            <span>Cargo copias excedentes (${formatCurrency(abono.excessPrice)} c/u):</span>
+            <span>${excess > 0 ? `${excess.toLocaleString('es-AR')} x ${formatCurrency(abono.excessPrice)} = ${formatCurrency(excessFee)}` : '$0,00'}</span>
+        </div>
+        <div class="audit-step">
+            <span>Subtotal Neto:</span>
+            <span>${formatCurrency(netCost)}</span>
+        </div>
+        <div class="audit-step">
+            <span>IVA Aplicado (${ivaRate}%):</span>
+            <span>${formatCurrency(ivaCost)} ${reading.isUnofficial ? '(No Oficial)' : (machine.applyIva ? '' : '(Cliente Exento)')}</span>
+        </div>
+        ${creditNote > 0 ? `
+        <div class="audit-step text-emerald" style="font-weight:600;">
+            <span>Nota de Crédito (${reading.creditNoteReason || 'Bonificación'}):</span>
+            <span>- ${formatCurrency(creditNote)}</span>
+        </div>` : ''}
+        ${debitNote > 0 ? `
+        <div class="audit-step text-amber" style="font-weight:600;">
+            <span>Nota de Débito (${reading.debitNoteReason || 'Recargo'}):</span>
+            <span>+ ${formatCurrency(debitNote)}</span>
+        </div>` : ''}
+        <div class="audit-step highlight-total">
+            <span>Importe Total Calculado:</span>
+            <span>${formatCurrency(total)}</span>
+        </div>
+        <div class="audit-step" style="border-top:1px dashed var(--border-color); padding-top:6px; margin-top:4px;">
+            <span>Monto Registrado Pago:</span>
+            <span class="text-emerald font-semibold">${formatCurrency(reading.paymentAmount || 0)}</span>
+        </div>
+        <div class="audit-step">
+            <span>Saldo a Cobrar Restante:</span>
+            <strong class="${(total - (reading.paymentAmount || 0)) > 0 ? 'text-amber' : 'text-emerald'}">${formatCurrency(Math.max(0, total - (reading.paymentAmount || 0)))}</strong>
+        </div>
+    `;
+
+    // Timeline bitácora rendering
+    const timelineContainer = document.getElementById('detail-read-timeline');
+    timelineContainer.innerHTML = '';
+    const history = reading.history || [];
+    if (history.length === 0) {
+        timelineContainer.innerHTML = '<p class="text-xs text-secondary-light">Sin historial registrado.</p>';
+    } else {
+        history.slice().reverse().forEach(h => {
+            const item = document.createElement('div');
+            item.className = 'audit-timeline-item';
+            
+            if (h.action.includes('Pago') || h.action.includes('Cobro')) {
+                item.classList.add('reconciled');
+            } else if (h.action.includes('Valid') || h.action.includes('Cierre') || h.action.includes('Factur') || h.action.includes('Actualiza')) {
+                item.classList.add('state-change');
+            } else if (h.action.includes('Anula') || h.action.includes('Restaur')) {
+                item.classList.add('alert-triggered');
+            } else {
+                item.classList.add('created');
+            }
+            
+            item.innerHTML = `
+                <div class="audit-timeline-meta">${h.date} a las ${h.time} por ${h.user}</div>
+                <div class="audit-timeline-content"><strong>${h.action}</strong>${h.comment ? `: ${h.comment}` : ''}</div>
+            `;
+            timelineContainer.appendChild(item);
+        });
+    }
+
+    // Set Quick Payment and Invoicing Form Inputs Default Values
+    document.getElementById('quick-invoice-number').value = reading.invoiceNumber || '';
+    document.getElementById('quick-invoice-date').value = reading.invoiceDate || '';
+    document.getElementById('quick-pay-amount').value = Math.max(0, total - (reading.paymentAmount || 0));
+    document.getElementById('quick-pay-comment').value = '';
+
+    // Set Delete/Restore button text dynamically
+    const delBtn = document.getElementById('btn-quick-delete-read');
+    if (delBtn) {
+        if (reading.deleted) {
+            delBtn.textContent = '♻️ Restaurar Lectura';
+            delBtn.className = 'btn btn-success btn-sm';
+            delBtn.style.marginLeft = '8px';
+        } else {
+            delBtn.textContent = '🗑️ Anular / Papelera';
+            delBtn.className = 'btn btn-danger btn-sm';
+            delBtn.style.marginLeft = '8px';
+        }
+    }
+
+    document.getElementById('modal-reading-detail').style.display = 'block';
+};
+
 window.editReadingTrigger = (readingId) => {
     const reading = state.readings.find(r => r.id === readingId);
     if (reading) {
@@ -3765,136 +4465,439 @@ window.deleteAbonoTrigger = (abonoId) => {
 // Tab View 2: Readings & Invoices
 function renderReadingsTab() {
     const tableBody = document.querySelector('#readings-table tbody');
+    if (!tableBody) return;
     tableBody.innerHTML = '';
 
-    const filterStatus = document.getElementById('filter-reading-status').value;
-    const searchClientVal = document.getElementById('search-reading-client').value.toLowerCase();
+    // Initialize month/year filter values if not set
+    const monthSelect = document.getElementById('filter-billing-month');
+    const yearSelect = document.getElementById('filter-billing-year');
+    if (monthSelect && monthSelect.value === 'all' && currentMonth) {
+        monthSelect.value = currentMonth.split('-')[1];
+    }
+    if (yearSelect && yearSelect.value === 'all' && currentMonth) {
+        yearSelect.value = currentMonth.split('-')[0];
+    }
+
+    const selectedMonth = monthSelect ? monthSelect.value : 'all';
+    const selectedYear = yearSelect ? yearSelect.value : 'all';
+    
+    // Construct selected period string
+    const targetYear = selectedYear !== 'all' ? selectedYear : currentMonth.split('-')[0];
+    const targetMonth = selectedMonth !== 'all' ? selectedMonth : currentMonth.split('-')[1];
+    const periodStr = `${targetYear}-${targetMonth}`;
+
+    const filterReadStatus = document.getElementById('filter-billing-read-status')?.value || 'all';
+    const filterBillStatus = document.getElementById('filter-billing-bill-status')?.value || 'all';
+    const filterCollStatus = document.getElementById('filter-billing-coll-status')?.value || 'all';
+    const filterAbono = document.getElementById('filter-billing-abono')?.value || 'all';
+    const filterAlerts = document.getElementById('filter-billing-alerts')?.value || 'all';
+    const copiesMin = parseInt(document.getElementById('filter-billing-copies-min')?.value, 10);
+    const copiesMax = parseInt(document.getElementById('filter-billing-copies-max')?.value, 10);
+    const totalMin = parseFloat(document.getElementById('filter-billing-total-min')?.value);
+    const totalMax = parseFloat(document.getElementById('filter-billing-total-max')?.value);
+    const searchQuery = document.getElementById('search-billing-query')?.value.toLowerCase() || '';
+
+    // Populate abonos dropdown if needed
+    const abonoSelect = document.getElementById('filter-billing-abono');
+    if (abonoSelect && abonoSelect.children.length <= 1) {
+        abonoSelect.innerHTML = '<option value="all">Todos los planes</option>';
+        state.abonos.forEach(a => {
+            const option = document.createElement('option');
+            option.value = a.id;
+            option.textContent = a.name;
+            abonoSelect.appendChild(option);
+        });
+        if (filterAbono !== 'all') {
+            abonoSelect.value = filterAbono;
+        }
+    }
 
     // Active rented machines
     const rentedMachines = state.machines.filter(m => m.clientId);
 
-    let filteredMachines = rentedMachines.filter(machine => {
-        const client = state.clients.find(c => c.id === machine.clientId);
-        const clientName = client ? client.name.toLowerCase() : '';
-        return clientName.includes(searchClientVal);
+    // 1. Calculate KPIs based on the selected month/year period for non-deleted records
+    let pendingReadingsCount = 0;
+    let flaggedReadingsCount = 0;
+    let totalInvoicedMonth = 0;
+    let totalUnpaidMonth = 0;
+    let totalCollectedMonth = 0;
+    let totalOutstandingHistory = 0;
+    let abnormalConsumptionCount = 0;
+
+    rentedMachines.forEach(m => {
+        const rd = state.readings.find(r => r.machineId === m.id && r.month === periodStr && !r.deleted) || {
+            final: null,
+            readingStatus: 'pendiente',
+            billingStatus: 'borrador',
+            collectionStatus: 'pendiente',
+            paymentAmount: 0
+        };
+
+        if (rd.final === null || rd.readingStatus === 'pendiente') {
+            pendingReadingsCount++;
+        }
+        if (rd.readingStatus === 'observada') {
+            flaggedReadingsCount++;
+        }
+
+        // Calculation transparency for KPI totals
+        const ab = state.abonos.find(a => a.id === (rd.abonoId || m.abonoId));
+        const initVal = rd.initial !== undefined ? rd.initial : (m.machineCounter || 0);
+        const finVal = rd.final !== null ? rd.final : initVal;
+        const df = Math.max(0, finVal - initVal);
+        const lim = ab ? ab.limit : 0;
+        const ex = Math.max(0, df - lim);
+        const fixCost = ab ? ab.price : 0;
+        const exPrice = ab ? ab.excessPrice : 0;
+        const exCost = ex * exPrice;
+        const netC = fixCost + exCost;
+        const ivRt = (m.applyIva && !rd.isUnofficial && ab) ? (ab.ivaRate || 0) : 0;
+        const ivCost = netC * (ivRt / 100);
+        const crNote = parseFloat(rd.creditNote) || 0;
+        const dbNote = parseFloat(rd.debitNote) || 0;
+        const totVal = netC + ivCost - crNote + dbNote;
+
+        if (rd.billingStatus === 'facturada' || rd.billingStatus === 'enviada') {
+            totalInvoicedMonth += totVal;
+        }
+
+        if (rd.collectionStatus === 'cobrado') {
+            totalCollectedMonth += rd.paymentAmount || totVal;
+        } else if (rd.collectionStatus === 'parcial') {
+            totalCollectedMonth += rd.paymentAmount || 0;
+            totalUnpaidMonth += Math.max(0, totVal - (rd.paymentAmount || 0));
+        } else {
+            totalUnpaidMonth += totVal;
+        }
+
+        // Abnormal check
+        const rdForAudit = { ...rd, initial: initVal, final: finVal };
+        const alertsList = auditReading(rdForAudit);
+        const hasAnomalous = alertsList.some(al => al.message.includes('Consumo mensual') || al.message.includes('inicial está en cero'));
+        if (hasAnomalous) {
+            abnormalConsumptionCount++;
+        }
     });
 
-    if (filteredMachines.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="13" class="text-center py-4">No se encontraron alquileres o clientes activos para los filtros.</td></tr>`;
+    // Overall outstanding history (all unpaid across all months)
+    state.readings.filter(r => !r.deleted).forEach(rd => {
+        const ab = state.abonos.find(a => a.id === rd.abonoId);
+        const df = Math.max(0, rd.final - rd.initial);
+        const lim = ab ? ab.limit : 0;
+        const ex = Math.max(0, df - lim);
+        const fixCost = ab ? ab.price : 0;
+        const exCost = ex * (ab ? ab.excessPrice : 0);
+        const netC = fixCost + exCost;
+        const m = state.machines.find(mac => mac.id === rd.machineId);
+        const ivRt = (m && m.applyIva && !rd.isUnofficial && ab) ? (ab.ivaRate || 0) : 0;
+        const ivCost = netC * (ivRt / 100);
+        const crNote = parseFloat(rd.creditNote) || 0;
+        const dbNote = parseFloat(rd.debitNote) || 0;
+        const totVal = netC + ivCost - crNote + dbNote;
+
+        if (rd.collectionStatus !== 'cobrado') {
+            const paid = parseFloat(rd.paymentAmount) || 0;
+            totalOutstandingHistory += Math.max(0, totVal - paid);
+        }
+    });
+
+    // Write KPIs in UI
+    document.getElementById('kpi-billing-pending-readings').textContent = pendingReadingsCount;
+    document.getElementById('kpi-billing-flagged-readings').textContent = flaggedReadingsCount;
+    document.getElementById('kpi-billing-total-invoiced').textContent = formatCurrency(totalInvoicedMonth);
+    document.getElementById('kpi-billing-total-unpaid').textContent = formatCurrency(totalUnpaidMonth);
+    document.getElementById('kpi-billing-total-collected').textContent = formatCurrency(totalCollectedMonth);
+    document.getElementById('kpi-billing-total-outstanding').textContent = formatCurrency(totalOutstandingHistory);
+    document.getElementById('kpi-billing-abnormal-consumption').textContent = abnormalConsumptionCount;
+
+    // 2. Build rows representing either existing readings or virtual ones
+    let rowsData = rentedMachines.map(machine => {
+        const client = state.clients.find(c => c.id === machine.clientId);
+        const abono = state.abonos.find(a => a.id === machine.abonoId);
+
+        let reading = state.readings.find(r => r.machineId === machine.id && r.month === periodStr);
+        let isVirtual = false;
+        
+        if (!reading) {
+            isVirtual = true;
+            reading = {
+                id: '',
+                machineId: machine.id,
+                clientId: machine.clientId,
+                abonoId: machine.abonoId,
+                month: periodStr,
+                initial: machine.machineCounter || machine.initialCounter || 0,
+                final: null,
+                readingStatus: 'pendiente',
+                billingStatus: 'borrador',
+                collectionStatus: 'pendiente',
+                deleted: false,
+                comments: '',
+                invoiceNumber: '',
+                invoiceDate: '',
+                dueDate: '',
+                paymentDate: '',
+                paymentAmount: 0,
+                isUnofficial: false,
+                creditNote: 0,
+                creditNoteReason: '',
+                debitNote: 0,
+                debitNoteReason: ''
+            };
+        }
+
+        // Calculations
+        const applyIva = machine.applyIva;
+        const initial = reading.initial;
+        const final = reading.final !== null ? reading.final : initial;
+        const diff = Math.max(0, final - initial);
+        const limit = abono ? abono.limit : 0;
+        const excess = Math.max(0, diff - limit);
+        const fixedPrice = abono ? abono.price : 0;
+        const excessPrice = abono ? abono.excessPrice : 0;
+        const fixedCost = fixedPrice;
+        const excessCost = excess * excessPrice;
+        const netCost = fixedCost + excessCost;
+        const ivaRate = (applyIva && !reading.isUnofficial && abono) ? (abono.ivaRate || 0) : 0;
+        const ivaCost = netCost * (ivaRate / 100);
+        const creditNote = parseFloat(reading.creditNote) || 0;
+        const debitNote = parseFloat(reading.debitNote) || 0;
+        const total = netCost + ivaCost - creditNote + debitNote;
+
+        const calculatedAlerts = auditReading({ ...reading, initial, final });
+
+        return {
+            machine,
+            client,
+            abono,
+            reading,
+            isVirtual,
+            initial,
+            final: reading.final,
+            copiesCount: diff,
+            limit,
+            excessCount: excess,
+            excessPrice,
+            fixedAmount: fixedCost,
+            excessAmount: excessCost,
+            ivaAmount: ivaCost,
+            ivaRateUsed: ivaRate,
+            totalAmount: total,
+            calculatedAlerts
+        };
+    });
+
+    // 3. Apply Filters
+    let filteredRows = rowsData.filter(item => {
+        const { reading, client, abono, copiesCount, totalAmount, calculatedAlerts } = item;
+
+        // Deleted logic
+        if (filterReadStatus === 'deleted') {
+            if (!reading.deleted) return false;
+        } else {
+            if (reading.deleted) return false;
+        }
+
+        // Month and Year filter
+        if (selectedMonth !== 'all' && reading.month.split('-')[1] !== selectedMonth) return false;
+        if (selectedYear !== 'all' && reading.month.split('-')[0] !== selectedYear) return false;
+
+        // State filters
+        if (filterReadStatus !== 'all' && filterReadStatus !== 'deleted' && reading.readingStatus !== filterReadStatus) return false;
+        if (filterBillStatus !== 'all' && reading.billingStatus !== filterBillStatus) return false;
+        if (filterCollStatus !== 'all' && reading.collectionStatus !== filterCollStatus) return false;
+
+        // Plan filter
+        if (filterAbono !== 'all' && reading.abonoId !== filterAbono) return false;
+
+        // Alerts filter
+        if (filterAlerts === 'with-alerts' && calculatedAlerts.length === 0) return false;
+        if (filterAlerts === 'no-alerts' && calculatedAlerts.length > 0) return false;
+
+        // Ranges filters
+        if (!isNaN(copiesMin) && copiesCount < copiesMin) return false;
+        if (!isNaN(copiesMax) && copiesCount > copiesMax) return false;
+        if (!isNaN(totalMin) && totalAmount < totalMin) return false;
+        if (!isNaN(totalMax) && totalAmount > totalMax) return false;
+
+        // Text Search query
+        if (searchQuery) {
+            const clientName = client ? client.name.toLowerCase() : '';
+            const brandModel = `${item.machine.brand || ''} ${item.machine.model} ${item.machine.serial}`.toLowerCase();
+            const invoiceNum = (reading.invoiceNumber || '').toLowerCase();
+            const planName = abono ? abono.name.toLowerCase() : '';
+            const commentsText = (reading.comments || '').toLowerCase();
+            const matchText = clientName.includes(searchQuery) || brandModel.includes(searchQuery) || invoiceNum.includes(searchQuery) || planName.includes(searchQuery) || commentsText.includes(searchQuery);
+            if (!matchText) return false;
+        }
+
+        return true;
+    });
+
+    // 4. Sort Rows
+    filteredRows.sort((a, b) => {
+        let valA, valB;
+        if (billingSortField === 'client') {
+            valA = (a.client?.name || '').toLowerCase();
+            valB = (b.client?.name || '').toLowerCase();
+        } else if (billingSortField === 'copies') {
+            valA = a.copiesCount;
+            valB = b.copiesCount;
+        } else if (billingSortField === 'total') {
+            valA = a.totalAmount;
+            valB = b.totalAmount;
+        } else if (billingSortField === 'readStatus') {
+            valA = a.reading.readingStatus;
+            valB = b.reading.readingStatus;
+        } else if (billingSortField === 'billStatus') {
+            valA = a.reading.billingStatus;
+            valB = b.reading.billingStatus;
+        } else if (billingSortField === 'collStatus') {
+            valA = a.reading.collectionStatus;
+            valB = b.reading.collectionStatus;
+        }
+
+        if (valA === undefined) valA = '';
+        if (valB === undefined) valB = '';
+
+        if (typeof valA === 'string') {
+            return billingSortDirection === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        } else {
+            return billingSortDirection === 'asc' ? valA - valB : valB - valA;
+        }
+    });
+
+    // 5. Render Rows in Table
+    if (filteredRows.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="18" class="text-center py-4">No se encontraron alquileres o facturas correspondientes a los filtros.</td></tr>`;
         return;
     }
 
-    // Sort machines by client name
-    filteredMachines.sort((a, b) => {
-        const nameA = (state.clients.find(c => c.id === a.clientId)?.name || '').toLowerCase();
-        const nameB = (state.clients.find(c => c.id === b.clientId)?.name || '').toLowerCase();
-        return nameA.localeCompare(nameB);
-    });
+    filteredRows.forEach(item => {
+        const { machine, client, abono, reading, isVirtual, initial, final, copiesCount, limit, excessCount, excessPrice, fixedAmount, excessAmount, ivaAmount, ivaRateUsed, totalAmount, calculatedAlerts } = item;
 
-    let renderedRows = 0;
-
-    filteredMachines.forEach(machine => {
-        const client = state.clients.find(c => c.id === machine.clientId);
-        const abono = state.abonos.find(a => a.id === machine.abonoId);
-        const reading = state.readings.find(r => r.machineId === machine.id && r.month === currentMonth);
-
-        // Apply state/status filters
-        if (filterStatus === 'pending') {
-            if (!reading || reading.status !== 'pending') return;
-        } else if (filterStatus === 'paid') {
-            if (!reading || reading.status !== 'paid') return;
-        } else if (filterStatus === 'unregistered') {
-            if (reading) return;
+        const row = document.createElement('tr');
+        
+        // CSS Alert indicators
+        let rowClass = '';
+        const hasDangerAlert = calculatedAlerts.some(al => al.type === 'danger');
+        const hasWarningAlert = calculatedAlerts.some(al => al.type === 'warning');
+        if (hasDangerAlert) {
+            rowClass = 'cell-alert-danger';
+        } else if (hasWarningAlert) {
+            rowClass = 'cell-alert-warning';
         }
-
-        renderedRows++;
+        if (rowClass) {
+            row.classList.add(rowClass);
+        }
 
         const clientName = client ? client.name : 'Cliente no encontrado';
         const abonoName = abono ? abono.name : 'Plan no encontrado';
         
-        let initialVal = '-', finalVal = '-', copies = '-', excess = '-', fixedCost = '-', excessCost = '-', ivaVal = '-', total = '-';
-        let statusBadge = `<span class="badge danger">Falta Lectura</span>`;
-        let actions = `<button class="btn btn-primary btn-sm" onclick="addReadingTrigger('${machine.id}')">Registrar</button>`;
+        const initialStr = isVirtual ? '-' : initial.toLocaleString('es-AR');
+        const finalStr = final !== null ? final.toLocaleString('es-AR') : '-';
+        const copiesStr = isVirtual ? '-' : `<strong>${copiesCount.toLocaleString('es-AR')}</strong>`;
+        const excessStr = isVirtual ? '-' : (excessCount > 0 ? `<span class="text-amber font-semibold">${excessCount.toLocaleString('es-AR')}</span>` : '0');
+        const fixedCostStr = formatCurrency(fixedAmount);
+        const excessCostStr = isVirtual ? '-' : formatCurrency(excessAmount);
+        
+        let ivaStr = formatCurrency(ivaAmount);
+        if (machine.applyIva && ivaRateUsed > 0) {
+            ivaStr += ` <span class="text-xs text-secondary-light">(${ivaRateUsed}%)</span>`;
+        } else {
+            ivaStr += ' <span class="text-xs text-secondary-light">(No IVA)</span>';
+        }
+        
+        const totalStr = `<strong class="text-indigo">${formatCurrency(totalAmount)}</strong>`;
 
-        if (abono) {
-            fixedCost = formatCurrency(abono.price);
-            const ivaRate = machine.applyIva ? (abono.ivaRate || 0) : 0;
-            
-            if (reading) {
-                initialVal = reading.initial.toLocaleString('es-AR');
-                finalVal = reading.final.toLocaleString('es-AR');
-                const diff = Math.max(0, reading.final - reading.initial);
-                copies = diff.toLocaleString('es-AR');
-                
-                const exc = Math.max(0, diff - abono.limit);
-                excess = exc.toLocaleString('es-AR');
-                
-                const excCost = exc * abono.excessPrice;
-                excessCost = formatCurrency(excCost);
-                
-                const netCost = abono.price + excCost;
-                const ivaCost = netCost * (ivaRate / 100);
-                const tot = netCost + ivaCost;
-                
-                ivaVal = formatCurrency(ivaCost) + (machine.applyIva && ivaRate > 0 ? ` (${ivaRate}%)` : ' (No IVA)');
-                total = formatCurrency(tot);
+        // Badges for the 3 state layers
+        const readBadge = `<span class="badge badge-read-${reading.readingStatus}">${reading.readingStatus.toUpperCase()}</span>`;
+        const billBadge = `<span class="badge badge-bill-${reading.billingStatus}">${reading.billingStatus.toUpperCase()}</span>`;
+        const collBadge = `<span class="badge badge-coll-${reading.collectionStatus}">${reading.collectionStatus.toUpperCase()}</span>`;
 
-                if (reading.status === 'paid') {
-                    statusBadge = `<span class="badge success">Cobrado</span>`;
-                } else {
-                    statusBadge = `<span class="badge warning">Pendiente</span>`;
-                }
-
-                actions = `
-                    <div class="flex-actions-row">
-                        <button class="btn btn-secondary btn-sm" onclick="editReadingTrigger('${reading.id}')" title="Editar lectura">Editar</button>
-                        <button class="btn btn-primary btn-sm" onclick="viewInvoiceTrigger('${reading.id}')" title="Ver comprobante e imprimir">Recibo</button>
-                    </div>
-                `;
-            } else {
-                // Projected base pricing if reading hasn't been logged yet
-                const netCost = abono.price;
-                const ivaCost = netCost * (ivaRate / 100);
-                const tot = netCost + ivaCost;
-                ivaVal = formatCurrency(ivaCost) + (machine.applyIva && ivaRate > 0 ? ` (${ivaRate}%)` : ' (No IVA)');
-                total = formatCurrency(tot);
-            }
+        // Alerts indicator
+        let alertsCellHtml = '-';
+        if (calculatedAlerts.length > 0) {
+            const alertsText = calculatedAlerts.map(a => `• ${a.message}`).join('\n');
+            alertsCellHtml = `<span class="alert-icon-indicator" title="${alertsText}" style="cursor:help;">⚠️ (${calculatedAlerts.length})</span>`;
         }
 
-        const row = document.createElement('tr');
+        // Actions
+        let actionsHtml = '';
+        if (isVirtual) {
+            actionsHtml = `<button type="button" class="btn btn-primary btn-sm" onclick="addReadingTrigger('${machine.id}')">Registrar</button>`;
+        } else {
+            actionsHtml = `
+                <div class="flex-actions-row">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="openReadingDetailModal('${reading.id}')" title="Ver detalle completo" style="padding: 4px 8px; font-size:11px;">Detalle</button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="editReadingTrigger('${reading.id}')" title="Editar lectura" style="padding: 4px 8px; font-size:11px;">Editar</button>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="viewInvoiceTrigger('${reading.id}')" title="Ver Recibo" style="padding: 4px 8px; font-size:11px;">Recibo</button>
+                </div>
+            `;
+        }
+
         row.innerHTML = `
             <td class="font-bold-title">${clientName}</td>
             <td>${machine.brand || ''} ${machine.model} <span class="text-xs text-secondary-light">(${machine.serial})</span></td>
             <td class="text-xs">${abonoName}</td>
-            <td>${initialVal}</td>
-            <td>${finalVal}</td>
-            <td><strong>${copies}</strong></td>
-            <td class="${parseInt(excess) > 0 ? 'text-amber font-semibold' : ''}">${excess}</td>
-            <td>${fixedCost}</td>
-            <td>${excessCost}</td>
-            <td>${ivaVal}</td>
-            <td><strong class="text-indigo">${total}</strong></td>
-            <td>${statusBadge}</td>
-            <td>${actions}</td>
+            <td>${initialStr}</td>
+            <td>${finalStr}</td>
+            <td>${copiesStr}</td>
+            <td>${limit.toLocaleString('es-AR')}</td>
+            <td>${excessStr}</td>
+            <td>${formatCurrency(excessPrice)}</td>
+            <td>${fixedCostStr}</td>
+            <td>${excessCostStr}</td>
+            <td>${ivaStr}</td>
+            <td>${totalStr}</td>
+            <td>${readBadge}</td>
+            <td>${billBadge}</td>
+            <td>${collBadge}</td>
+            <td>${alertsCellHtml}</td>
+            <td>${actionsHtml}</td>
         `;
         tableBody.appendChild(row);
     });
 
-    if (renderedRows === 0) {
-        tableBody.innerHTML = `<tr><td colspan="13" class="text-center py-4">No hay lecturas cargadas correspondientes a este filtro.</td></tr>`;
-    }
-
-    // Attach local search handler if not already done (prevents double listeners by replacing element or assigning to input event)
-    const clientSearchInput = document.getElementById('search-reading-client');
-    if (!clientSearchInput.hasAttribute('data-wired')) {
-        clientSearchInput.setAttribute('data-wired', 'true');
-        clientSearchInput.addEventListener('input', renderReadingsTab);
-    }
+    // 6. Wire filters event listeners
+    const wireFilter = (id, eventType) => {
+        const el = document.getElementById(id);
+        if (el && !el.hasAttribute('data-wired')) {
+            el.setAttribute('data-wired', 'true');
+            el.addEventListener(eventType, renderReadingsTab);
+        }
+    };
+    wireFilter('filter-billing-month', 'change');
+    wireFilter('filter-billing-year', 'change');
+    wireFilter('filter-billing-read-status', 'change');
+    wireFilter('filter-billing-bill-status', 'change');
+    wireFilter('filter-billing-coll-status', 'change');
+    wireFilter('filter-billing-abono', 'change');
+    wireFilter('filter-billing-alerts', 'change');
+    wireFilter('filter-billing-copies-min', 'input');
+    wireFilter('filter-billing-copies-max', 'input');
+    wireFilter('filter-billing-total-min', 'input');
+    wireFilter('filter-billing-total-max', 'input');
+    wireFilter('search-billing-query', 'input');
     
-    const statusFilterSelect = document.getElementById('filter-reading-status');
-    if (!statusFilterSelect.hasAttribute('data-wired')) {
-        statusFilterSelect.setAttribute('data-wired', 'true');
-        statusFilterSelect.addEventListener('change', renderReadingsTab);
+    const clearBtn = document.getElementById('btn-clear-billing-filters');
+    if (clearBtn && !clearBtn.hasAttribute('data-wired')) {
+        clearBtn.setAttribute('data-wired', 'true');
+        clearBtn.addEventListener('click', () => {
+            document.getElementById('filter-billing-month').value = currentMonth.split('-')[1];
+            document.getElementById('filter-billing-year').value = currentMonth.split('-')[0];
+            document.getElementById('filter-billing-read-status').value = 'all';
+            document.getElementById('filter-billing-bill-status').value = 'all';
+            document.getElementById('filter-billing-coll-status').value = 'all';
+            document.getElementById('filter-billing-abono').value = 'all';
+            document.getElementById('filter-billing-alerts').value = 'all';
+            document.getElementById('filter-billing-copies-min').value = '';
+            document.getElementById('filter-billing-copies-max').value = '';
+            document.getElementById('filter-billing-total-min').value = '';
+            document.getElementById('filter-billing-total-max').value = '';
+            document.getElementById('search-billing-query').value = '';
+            renderReadingsTab();
+        });
     }
 }
 
@@ -3907,6 +4910,8 @@ function renderHistoryTab() {
     const statusFilter = document.getElementById('filter-history-status').value;
 
     const filteredReadings = state.readings.filter(reading => {
+        if (reading.deleted) return false;
+        
         let client = state.clients.find(c => c.id === reading.clientId);
         const machine = state.machines.find(m => m.id === reading.machineId);
         if (!client && machine) {
@@ -3919,9 +4924,9 @@ function renderHistoryTab() {
         
         let matchesStatus = true;
         if (statusFilter === 'paid') {
-            matchesStatus = reading.status === 'paid';
+            matchesStatus = reading.collectionStatus === 'cobrado' || reading.status === 'paid';
         } else if (statusFilter === 'pending') {
-            matchesStatus = reading.status === 'pending';
+            matchesStatus = reading.collectionStatus !== 'cobrado' && reading.status !== 'paid';
         }
 
         return matchesSearch && matchesStatus;
@@ -3974,9 +4979,14 @@ function renderHistoryTab() {
         const ivaCost = netCost * (ivaRate / 100);
         const totalCost = netCost + ivaCost;
 
-        let statusBadge = reading.status === 'paid' 
-            ? `<span class="badge success">Cobrado</span>`
-            : `<span class="badge warning">Pendiente</span>`;
+        let statusBadge = '';
+        if (reading.collectionStatus) {
+            statusBadge = `<span class="badge badge-coll-${reading.collectionStatus}">${reading.collectionStatus.toUpperCase()}</span>`;
+        } else {
+            statusBadge = reading.status === 'paid' 
+                ? `<span class="badge badge-coll-cobrado">COBRADO</span>`
+                : `<span class="badge badge-coll-pendiente">PENDIENTE</span>`;
+        }
 
         let actions = `
             <div class="flex-actions-row">
@@ -5488,6 +6498,19 @@ function renderDashboardTechnicalTickets() {
         if (countBadge) countBadge.textContent = '0 Activos';
     }
 }
+
+let billingSortField = 'client';
+let billingSortDirection = 'asc';
+
+window.setBillingSort = (field) => {
+    if (billingSortField === field) {
+        billingSortDirection = billingSortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+        billingSortField = field;
+        billingSortDirection = 'asc';
+    }
+    renderReadingsTab();
+};
 
 // Modal Form Tab Management state
 let currentFormTabIdx = 0;
