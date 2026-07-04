@@ -3574,6 +3574,20 @@ function renderDashboardNotifications() {
 }
 
 function renderDashboardTab() {
+    const isTech = state.currentUser?.role === 'tecnico';
+    const adminView = document.getElementById('dashboard-admin-view');
+    const techView = document.getElementById('dashboard-tech-view');
+
+    if (isTech) {
+        if (adminView) adminView.style.display = 'none';
+        if (techView) techView.style.display = 'block';
+        renderTechDashboard();
+        return;
+    } else {
+        if (adminView) adminView.style.display = 'block';
+        if (techView) techView.style.display = 'none';
+    }
+
     // 1. Calculate General Metrics
     renderDashboardNotifications();
     renderDashboardTechnicalTickets();
@@ -4148,6 +4162,206 @@ function renderDashboardCharts() {
             cutout: '70%'
         }
     });
+}
+
+function renderTechDashboard() {
+    // 1. Calculate operational metrics for technician
+    const allActiveTickets = (state.tickets || []).filter(t => !t.deleted);
+    const myActiveTickets = allActiveTickets.filter(t => t.assignedTechId === state.currentUser?.id && t.status !== 'resuelto' && t.status !== 'cerrado');
+    const urgentTickets = allActiveTickets.filter(t => t.priority === 'alta' && t.status !== 'resuelto' && t.status !== 'cerrado');
+    
+    // Readings to validate
+    const periodStr = currentMonth; // current management month YYYY-MM
+    const readingsToValidate = (state.readings || []).filter(r => r.month === periodStr && !r.deleted && (r.readingStatus === 'observada' || r.readingStatus === 'cargada'));
+
+    // Critical failing machines (machines with > 1 incident tickets in the last 60 days)
+    const criticalMachinesMap = {};
+    const sixtyDaysAgo = Date.now() - (60 * 24 * 60 * 60 * 1000);
+    const recentTickets = (state.tickets || []).filter(t => !t.deleted && (t.createdAt || 0) >= sixtyDaysAgo);
+    recentTickets.forEach(t => {
+        if (t.machineId) {
+            criticalMachinesMap[t.machineId] = (criticalMachinesMap[t.machineId] || 0) + 1;
+        }
+    });
+    const criticalCount = Object.values(criticalMachinesMap).filter(count => count > 1).length;
+
+    // Populate KPIs
+    document.getElementById('tech-dash-urgent-count').textContent = urgentTickets.length;
+    document.getElementById('tech-dash-my-count').textContent = myActiveTickets.length;
+    document.getElementById('tech-dash-validate-readings-count').textContent = readingsToValidate.length;
+    document.getElementById('tech-dash-critical-machines-count').textContent = criticalCount;
+
+    // 2. Render Left Card: Visitas Asignadas
+    const assignedTableBody = document.querySelector('#tech-dash-assigned-table tbody');
+    if (assignedTableBody) {
+        assignedTableBody.innerHTML = '';
+        if (myActiveTickets.length === 0) {
+            assignedTableBody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-secondary-light">No tienes visitas o pedidos de soporte activos asignados.</td></tr>`;
+        } else {
+            // Sort myActiveTickets by priority (high first)
+            const priorityWeight = { alta: 3, media: 2, baja: 1 };
+            myActiveTickets.sort((a, b) => (priorityWeight[b.priority] || 0) - (priorityWeight[a.priority] || 0));
+            
+            myActiveTickets.forEach(t => {
+                let priorityBadge = '';
+                if (t.priority === 'alta') priorityBadge = `<span class="badge prio-alta">🔴 Alta</span>`;
+                else if (t.priority === 'media') priorityBadge = `<span class="badge prio-media">🟡 Media</span>`;
+                else priorityBadge = `<span class="badge prio-baja">🟢 Baja</span>`;
+
+                const dateSla = t.slaDate ? t.slaDate.split('-').reverse().join('/') : '-';
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${priorityBadge}</td>
+                    <td class="font-bold-title">${escapeHTML(t.clientName)}</td>
+                    <td><strong>${escapeHTML(t.machineDesc)}</strong> <span class="text-xs text-secondary-light d-block">${t.serialNumber ? 'S/N: ' + escapeHTML(t.serialNumber) : ''}</span></td>
+                    <td><strong>${escapeHTML(t.category || t.taskType || 'Servicio')}</strong> <span class="text-xs text-secondary-light d-block">${escapeHTML(t.description)}</span></td>
+                    <td>${dateSla}</td>
+                    <td>
+                        <div style="display:flex; gap:4px;">
+                            <button class="btn btn-secondary btn-sm" onclick="openTicketDetailModal('${t.id}')" style="padding:2px 6px; font-size:10px;">Ver</button>
+                            <button class="btn btn-primary btn-sm" onclick="editTicketTrigger('${t.id}')" style="padding:2px 6px; font-size:10px;">Atender</button>
+                        </div>
+                    </td>
+                `;
+                assignedTableBody.appendChild(row);
+            });
+        }
+    }
+
+    // 3. Render Right Card: Alertas de Toma de Lectura
+    const readingsTableBody = document.querySelector('#tech-dash-reading-alerts-table tbody');
+    if (readingsTableBody) {
+        readingsTableBody.innerHTML = '';
+        const rentedMachines = state.machines.filter(m => m.clientId);
+        const alerts = [];
+
+        rentedMachines.forEach(m => {
+            const client = state.clients.find(c => c.id === m.clientId);
+            if (!client) return;
+            const rd = state.readings.find(r => r.machineId === m.id && r.month === periodStr && !r.deleted);
+            
+            if (!rd) {
+                // Missing reading alert
+                alerts.push({
+                    machine: m,
+                    clientName: client.name,
+                    type: 'Falta Lectura',
+                    desc: 'Sin registrar en este periodo',
+                    badgeClass: 'state-read-pending',
+                    actionText: 'Cargar',
+                    actionFn: `addReadingTrigger('${m.id}')`
+                });
+            } else if (rd.readingStatus === 'observada') {
+                // Flagged reading alert
+                alerts.push({
+                    machine: m,
+                    clientName: client.name,
+                    type: 'Observada',
+                    desc: 'Excedente o valor anómalo',
+                    badgeClass: 'state-read-flagged',
+                    actionText: 'Validar/Editar',
+                    actionFn: `editReadingTrigger('${rd.id}')`
+                });
+            } else if (rd.readingStatus === 'cargada') {
+                // Awaiting validation alert
+                alerts.push({
+                    machine: m,
+                    clientName: client.name,
+                    type: 'Por Validar',
+                    desc: 'Lectura ingresada pendiente',
+                    badgeClass: 'state-read-loaded',
+                    actionText: 'Validar/Editar',
+                    actionFn: `editReadingTrigger('${rd.id}')`
+                });
+            }
+        });
+
+        if (alerts.length === 0) {
+            readingsTableBody.innerHTML = `<tr><td colspan="3" class="text-center py-4 text-secondary-light">No hay alertas de lectura pendientes.</td></tr>`;
+        } else {
+            // Show up to 10 alerts
+            alerts.slice(0, 10).forEach(al => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>
+                        <span class="font-bold-title text-xs d-block">${escapeHTML(al.clientName)}</span>
+                        <span class="text-secondary-light" style="font-size:10px;">${escapeHTML(al.machine.model)} (${escapeHTML(al.machine.serial)})</span>
+                    </td>
+                    <td>
+                        <span class="badge ${al.badgeClass}" style="font-size:9px; padding:2px 6px;">${al.type}</span>
+                        <span class="text-secondary-light d-block" style="font-size:9px; margin-top:2px;">${al.desc}</span>
+                    </td>
+                    <td>
+                        <button class="btn btn-secondary btn-sm" onclick="${al.actionFn}" style="padding:2px 6px; font-size:10px;">${al.actionText}</button>
+                    </td>
+                `;
+                readingsTableBody.appendChild(row);
+            });
+        }
+    }
+
+    // 4. Render Bottom Left: Máquinas Reincidentes
+    const reincidentTableBody = document.querySelector('#tech-dash-reincident-machines-table tbody');
+    if (reincidentTableBody) {
+        reincidentTableBody.innerHTML = '';
+        const reincidentMachines = [];
+
+        for (const machId in criticalMachinesMap) {
+            if (criticalMachinesMap[machId] > 1) {
+                const m = state.machines.find(mac => mac.id === machId);
+                if (m) {
+                    const client = state.clients.find(c => c.id === m.clientId);
+                    reincidentMachines.push({
+                        machine: m,
+                        clientName: client ? client.name : 'Sin asignar',
+                        count: criticalMachinesMap[machId]
+                    });
+                }
+            }
+        }
+
+        if (reincidentMachines.length === 0) {
+            reincidentTableBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-secondary-light">No se registran máquinas reincidentes con fallas frecuentes.</td></tr>`;
+        } else {
+            reincidentMachines.sort((a, b) => b.count - a.count);
+            reincidentMachines.forEach(rm => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><strong>${escapeHTML(rm.machine.brand || '')} ${escapeHTML(rm.machine.model)}</strong> <span class="text-xs text-secondary-light d-block">S/N: ${escapeHTML(rm.machine.serial)}</span></td>
+                    <td class="font-bold-title">${escapeHTML(rm.clientName)}</td>
+                    <td><span class="badge prio-alta" style="font-weight:700;">⚠️ ${rm.count} Pedidos</span></td>
+                    <td><span class="text-secondary-light">${escapeHTML(rm.machine.status || 'Operativo')}</span></td>
+                `;
+                reincidentTableBody.appendChild(row);
+            });
+        }
+    }
+
+    // 5. Render Bottom Right: Repuestos Solicitados
+    const suppliesTableBody = document.querySelector('#tech-dash-supplies-table tbody');
+    if (suppliesTableBody) {
+        suppliesTableBody.innerHTML = '';
+        const spareTickets = allActiveTickets.filter(t => t.status === 'esperando-repuesto' && t.partsNeeded);
+
+        if (spareTickets.length === 0) {
+            suppliesTableBody.innerHTML = `<tr><td colspan="3" class="text-center py-4 text-secondary-light">No hay repuestos solicitados pendientes en este momento.</td></tr>`;
+        } else {
+            spareTickets.forEach(st => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>
+                        <span class="font-bold-title text-xs d-block">${escapeHTML(st.machineDesc)}</span>
+                        <span class="text-secondary-light" style="font-size:10px;">${escapeHTML(st.clientName)}</span>
+                    </td>
+                    <td class="text-amber"><strong>${escapeHTML(st.partsNeeded)}</strong></td>
+                    <td>
+                        <button class="btn btn-secondary btn-sm" onclick="openTicketDetailModal('${st.id}')" style="padding:2px 6px; font-size:10px;">Ver Ticket</button>
+                    </td>
+                `;
+                suppliesTableBody.appendChild(row);
+            });
+        }
+    }
 }
 
 // Window globally scoped triggers so they can be triggered from HTML attributes (onclick)
@@ -6374,18 +6588,32 @@ function renderTechnicalAreaTab() {
             row.style.opacity = '0.75';
         }
         
+        const isTech = state.currentUser?.role === 'tecnico';
         let actionButtons = '';
         if (ticket.deleted) {
-            actionButtons = `
-                <button class="btn btn-secondary btn-sm" onclick="restoreTicketTrigger('${ticket.id}')" title="Restaurar Ticket" style="padding: 2px 6px; font-size:10px;">Restaurar</button>
-                <button class="btn btn-danger btn-sm" onclick="permanentDeleteTicketTrigger('${ticket.id}')" title="Eliminar Permanentemente" style="padding: 2px 6px; font-size:10px; background-color:var(--danger); border:none;">Eliminar</button>
-            `;
+            if (isTech) {
+                actionButtons = `
+                    <button class="btn btn-secondary btn-sm" onclick="openTicketDetailModal('${ticket.id}')" title="Ver Detalle" style="padding: 2px 6px; font-size:10px;">Ver</button>
+                `;
+            } else {
+                actionButtons = `
+                    <button class="btn btn-secondary btn-sm" onclick="restoreTicketTrigger('${ticket.id}')" title="Restaurar Ticket" style="padding: 2px 6px; font-size:10px;">Restaurar</button>
+                    <button class="btn btn-danger btn-sm" onclick="permanentDeleteTicketTrigger('${ticket.id}')" title="Eliminar Permanentemente" style="padding: 2px 6px; font-size:10px; background-color:var(--danger); border:none;">Eliminar</button>
+                `;
+            }
         } else {
-            actionButtons = `
-                <button class="btn btn-secondary btn-sm" onclick="openTicketDetailModal('${ticket.id}')" title="Ver Detalle" style="padding: 2px 6px; font-size:10px;">Ver</button>
-                <button class="btn btn-secondary btn-sm" onclick="editTicketTrigger('${ticket.id}')" title="Editar" style="padding: 2px 6px; font-size:10px;">Editar</button>
-                <button class="btn btn-danger-outline btn-sm" onclick="deleteTicketTrigger('${ticket.id}')" title="Anular / Papelera" style="padding: 2px 6px; font-size:10px; color:var(--danger); border-color:var(--danger-outline);">Anular</button>
-            `;
+            if (isTech) {
+                actionButtons = `
+                    <button class="btn btn-secondary btn-sm" onclick="openTicketDetailModal('${ticket.id}')" title="Ver Detalle" style="padding: 2px 6px; font-size:10px;">Ver</button>
+                    <button class="btn btn-secondary btn-sm" onclick="editTicketTrigger('${ticket.id}')" title="Atender / Actualizar" style="padding: 2px 6px; font-size:10px;">Atender</button>
+                `;
+            } else {
+                actionButtons = `
+                    <button class="btn btn-secondary btn-sm" onclick="openTicketDetailModal('${ticket.id}')" title="Ver Detalle" style="padding: 2px 6px; font-size:10px;">Ver</button>
+                    <button class="btn btn-secondary btn-sm" onclick="editTicketTrigger('${ticket.id}')" title="Editar" style="padding: 2px 6px; font-size:10px;">Editar</button>
+                    <button class="btn btn-danger-outline btn-sm" onclick="deleteTicketTrigger('${ticket.id}')" title="Anular / Papelera" style="padding: 2px 6px; font-size:10px; color:var(--danger); border-color:var(--danger-outline);">Anular</button>
+                `;
+            }
         }
 
         row.innerHTML = `
@@ -6782,6 +7010,29 @@ function openTicketModal(ticketId = null) {
         document.getElementById('ticket-close-date').value = '';
     }
 
+    // Disable administrative fields if user is técnico and editing
+    const adminFields = [
+        'ticket-client-type',
+        'ticket-client-id',
+        'ticket-external-client',
+        'ticket-machine-id',
+        'ticket-external-machine',
+        'ticket-serial-number',
+        'ticket-request-type',
+        'ticket-category',
+        'ticket-priority',
+        'ticket-sla-date'
+    ];
+    const isTechUser = state.currentUser?.role === 'tecnico';
+    const isEditingTicket = ticketId !== null;
+
+    adminFields.forEach(fieldId => {
+        const el = document.getElementById(fieldId);
+        if (el) {
+            el.disabled = isTechUser && isEditingTicket;
+        }
+    });
+
     modal.style.display = 'block';
 }
 
@@ -7050,6 +7301,35 @@ function openTicketDetailModal(ticketId) {
     document.getElementById('detail-ticket-parts-needed').textContent = ticket.partsNeeded || '-';
     document.getElementById('detail-ticket-parts-used').textContent = ticket.partsUsed || '-';
     document.getElementById('detail-ticket-internal-notes').textContent = ticket.internalNotes || '-';
+
+    // Reading alerts integration inside details modal
+    const alertBox = document.getElementById('detail-ticket-reading-alerts');
+    if (alertBox) {
+        alertBox.style.display = 'none';
+        alertBox.innerHTML = '';
+        if (ticket.machineId) {
+            const rd = state.readings.find(r => r.machineId === ticket.machineId && r.month === currentMonth && !r.deleted);
+            if (!rd) {
+                alertBox.style.display = 'block';
+                alertBox.style.backgroundColor = 'var(--danger-light)';
+                alertBox.style.border = '1px solid var(--danger)';
+                alertBox.style.color = 'var(--danger)';
+                alertBox.innerHTML = `<strong>🚨 Falta Lectura:</strong> No se ha tomado la lectura mensual para este equipo en el periodo actual (${formatPeriod(currentMonth)}). <button class="btn btn-secondary btn-sm" onclick="addReadingTrigger('${ticket.machineId}')" style="margin-left: 10px; padding: 2px 6px; font-size: 10px; height: auto;">Cargar Lectura</button>`;
+            } else if (rd.readingStatus === 'observada') {
+                alertBox.style.display = 'block';
+                alertBox.style.backgroundColor = 'var(--amber-light)';
+                alertBox.style.border = '1px solid var(--amber)';
+                alertBox.style.color = 'var(--amber)';
+                alertBox.innerHTML = `<strong>⚠️ Lectura Observada:</strong> La lectura actual está marcada como observada (${rd.readingComment || 'excedente desproporcionado'}). <button class="btn btn-secondary btn-sm" onclick="editReadingTrigger('${rd.id}')" style="margin-left: 10px; padding: 2px 6px; font-size: 10px; height: auto;">Validar / Editar</button>`;
+            } else if (rd.readingStatus === 'cargada') {
+                alertBox.style.display = 'block';
+                alertBox.style.backgroundColor = 'var(--blue-light)';
+                alertBox.style.border = '1px solid var(--blue)';
+                alertBox.style.color = 'var(--blue)';
+                alertBox.innerHTML = `<strong>ℹ️ Lectura por Validar:</strong> La lectura está cargada pero requiere validación. <button class="btn btn-secondary btn-sm" onclick="editReadingTrigger('${rd.id}')" style="margin-left: 10px; padding: 2px 6px; font-size: 10px; height: auto;">Validar / Editar</button>`;
+            }
+        }
+    }
 
     // Technicians details
     const tech = state.users.find(u => u.id === ticket.assignedTechId);

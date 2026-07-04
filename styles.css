@@ -2087,6 +2087,31 @@ textarea.form-control {
         max-width: 100% !important;
         overflow-x: auto !important;
     }
+    #dashboard-tech-view .metrics-grid {
+        grid-template-columns: repeat(4, 1fr) !important;
+        gap: 8px !important;
+        margin-bottom: 20px !important;
+    }
+    #dashboard-tech-view .metric-card {
+        padding: 12px 14px !important;
+        gap: 10px !important;
+        border-radius: 12px !important;
+    }
+    #dashboard-tech-view .metric-icon {
+        width: 36px !important;
+        height: 36px !important;
+        border-radius: 8px !important;
+    }
+    #dashboard-tech-view .metric-icon svg {
+        width: 18px !important;
+        height: 18px !important;
+    }
+    #dashboard-tech-view .metric-info h3 {
+        font-size: 10px !important;
+    }
+    #dashboard-tech-view .metric-value {
+        font-size: 16px !important;
+    }
 }
 
 /* 3. iPad Pro & Tablets (768px to 1199px - specifically targeting iPad Pro M4 11") */
@@ -2113,6 +2138,10 @@ textarea.form-control {
     }
     .modal-content.large {
         max-width: 90% !important;
+    }
+    #dashboard-tech-view .metrics-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 12px !important;
     }
 }
 
@@ -2187,6 +2216,22 @@ textarea.form-control {
     .table th, .table td {
         font-size: 10px !important;
         padding: 6px 4px !important;
+    }
+    #dashboard-tech-view .metrics-grid {
+        grid-template-columns: 1fr !important;
+        gap: 10px !important;
+    }
+    #detail-ticket-reading-alerts {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    #detail-ticket-reading-alerts button {
+        width: 100% !important;
+        margin-left: 0 !important;
+        margin-top: 4px;
+        text-align: center;
+        justify-content: center;
     }
 }
 

@@ -195,228 +195,374 @@
 
             <!-- Tab: Dashboard -->
             <section id="tab-dashboard" class="tab-content active">
-                <div class="metrics-grid">
-                    <div class="metric-card">
-                        <div class="metric-icon bg-indigo-light text-indigo">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
-                        </div>
-                        <div class="metric-info">
-                            <h3>Clientes Activos</h3>
-                            <p class="metric-value" id="stat-active-clients">0</p>
-                        </div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-icon bg-emerald-light text-emerald">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect></svg>
-                        </div>
-                        <div class="metric-info">
-                            <h3>Máquinas Alquiladas</h3>
-                            <p class="metric-value" id="stat-rented-machines">0</p>
-                        </div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-icon bg-blue-light text-blue">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
-                        </div>
-                        <div class="metric-info">
-                            <h3>Abono Mensual Fijo</h3>
-                            <p class="metric-value" id="stat-fixed-revenue">$0</p>
-                            <span class="metric-subtext">Total proyectado base</span>
-                        </div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-icon bg-purple-light text-purple">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path><polyline points="18 8 22 12 18 16"></polyline></svg>
-                        </div>
-                        <div class="metric-info">
-                            <h3>Facturación Total Mes</h3>
-                            <p class="metric-value" id="stat-total-revenue">$0</p>
-                            <span class="metric-subtext" id="stat-excedente-revenue">Excedentes: $0</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Reading Reminders Notification Panel -->
-                <div class="dashboard-row" id="dashboard-notifications-row" style="display:none; margin-bottom: 24px;">
-                    <div class="dashboard-card flex-1" style="background-color: var(--amber-light); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 12px; margin-top:0;">
-                        <div class="card-header" style="border-bottom:none; padding:12px 20px 8px 20px; display:flex; align-items:center; gap:10px;">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2" style="width:20px; height:20px; flex-shrink:0;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
-                            <h2 style="color: var(--amber); font-size:14px; font-weight:700; margin:0;">Recordatorios y Próximos Vencimientos de Lecturas</h2>
-                        </div>
-                        <div class="card-body" style="padding: 0 20px 15px 20px;">
-                            <ul id="dashboard-notifications-list" style="margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:8px;">
-                                <!-- Dynamic notification alerts -->
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Technical Service Request Panel -->
-                <div class="dashboard-row" id="dashboard-tickets-row" style="display:none; margin-bottom: 24px;">
-                    <div class="dashboard-card flex-1" style="border: 1px solid var(--border-color); border-radius: 12px; margin-top:0;">
-                        <div class="card-header" style="padding:15px 20px 8px 20px; display:flex; align-items:center; justify-content:space-between;">
-                            <div style="display:flex; align-items:center; gap:10px;">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" style="width:20px; height:20px; flex-shrink:0;"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-                                <h2 style="font-size:14px; font-weight:700; margin:0;">Área Técnica - Pedidos Activos y Alertas de Soporte</h2>
+                <!-- Dashboard de Administrador -->
+                <div id="dashboard-admin-view" style="display: none;">
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <div class="metric-icon bg-indigo-light text-indigo">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
                             </div>
-                            <span class="badge" id="dashboard-tickets-count-badge" style="background-color: var(--primary); color: white;">0 Pendientes</span>
-                        </div>
-                        <div class="card-body" style="padding: 0 20px 15px 20px;">
-                            <ul id="dashboard-tickets-list" style="margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:8px; max-height:220px; overflow-y:auto;">
-                                <!-- Dynamic ticket lists -->
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="dashboard-row">
-                    <!-- Left: Readings Status -->
-                    <div class="dashboard-card flex-2" id="dashboard-left-card">
-                        <div class="card-header">
-                            <h2 id="dashboard-left-card-title">Estado de Lecturas del Mes Seleccionado</h2>
-                            <span class="badge" id="dashboard-month-label">Junio 2026</span>
-                        </div>
-                        <div class="card-body">
-                            <div class="progress-container">
-                                <div class="progress-text">
-                                    <span>Progreso de carga de lecturas</span>
-                                    <span id="readings-progress-percent">0%</span>
-                                </div>
-                                <div class="progress-bar-bg">
-                                    <div class="progress-bar-fill" id="readings-progress-bar" style="width: 0%"></div>
-                                </div>
-                                <p class="text-secondary text-sm mt-1" id="readings-progress-desc">0 de 0 máquinas registradas</p>
+                            <div class="metric-info">
+                                <h3>Clientes Activos</h3>
+                                <p class="metric-value" id="stat-active-clients">0</p>
                             </div>
-                            <div class="table-container mt-4">
-                                <table class="table" id="dashboard-pending-readings-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Cliente</th>
-                                            <th>Máquina</th>
-                                            <th>Abono</th>
-                                            <th>Estado Lectura</th>
-                                            <th>Acción</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <!-- Dynamic rows -->
-                                    </tbody>
-                                </table>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-icon bg-emerald-light text-emerald">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect></svg>
+                            </div>
+                            <div class="metric-info">
+                                <h3>Máquinas Alquiladas</h3>
+                                <p class="metric-value" id="stat-rented-machines">0</p>
+                            </div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-icon bg-blue-light text-blue">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                            </div>
+                            <div class="metric-info">
+                                <h3>Abono Mensual Fijo</h3>
+                                <p class="metric-value" id="stat-fixed-revenue">$0</p>
+                                <span class="metric-subtext">Total proyectado base</span>
+                            </div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-icon bg-purple-light text-purple">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path><polyline points="18 8 22 12 18 16"></polyline></svg>
+                            </div>
+                            <div class="metric-info">
+                                <h3>Facturación Total Mes</h3>
+                                <p class="metric-value" id="stat-total-revenue">$0</p>
+                                <span class="metric-subtext" id="stat-excedente-revenue">Excedentes: $0</span>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Right: Fast Info / Quick actions -->
-                    <div class="dashboard-card flex-1" id="dashboard-right-card">
-                        <div class="card-header">
-                            <h2 id="dashboard-right-card-title">Resumen de Cobros</h2>
+                    <!-- Reading Reminders Notification Panel -->
+                    <div class="dashboard-row" id="dashboard-notifications-row" style="display:none; margin-bottom: 24px;">
+                        <div class="dashboard-card flex-1" style="background-color: var(--amber-light); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 12px; margin-top:0;">
+                            <div class="card-header" style="border-bottom:none; padding:12px 20px 8px 20px; display:flex; align-items:center; gap:10px;">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2" style="width:20px; height:20px; flex-shrink:0;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                                <h2 style="color: var(--amber); font-size:14px; font-weight:700; margin:0;">Recordatorios y Próximos Vencimientos de Lecturas</h2>
+                            </div>
+                            <div class="card-body" style="padding: 0 20px 15px 20px;">
+                                <ul id="dashboard-notifications-list" style="margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:8px;">
+                                    <!-- Dynamic notification alerts -->
+                                </ul>
+                            </div>
                         </div>
-                        <div class="card-body">
-                            <div class="billing-summary-block">
-                                <div class="billing-stat-row">
-                                    <span class="label">Cobrado:</span>
-                                    <span class="value text-emerald font-semibold" id="billing-summary-paid">$0</span>
+                    </div>
+
+                    <!-- Technical Service Request Panel -->
+                    <div class="dashboard-row" id="dashboard-tickets-row" style="display:none; margin-bottom: 24px;">
+                        <div class="dashboard-card flex-1" style="border: 1px solid var(--border-color); border-radius: 12px; margin-top:0;">
+                            <div class="card-header" style="padding:15px 20px 8px 20px; display:flex; align-items:center; justify-content:space-between;">
+                                <div style="display:flex; align-items:center; gap:10px;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" style="width:20px; height:20px; flex-shrink:0;"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                                    <h2 style="font-size:14px; font-weight:700; margin:0;">Área Técnica - Pedidos Activos y Alertas de Soporte</h2>
                                 </div>
-                                <div class="billing-stat-row">
-                                    <span class="label">Pendiente:</span>
-                                    <span class="value text-amber font-semibold" id="billing-summary-pending">$0</span>
-                                </div>
-                                <div class="chart-mini-container mt-3">
-                                    <div class="chart-mini-bar" style="display: flex; height: 16px; border-radius: 8px; overflow: hidden;">
-                                        <div id="chart-bar-paid" style="background-color: var(--emerald); width: 0%;"></div>
-                                        <div id="chart-bar-pending" style="background-color: var(--amber); width: 0%;"></div>
+                                <span class="badge" id="dashboard-tickets-count-badge" style="background-color: var(--primary); color: white;">0 Pendientes</span>
+                            </div>
+                            <div class="card-body" style="padding: 0 20px 15px 20px;">
+                                <ul id="dashboard-tickets-list" style="margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:8px; max-height:220px; overflow-y:auto;">
+                                    <!-- Dynamic ticket lists -->
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-row">
+                        <!-- Left: Readings Status -->
+                        <div class="dashboard-card flex-2" id="dashboard-left-card">
+                            <div class="card-header">
+                                <h2 id="dashboard-left-card-title">Estado de Lecturas del Mes Seleccionado</h2>
+                                <span class="badge" id="dashboard-month-label">Junio 2026</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="progress-container">
+                                    <div class="progress-text">
+                                        <span>Progreso de carga de lecturas</span>
+                                        <span id="readings-progress-percent">0%</span>
                                     </div>
-                                    <div class="chart-mini-legend mt-2">
-                                        <span class="legend-dot bg-emerald"></span> Cobrado (<span id="chart-pct-paid">0%</span>)
-                                        <span class="legend-dot bg-amber ml-3"></span> Pendiente (<span id="chart-pct-pending">0%</span>)
+                                    <div class="progress-bar-bg">
+                                        <div class="progress-bar-fill" id="readings-progress-bar" style="width: 0%"></div>
+                                    </div>
+                                    <p class="text-secondary text-sm mt-1" id="readings-progress-desc">0 de 0 máquinas registradas</p>
+                                </div>
+                                <div class="table-container mt-4">
+                                    <table class="table" id="dashboard-pending-readings-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Cliente</th>
+                                                <th>Máquina</th>
+                                                <th>Abono</th>
+                                                <th>Estado Lectura</th>
+                                                <th>Acción</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <!-- Dynamic rows -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right: Fast Info / Quick actions -->
+                        <div class="dashboard-card flex-1" id="dashboard-right-card">
+                            <div class="card-header">
+                                <h2 id="dashboard-right-card-title">Resumen de Cobros</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="billing-summary-block">
+                                    <div class="billing-stat-row">
+                                        <span class="label">Cobrado:</span>
+                                        <span class="value text-emerald font-semibold" id="billing-summary-paid">$0</span>
+                                    </div>
+                                    <div class="billing-stat-row">
+                                        <span class="label">Pendiente:</span>
+                                        <span class="value text-amber font-semibold" id="billing-summary-pending">$0</span>
+                                    </div>
+                                    <div class="chart-mini-container mt-3">
+                                        <div class="chart-mini-bar" style="display: flex; height: 16px; border-radius: 8px; overflow: hidden;">
+                                            <div id="chart-bar-paid" style="background-color: var(--emerald); width: 0%;"></div>
+                                            <div id="chart-bar-pending" style="background-color: var(--amber); width: 0%;"></div>
+                                        </div>
+                                        <div class="chart-mini-legend mt-2">
+                                            <span class="legend-dot bg-emerald"></span> Cobrado (<span id="chart-pct-paid">0%</span>)
+                                            <span class="legend-dot bg-amber ml-3"></span> Pendiente (<span id="chart-pct-pending">0%</span>)
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <hr class="card-divider">
+
+                                <div class="quick-actions">
+                                     <h3>Acciones Rápidas</h3>
+                                     <button class="btn btn-primary btn-block mb-2 btn-icon" id="quick-add-client">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="14"></line><line x1="22" y1="11" x2="16" y2="11"></line></svg>
+                                        Registrar Nuevo Cliente
+                                    </button>
+                                    <button class="btn btn-success btn-block mb-2 btn-icon" id="quick-add-rental">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M12 5v14M5 12h14"/></svg>
+                                        Nuevo Alquiler (Asignar Equipo)
+                                    </button>
+                                    <button class="btn btn-secondary btn-block mb-2 btn-icon" id="quick-add-reading">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+                                        Cargar Lecturas
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Analytics Row: Income and Fleet charts -->
+                    <div class="dashboard-row mt-4 grid-2-col">
+                        <div class="dashboard-card" style="margin-top:0;">
+                            <div class="card-header">
+                                <h2 id="chart-earnings-card-title">Historial de Ingresos de Alquiler ($ ARS)</h2>
+                            </div>
+                            <div class="card-body" style="position: relative; height: 260px; min-height: 260px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+                                <canvas id="chart-earnings-history" style="max-height: 230px; width: 100%;"></canvas>
+                            </div>
+                        </div>
+                        <div class="dashboard-card" style="margin-top:0;">
+                            <div class="card-header">
+                                <h2>Distribución del Parque de Equipos</h2>
+                            </div>
+                            <div class="card-body" style="position: relative; height: 260px; min-height: 260px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+                                <canvas id="chart-machines-distribution" style="max-height: 220px; max-width: 220px;"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-row mt-4">
+                        <!-- Left: Recent Technical Services -->
+                        <div class="dashboard-card flex-2">
+                            <div class="card-header">
+                                <h2>Últimas Intervenciones de Servicio Técnico</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-container">
+                                    <table class="table" id="dashboard-recent-maintenance-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Fecha</th>
+                                                <th>Máquina</th>
+                                                <th>Tipo</th>
+                                                <th>Detalle</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <!-- Rendered dynamically -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right: Inventory breakdown -->
+                        <div class="dashboard-card flex-1">
+                            <div class="card-header">
+                                <h2>Distribución del Parque de Copiadoras</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="billing-summary-block">
+                                    <div class="billing-stat-row">
+                                        <span class="label">Disponibles para Alquiler:</span>
+                                        <span class="value text-indigo font-semibold" id="stat-machines-available">0</span>
+                                    </div>
+                                    <div class="billing-stat-row">
+                                        <span class="label">Color (Alquiladas):</span>
+                                        <span class="value text-primary font-semibold" id="stat-machines-color">0</span>
+                                    </div>
+                                    <div class="billing-stat-row" style="border-bottom: none; padding-bottom: 0;">
+                                        <span class="label">Monocromo (Alquiladas):</span>
+                                        <span class="value text-secondary font-semibold" id="stat-machines-mono">0</span>
                                     </div>
                                 </div>
                             </div>
-
-                            <hr class="card-divider">
-
-                            <div class="quick-actions">
-                                 <h3>Acciones Rápidas</h3>
-                                 <button class="btn btn-primary btn-block mb-2 btn-icon" id="quick-add-client">
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="14"></line><line x1="22" y1="11" x2="16" y2="11"></line></svg>
-                                    Registrar Nuevo Cliente
-                                </button>
-                                <button class="btn btn-success btn-block mb-2 btn-icon" id="quick-add-rental">
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M12 5v14M5 12h14"/></svg>
-                                    Nuevo Alquiler (Asignar Equipo)
-                                </button>
-                                <button class="btn btn-secondary btn-block mb-2 btn-icon" id="quick-add-reading">
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
-                                    Cargar Lecturas
-                                </button>
-                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Analytics Row: Income and Fleet charts -->
-                <div class="dashboard-row mt-4 grid-2-col">
-                    <div class="dashboard-card" style="margin-top:0;">
-                        <div class="card-header">
-                            <h2 id="chart-earnings-card-title">Historial de Ingresos de Alquiler ($ ARS)</h2>
+                <!-- Dashboard de Técnico (Helpdesk Operativo) -->
+                <div id="dashboard-tech-view" style="display: none;">
+                    <div class="metrics-grid">
+                        <div class="metric-card" style="border-left: 4px solid var(--danger);">
+                            <div class="metric-icon bg-danger-light text-danger">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01"/></svg>
+                            </div>
+                            <div class="metric-info">
+                                <h3>Pedidos Críticos / Urgentes</h3>
+                                <p class="metric-value text-danger" id="tech-dash-urgent-count">0</p>
+                            </div>
                         </div>
-                        <div class="card-body" style="position: relative; height: 260px; min-height: 260px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
-                            <canvas id="chart-earnings-history" style="max-height: 230px; width: 100%;"></canvas>
+                        <div class="metric-card" style="border-left: 4px solid var(--indigo);">
+                            <div class="metric-icon bg-indigo-light text-indigo">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
+                            </div>
+                            <div class="metric-info">
+                                <h3>Mis Pedidos Asignados</h3>
+                                <p class="metric-value text-indigo" id="tech-dash-my-count">0</p>
+                            </div>
                         </div>
-                    </div>
-                    <div class="dashboard-card" style="margin-top:0;">
-                        <div class="card-header">
-                            <h2>Distribución del Parque de Equipos</h2>
+                        <div class="metric-card" style="border-left: 4px solid var(--amber);">
+                            <div class="metric-icon bg-amber-light text-amber">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line></svg>
+                            </div>
+                            <div class="metric-info">
+                                <h3>Lecturas por Validar</h3>
+                                <p class="metric-value text-amber" id="tech-dash-validate-readings-count">0</p>
+                            </div>
                         </div>
-                        <div class="card-body" style="position: relative; height: 260px; min-height: 260px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
-                            <canvas id="chart-machines-distribution" style="max-height: 220px; max-width: 220px;"></canvas>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="dashboard-row mt-4">
-                    <!-- Left: Recent Technical Services -->
-                    <div class="dashboard-card flex-2">
-                        <div class="card-header">
-                            <h2>Últimas Intervenciones de Servicio Técnico</h2>
-                        </div>
-                        <div class="card-body">
-                            <div class="table-container">
-                                <table class="table" id="dashboard-recent-maintenance-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Fecha</th>
-                                            <th>Máquina</th>
-                                            <th>Tipo</th>
-                                            <th>Detalle</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <!-- Rendered dynamically -->
-                                    </tbody>
-                                </table>
+                        <div class="metric-card" style="border-left: 4px solid var(--purple);">
+                            <div class="metric-icon bg-purple-light text-purple">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect></svg>
+                            </div>
+                            <div class="metric-info">
+                                <h3>Equipos Reincidentes</h3>
+                                <p class="metric-value text-purple" id="tech-dash-critical-machines-count">0</p>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Right: Inventory breakdown -->
-                    <div class="dashboard-card flex-1">
-                        <div class="card-header">
-                            <h2>Distribución del Parque de Copiadoras</h2>
+                    <div class="dashboard-row mt-4">
+                        <!-- Left: Agenda de Visitas (Mis Tickets) -->
+                        <div class="dashboard-card flex-2">
+                            <div class="card-header">
+                                <h2>Mis Visitas y Pedidos de Soporte Asignados</h2>
+                                <span class="badge" style="background-color: var(--indigo); color: white;">Activo</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-container">
+                                    <table class="table" id="tech-dash-assigned-table" style="font-size: 11px;">
+                                        <thead>
+                                            <tr>
+                                                <th>Prioridad</th>
+                                                <th>Cliente</th>
+                                                <th>Equipo (Serie)</th>
+                                                <th>Problema / Tarea</th>
+                                                <th>SLA</th>
+                                                <th>Acción</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <!-- Dynamic rows -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
-                        <div class="card-body">
-                            <div class="billing-summary-block">
-                                <div class="billing-stat-row">
-                                    <span class="label">Disponibles para Alquiler:</span>
-                                    <span class="value text-indigo font-semibold" id="stat-machines-available">0</span>
+
+                        <!-- Right: Alertas de Toma de Lectura -->
+                        <div class="dashboard-card flex-1">
+                            <div class="card-header">
+                                <h2>Alertas de Lecturas y Contadores</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-container">
+                                    <table class="table" id="tech-dash-reading-alerts-table" style="font-size: 11px;">
+                                        <thead>
+                                            <tr>
+                                                <th>Cliente / Equipo</th>
+                                                <th>Estado</th>
+                                                <th>Acción</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <!-- Dynamic rows -->
+                                        </tbody>
+                                    </table>
                                 </div>
-                                <div class="billing-stat-row">
-                                    <span class="label">Color (Alquiladas):</span>
-                                    <span class="value text-primary font-semibold" id="stat-machines-color">0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-row mt-4">
+                        <!-- Left: Equipos Reincidentes -->
+                        <div class="dashboard-card flex-1">
+                            <div class="card-header">
+                                <h2>⚠️ Máquinas Reincidentes (Fallas Frecuentes)</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-container">
+                                    <table class="table" id="tech-dash-reincident-machines-table" style="font-size: 11px;">
+                                        <thead>
+                                            <tr>
+                                                <th>Máquina / Serie</th>
+                                                <th>Cliente</th>
+                                                <th>N° Incidencias (60 días)</th>
+                                                <th>Estado Físico</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <!-- Dynamic rows -->
+                                        </tbody>
+                                    </table>
                                 </div>
-                                <div class="billing-stat-row" style="border-bottom: none; padding-bottom: 0;">
-                                    <span class="label">Monocromo (Alquiladas):</span>
-                                    <span class="value text-secondary font-semibold" id="stat-machines-mono">0</span>
+                            </div>
+                        </div>
+
+                        <!-- Right: Repuestos solicitados & timeline -->
+                        <div class="dashboard-card flex-1">
+                            <div class="card-header">
+                                <h2>⚙️ Repuestos Solicitados y Pendientes</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-container">
+                                    <table class="table" id="tech-dash-supplies-table" style="font-size: 11px;">
+                                        <thead>
+                                            <tr>
+                                                <th>Equipo</th>
+                                                <th>Repuesto Solicitado</th>
+                                                <th>Ticket Ref.</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <!-- Dynamic rows -->
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         </div>
@@ -2386,6 +2532,9 @@
                             <span class="text-secondary">Prioridad:</span><span id="detail-ticket-priority">-</span>
                             <span class="text-secondary">Estado Actual:</span><span id="detail-ticket-status">-</span>
                         </div>
+
+                        <!-- Lecturas alert box -->
+                        <div id="detail-ticket-reading-alerts" style="display: none; padding: 10px; border-radius: 8px; font-size: 11px; margin-top: 5px;"></div>
 
                         <h4 style="margin: 10px 0 0 0; font-size: 12px; font-weight: 700; color: var(--indigo); border-bottom: 1px dashed var(--border-color); padding-bottom: 6px; text-transform: uppercase;">⚠️ Descripción del Reporte</h4>
                         <p id="detail-ticket-desc" style="white-space: pre-line; line-height: 1.4; padding: 8px; background-color: var(--bg-tertiary); border-radius: 6px; border: 1px solid var(--border-color); margin: 0; font-size: 12px;"></p>
