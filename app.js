@@ -2362,9 +2362,9 @@ function setupActions() {
     };
 
     // Ticket Detail modal actions
-    const closeDetailBtn = document.getElementById('close-modal-ticket-detail');
-    if (closeDetailBtn) {
-        closeDetailBtn.onclick = () => {
+    const closeTicketDetailBtn = document.getElementById('close-modal-ticket-detail');
+    if (closeTicketDetailBtn) {
+        closeTicketDetailBtn.onclick = () => {
             document.getElementById('modal-ticket-detail').style.display = 'none';
         };
     }
