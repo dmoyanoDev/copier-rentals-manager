@@ -1864,9 +1864,12 @@ function setupActions() {
     document.getElementById('close-modal-ticket').onclick = () => {
         document.getElementById('modal-ticket').style.display = 'none';
     };
-    document.getElementById('cancel-modal-ticket').onclick = () => {
-        document.getElementById('modal-ticket').style.display = 'none';
-    };
+    const cancelModalTicket = document.getElementById('cancel-modal-ticket');
+    if (cancelModalTicket) {
+        cancelModalTicket.onclick = () => {
+            document.getElementById('modal-ticket').style.display = 'none';
+        };
+    }
     
     document.getElementById('form-ticket').onsubmit = (e) => {
         e.preventDefault();
