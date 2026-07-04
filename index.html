@@ -473,7 +473,7 @@
 
                 <!-- 2. Advanced Invoicing Filter Bar -->
                 <div class="filter-bar" style="display:flex; flex-direction:column; gap:10px; padding:15px; background-color:var(--bg-secondary); border-radius:8px; border:1px solid var(--border-color);">
-                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:10px; width:100%;">
+                    <div class="filter-row-top">
                         <div class="filter-group">
                             <label for="filter-billing-month" style="font-size:11px; margin-bottom:3px; font-weight:600;">Mes:</label>
                             <select id="filter-billing-month" class="form-control" style="font-size:12px; height:32px; padding:4px 8px;">
@@ -541,7 +541,7 @@
                         </div>
                     </div>
                     
-                    <div style="display:grid; grid-template-columns: 1fr 1.2fr 1.2fr 130px; gap:10px; width:100%; align-items:end;">
+                    <div class="filter-row-bottom">
                         <div class="filter-group">
                             <label for="filter-billing-alerts" style="font-size:11px; margin-bottom:3px; font-weight:600;">Alertas Auditoría:</label>
                             <select id="filter-billing-alerts" class="form-control" style="font-size:12px; height:32px; padding:4px 8px;">

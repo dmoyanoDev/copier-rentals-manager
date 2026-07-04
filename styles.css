@@ -177,6 +177,8 @@ body {
     flex-grow: 1;
     padding: 40px;
     background-color: var(--bg-primary);
+    min-width: 0;
+    overflow-x: hidden;
 }
 
 /* Content Header */
@@ -1988,6 +1990,21 @@ textarea.form-control {
     padding-right: 20px;
 }
 
+/* Base styles for Invoicing Filter Bar rows */
+.filter-row-top {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 10px;
+    width: 100%;
+}
+.filter-row-bottom {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr 1.2fr 130px;
+    gap: 10px;
+    width: 100%;
+    align-items: end;
+}
+
 /* 1. Large Monitors & Screens (21", 22", 23", 24", 25" and 1080p/1440p resolutions) */
 @media (min-width: 1500px) {
     .container, .content-area {
@@ -2034,14 +2051,51 @@ textarea.form-control {
     }
 }
 
+/* 2b. Specific Notebook Resolution Optimization (<= 1366px - e.g. 1366x768 notebooks) */
+@media (max-width: 1366px) {
+    .sidebar {
+        width: 230px !important;
+    }
+    .main-content {
+        margin-left: 230px !important;
+        padding: 20px !important;
+        min-width: 0 !important;
+        overflow-x: hidden !important;
+    }
+    .kpi-row-billing {
+        grid-template-columns: repeat(7, 1fr) !important; /* All 7 cards on 1 row */
+        gap: 8px !important;
+    }
+    .kpi-card-billing {
+        padding: 8px 10px !important;
+    }
+    .kpi-card-billing .kpi-title {
+        font-size: 9px !important;
+    }
+    .kpi-card-billing .kpi-value {
+        font-size: 14px !important;
+    }
+    .filter-row-bottom {
+        grid-template-columns: 1.2fr 1.4fr 1.4fr 130px !important; /* Scale columns to prevent overflow */
+        gap: 8px !important;
+    }
+    .table-container {
+        max-width: 100% !important;
+        overflow-x: auto !important;
+    }
+}
+
 /* 3. iPad Pro & Tablets (768px to 1199px - specifically targeting iPad Pro M4 11") */
 @media (max-width: 1199px) {
     .kpi-row-billing {
         grid-template-columns: repeat(3, 1fr);
         gap: 10px;
     }
-    .filter-bar > div {
+    .filter-row-top {
         grid-template-columns: repeat(3, 1fr) !important;
+    }
+    .filter-row-bottom {
+        grid-template-columns: repeat(2, 1fr) !important;
     }
     .reading-detail-grid {
         grid-template-columns: 1fr;
@@ -2063,10 +2117,10 @@ textarea.form-control {
     .kpi-row-billing {
         grid-template-columns: repeat(2, 1fr);
     }
-    .filter-bar > div {
+    .filter-row-top {
         grid-template-columns: repeat(2, 1fr) !important;
     }
-    .filter-bar > div:last-child {
+    .filter-row-bottom {
         grid-template-columns: 1fr !important;
     }
     .card-header {
@@ -2099,8 +2153,12 @@ textarea.form-control {
         padding: 10px !important;
         gap: 8px !important;
     }
-    .filter-bar > div {
+    .filter-row-top {
         grid-template-columns: 1fr !important; /* Stack all filters */
+        gap: 8px !important;
+    }
+    .filter-row-bottom {
+        grid-template-columns: 1fr !important;
         gap: 8px !important;
     }
     #btn-clear-billing-filters {
