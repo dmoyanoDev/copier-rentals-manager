@@ -23,6 +23,18 @@ while ($listener.IsListening) {
         $request = $context.Request
         $response = $context.Response
 
+        # Add CORS headers for local/cross-origin requests
+        $response.AddHeader("Access-Control-Allow-Origin", "*")
+        $response.AddHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        $response.AddHeader("Access-Control-Allow-Headers", "Content-Type")
+
+        # Handle CORS preflight
+        if ($request.HttpMethod -eq "OPTIONS") {
+            $response.StatusCode = 200
+            $response.Close()
+            continue
+        }
+
         $url = $request.Url.LocalPath
         # Redirigir la raíz a index.html
         if ($url -eq "/") { $url = "/index.html" }

@@ -838,25 +838,175 @@
             <!-- Tab: Technical Area (Área Técnica) -->
             <section id="tab-technical-area" class="tab-content">
                 <div class="action-header">
-                    <p class="text-secondary">Registro y control de llamadas de clientes pidiendo servicio técnico, insumos o repuestos.</p>
+                    <div>
+                        <h2>Panel de Gestión Técnica (Helpdesk)</h2>
+                        <p class="text-secondary">Registro, seguimiento, KPIs y bitácora de tickets de servicio técnico, repuestos e insumos.</p>
+                    </div>
                     <button class="btn btn-primary" id="btn-add-ticket">
                         + Registrar Pedido de Servicio
                     </button>
                 </div>
 
+                <!-- Technical area KPIs cards -->
+                <div class="metrics-grid mt-3" style="margin-bottom: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 15px;">
+                    <div class="metric-card" style="padding: 15px; border-radius: 12px; gap: 12px;">
+                        <div class="metric-icon bg-indigo-light text-indigo" style="width:36px; height:36px; border-radius:8px;">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px; height:18px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                        </div>
+                        <div class="metric-info">
+                            <h4 style="font-size: 11px; font-weight: 500; color: var(--text-secondary); margin: 0 0 2px 0;">Tickets Abiertos</h4>
+                            <p class="metric-value" id="tech-kpi-open" style="font-size: 1.4rem; font-weight: 700; margin: 0; line-height: 1.1;">0</p>
+                        </div>
+                    </div>
+                    <div class="metric-card" style="padding: 15px; border-radius: 12px; gap: 12px;">
+                        <div class="metric-icon bg-amber-light text-amber" style="width:36px; height:36px; border-radius:8px;">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px; height:18px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                        </div>
+                        <div class="metric-info">
+                            <h4 style="font-size: 11px; font-weight: 500; color: var(--text-secondary); margin: 0 0 2px 0;">En Proceso</h4>
+                            <p class="metric-value" id="tech-kpi-process" style="font-size: 1.4rem; font-weight: 700; margin: 0; line-height: 1.1;">0</p>
+                        </div>
+                    </div>
+                    <div class="metric-card" style="padding: 15px; border-radius: 12px; gap: 12px;">
+                        <div class="metric-icon bg-danger-light text-danger" style="width:36px; height:36px; border-radius:8px;">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px; height:18px;"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                        </div>
+                        <div class="metric-info">
+                            <h4 style="font-size: 11px; font-weight: 500; color: var(--text-secondary); margin: 0 0 2px 0;">Esp. Repuesto</h4>
+                            <p class="metric-value" id="tech-kpi-spare" style="font-size: 1.4rem; font-weight: 700; margin: 0; line-height: 1.1;">0</p>
+                        </div>
+                    </div>
+                    <div class="metric-card" style="padding: 15px; border-radius: 12px; gap: 12px;">
+                        <div class="metric-icon bg-danger-light text-danger" style="width:36px; height:36px; border-radius:8px; background-color: rgba(239, 68, 68, 0.25);">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px; height:18px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                        </div>
+                        <div class="metric-info">
+                            <h4 style="font-size: 11px; font-weight: 500; color: var(--text-secondary); margin: 0 0 2px 0;">Vencidos / SLA</h4>
+                            <p class="metric-value" id="tech-kpi-overdue" style="font-size: 1.4rem; font-weight: 700; color: var(--danger); margin: 0; line-height: 1.1;">0</p>
+                        </div>
+                    </div>
+                    <div class="metric-card" style="padding: 15px; border-radius: 12px; gap: 12px;">
+                        <div class="metric-icon bg-emerald-light text-emerald" style="width:36px; height:36px; border-radius:8px;">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px; height:18px;"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        </div>
+                        <div class="metric-info">
+                            <h4 style="font-size: 11px; font-weight: 500; color: var(--text-secondary); margin: 0 0 2px 0;">Resueltos Mes</h4>
+                            <p class="metric-value" id="tech-kpi-resolved" style="font-size: 1.4rem; font-weight: 700; margin: 0; line-height: 1.1;">0</p>
+                        </div>
+                    </div>
+                    <div class="metric-card" style="padding: 15px; border-radius: 12px; gap: 12px;">
+                        <div class="metric-icon bg-indigo-light text-indigo" style="width:36px; height:36px; border-radius:8px; background-color: rgba(99, 102, 241, 0.22);">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px; height:18px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+                        </div>
+                        <div class="metric-info">
+                            <h4 style="font-size: 11px; font-weight: 500; color: var(--text-secondary); margin: 0 0 2px 0;">Tiempo Promedio</h4>
+                            <p class="metric-value" id="tech-kpi-avg-time" style="font-size: 1.2rem; font-weight: 700; margin: 0; line-height: 1.1;">0 hs</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Technical area filters bar -->
+                <div class="filter-bar" style="display: flex; flex-wrap: wrap; gap: 12px; padding: 16px; border-radius: 12px; margin-bottom: 15px; background-color: var(--bg-secondary); border: 1px solid var(--border-color);">
+                    <div class="filter-group" style="flex: 1 1 80px; min-width: 80px;">
+                        <label for="filter-tech-month">Mes:</label>
+                        <select id="filter-tech-month" class="form-control text-xs" style="padding: 4px; font-size: 11px; height: 32px; background-color: var(--bg-tertiary);">
+                            <option value="all">Todos</option>
+                            <option value="01">Enero</option>
+                            <option value="02">Febrero</option>
+                            <option value="03">Marzo</option>
+                            <option value="04">Abril</option>
+                            <option value="05">Mayo</option>
+                            <option value="06">Junio</option>
+                            <option value="07">Julio</option>
+                            <option value="08">Agosto</option>
+                            <option value="09">Septiembre</option>
+                            <option value="10">Octubre</option>
+                            <option value="11">Noviembre</option>
+                            <option value="12">Diciembre</option>
+                        </select>
+                    </div>
+                    <div class="filter-group" style="flex: 1 1 80px; min-width: 80px;">
+                        <label for="filter-tech-year">Año:</label>
+                        <select id="filter-tech-year" class="form-control text-xs" style="padding: 4px; font-size: 11px; height: 32px; background-color: var(--bg-tertiary);">
+                            <option value="all">Todos</option>
+                            <option value="2024">2024</option>
+                            <option value="2025">2025</option>
+                            <option value="2026">2026</option>
+                            <option value="2027">2027</option>
+                        </select>
+                    </div>
+                    <div class="filter-group" style="flex: 1 1 120px; min-width: 120px;">
+                        <label for="filter-tech-status">Estado:</label>
+                        <select id="filter-tech-status" class="form-control text-xs" style="padding: 4px; font-size: 11px; height: 32px; background-color: var(--bg-tertiary);">
+                            <option value="all">Todos</option>
+                            <option value="nuevo">Nuevo</option>
+                            <option value="asignado">Asignado</option>
+                            <option value="en-proceso">En proceso</option>
+                            <option value="esperando-repuesto">Esperando repuesto</option>
+                            <option value="pendiente-cliente">Pendiente cliente</option>
+                            <option value="resuelto">Resuelto</option>
+                            <option value="cerrado">Cerrado</option>
+                            <option value="deleted">🗑️ Papelera / Anulado</option>
+                        </select>
+                    </div>
+                    <div class="filter-group" style="flex: 1 1 100px; min-width: 100px;">
+                        <label for="filter-tech-priority">Prioridad:</label>
+                        <select id="filter-tech-priority" class="form-control text-xs" style="padding: 4px; font-size: 11px; height: 32px; background-color: var(--bg-tertiary);">
+                            <option value="all">Todos</option>
+                            <option value="baja">🟢 Baja</option>
+                            <option value="media">🟡 Media</option>
+                            <option value="alta">🔴 Alta</option>
+                        </select>
+                    </div>
+                    <div class="filter-group" style="flex: 1 1 110px; min-width: 110px;">
+                        <label for="filter-tech-category">Categoría:</label>
+                        <select id="filter-tech-category" class="form-control text-xs" style="padding: 4px; font-size: 11px; height: 32px; background-color: var(--bg-tertiary);">
+                            <option value="all">Todos</option>
+                            <option value="Servicio">Servicio Técnico</option>
+                            <option value="Insumo">Insumo</option>
+                            <option value="Repuesto">Repuesto</option>
+                            <option value="Instalacion">Instalación</option>
+                            <option value="Retiro">Retiro</option>
+                            <option value="Configuracion">Configuración</option>
+                            <option value="Otro">Otro</option>
+                        </select>
+                    </div>
+                    <div class="filter-group" style="flex: 1 1 120px; min-width: 120px;">
+                        <label for="filter-tech-tech">Técnico:</label>
+                        <select id="filter-tech-tech" class="form-control text-xs" style="padding: 4px; font-size: 11px; height: 32px; background-color: var(--bg-tertiary);">
+                            <!-- Options filled dynamically -->
+                        </select>
+                    </div>
+                    <div class="filter-group" style="flex: 1 1 130px; min-width: 130px;">
+                        <label for="filter-tech-client">Filtrar Cliente:</label>
+                        <input type="text" id="filter-tech-client" class="form-control text-xs" placeholder="Nombre cliente..." style="padding: 4px 10px; font-size: 11px; height: 32px; background-color: var(--bg-tertiary);">
+                    </div>
+                    <div class="filter-group" style="flex: 1 1 180px; min-width: 180px;">
+                        <label for="search-tech-query">Buscar término:</label>
+                        <input type="text" id="search-tech-query" class="form-control text-xs" placeholder="Buscar por serie, descripción, diagnóstico..." style="padding: 4px 10px; font-size: 11px; height: 32px; background-color: var(--bg-tertiary);">
+                    </div>
+                    <div style="display:flex; align-items:flex-end;">
+                        <button class="btn btn-secondary btn-sm" id="btn-clear-tech-filters" style="height:32px; font-size:11px; padding: 0 12px; font-weight:600; display:flex; align-items:center; gap:4px;">
+                            🧹 Limpiar Filtros
+                        </button>
+                    </div>
+                </div>
+
                 <div class="dashboard-card mt-3">
                     <div class="card-body">
-                        <div class="table-container">
-                            <table class="table" id="tickets-table">
+                        <div class="table-container" style="max-height: 500px; overflow-y: auto;">
+                            <table class="table" id="tickets-table" style="font-size:11px; border-collapse: collapse;">
                                 <thead>
                                     <tr>
-                                        <th>Fecha / Hora</th>
-                                        <th>Cliente</th>
-                                        <th>Equipo</th>
-                                        <th>Tarea / Motivo</th>
-                                        <th>Prioridad</th>
-                                        <th>Estado</th>
-                                        <th>Acciones</th>
+                                        <th style="width: 11%; cursor:pointer;" onclick="setTechSort('date')">Fecha / Hora ⇅</th>
+                                        <th style="width: 16%; cursor:pointer;" onclick="setTechSort('client')">Cliente ⇅</th>
+                                        <th style="width: 16%;">Equipo (S/N)</th>
+                                        <th style="width: 10%;">Categoría</th>
+                                        <th style="width: 11%; cursor:pointer;" onclick="setTechSort('tech')">Técnico Asignado ⇅</th>
+                                        <th style="width: 10%;">Compromiso / SLA</th>
+                                        <th style="width: 8%; cursor:pointer;" onclick="setTechSort('priority')">Prioridad ⇅</th>
+                                        <th style="width: 9%; cursor:pointer;" onclick="setTechSort('status')">Estado ⇅</th>
+                                        <th style="width: 9%;">Acciones</th>
                                      </tr>
                                 </thead>
                                 <tbody>
@@ -1753,117 +1903,295 @@
 
     <!-- Modal: Technical Service Request Ticket (Add/Edit) -->
     <div id="modal-ticket" class="modal" style="z-index: 1100;">
-        <div class="modal-content" style="max-width: 550px;">
-            <div class="modal-header">
+        <div class="modal-content" style="max-width: 650px;">
+            <div class="modal-header" style="border-bottom: none; padding-bottom: 10px;">
                 <h3 id="modal-ticket-title">Registrar Pedido de Servicio</h3>
                 <span class="close-modal" id="close-modal-ticket">&times;</span>
             </div>
+            
             <form id="form-ticket">
                 <input type="hidden" id="ticket-id">
                 
-                <div class="form-row">
-                    <div class="form-group col-6">
-                        <label for="ticket-client-type">Tipo de Cliente <span class="required">*</span></label>
-                        <select id="ticket-client-type" class="form-control" required>
-                            <option value="existente">Cliente Existente (Alquiler)</option>
-                            <option value="externo">Cliente Externo (Servicio Particular)</option>
+                <!-- Navigation Tabs inside the form -->
+                <div class="form-tabs">
+                    <button type="button" class="form-tab-btn active" data-tab-id="tab-form-client">1. Cliente/Equipo</button>
+                    <button type="button" class="form-tab-btn" data-tab-id="tab-form-issue">2. Incidencia</button>
+                    <button type="button" class="form-tab-btn" data-tab-id="tab-form-assignment">3. Asignación</button>
+                    <button type="button" class="form-tab-btn" data-tab-id="tab-form-tracking">4. Seguimiento</button>
+                    <button type="button" class="form-tab-btn" data-tab-id="tab-form-close">5. Cierre</button>
+                </div>
+
+                <!-- Tab 1: Cliente y Equipo -->
+                <div id="tab-form-client" class="form-tab-content active">
+                    <div class="form-row">
+                        <div class="form-group col-6">
+                            <label for="ticket-client-type">Tipo de Cliente <span class="required">*</span></label>
+                            <select id="ticket-client-type" class="form-control" required>
+                                <option value="existente">Cliente Existente (Alquiler)</option>
+                                <option value="externo">Cliente Externo (Servicio Particular)</option>
+                            </select>
+                        </div>
+                        <div class="form-group col-6" id="group-ticket-serial-number">
+                            <label for="ticket-serial-number">Número de Serie</label>
+                            <input type="text" id="ticket-serial-number" class="form-control" placeholder="Se autocompleta u opcional">
+                        </div>
+                    </div>
+
+                    <div class="form-row" style="margin-top:10px;">
+                        <!-- Client Selection -->
+                        <div class="form-group col-12" id="group-ticket-client-select">
+                            <label for="ticket-client-id">Cliente <span class="required">*</span></label>
+                            <select id="ticket-client-id" class="form-control">
+                                <!-- Populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="form-group col-12" id="group-ticket-external-client" style="display:none;">
+                            <label for="ticket-external-client">Nombre / Razón Social del Cliente Externo <span class="required">*</span></label>
+                            <input type="text" id="ticket-external-client" class="form-control" placeholder="Ej: Escuela Nro 42, Juan Pérez">
+                        </div>
+                    </div>
+
+                    <div class="form-row" style="margin-top:10px;">
+                        <!-- Machine Selection -->
+                        <div class="form-group col-12" id="group-ticket-machine-select">
+                            <label for="ticket-machine-id">Equipo en Alquiler <span class="required">*</span></label>
+                            <select id="ticket-machine-id" class="form-control">
+                                <!-- Populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="form-group col-12" id="group-ticket-external-machine" style="display:none;">
+                            <label for="ticket-external-machine">Detalle del Equipo Externo <span class="required">*</span></label>
+                            <input type="text" id="ticket-external-machine" class="form-control" placeholder="Ej: HP LaserJet M402 (N/N)">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 2: Incidencia -->
+                <div id="tab-form-issue" class="form-tab-content">
+                    <div class="form-row">
+                        <div class="form-group col-6">
+                            <label for="ticket-request-type">Vía de Solicitud <span class="required">*</span></label>
+                            <select id="ticket-request-type" class="form-control" required>
+                                <option value="Telefono">📞 Llamada Telefónica</option>
+                                <option value="WhatsApp">💬 Mensaje WhatsApp</option>
+                                <option value="Email">✉️ Correo Electrónico</option>
+                                <option value="Presencial">👤 Presencial / Oficina</option>
+                                <option value="Sistema">💻 Portal Sistema</option>
+                                <option value="Otro">Otro / Auxiliar</option>
+                            </select>
+                        </div>
+                        <div class="form-group col-6">
+                            <label for="ticket-category">Categoría del Pedido <span class="required">*</span></label>
+                            <select id="ticket-category" class="form-control" required>
+                                <option value="Servicio">🛠️ Servicio Técnico</option>
+                                <option value="Insumo">🧪 Insumo</option>
+                                <option value="Repuesto">⚙️ Repuesto</option>
+                                <option value="Instalacion">📥 Instalación</option>
+                                <option value="Retiro">📤 Retiro</option>
+                                <option value="Configuracion">💻 Configuración</option>
+                                <option value="Otro">Otro</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row" style="margin-top:10px;">
+                        <div class="form-group col-12">
+                            <label for="ticket-priority">Prioridad / Urgencia <span class="required">*</span></label>
+                            <select id="ticket-priority" class="form-control" required>
+                                <option value="baja">🟢 Prioridad Baja</option>
+                                <option value="media">🟡 Prioridad Media</option>
+                                <option value="alta">🔴 Prioridad Alta (SLA urgente)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-top: 10px;">
+                        <label for="ticket-description">Descripción del Problema o Motivo <span class="required">*</span></label>
+                        <textarea id="ticket-description" class="form-control" required rows="3" placeholder="Ej: La máquina traba papel en la bandeja 2 o pide tóner negro..."></textarea>
+                    </div>
+                </div>
+
+                <!-- Tab 3: Asignación -->
+                <div id="tab-form-assignment" class="form-tab-content">
+                    <div class="form-group">
+                        <label for="ticket-assigned-tech">Técnico Asignado (Recibirá aviso WhatsApp)</label>
+                        <select id="ticket-assigned-tech" class="form-control">
+                            <option value="">-- Sin asignar --</option>
                         </select>
                     </div>
-                    <div class="form-group col-6" id="group-ticket-priority">
-                        <label for="ticket-priority">Urgencia / Prioridad <span class="required">*</span></label>
-                        <select id="ticket-priority" class="form-control" required>
-                            <option value="baja" style="color:var(--emerald); font-weight:bold;">🟢 Sin Urgencia</option>
-                            <option value="media" style="color:var(--amber); font-weight:bold;">🟡 Media Prioridad</option>
-                            <option value="alta" style="color:var(--danger); font-weight:bold;">🔴 Máxima Prioridad</option>
-                        </select>
+                    <div class="form-group" style="margin-top: 10px;">
+                        <label for="ticket-sla-date">Fecha Compromiso / SLA de Atención</label>
+                        <input type="date" id="ticket-sla-date" class="form-control">
                     </div>
                 </div>
 
-                <div class="form-row">
-                    <!-- Client Selection -->
-                    <div class="form-group col-12" id="group-ticket-client-select">
-                        <label for="ticket-client-id">Cliente <span class="required">*</span></label>
-                        <select id="ticket-client-id" class="form-control">
-                            <!-- Populated dynamically -->
-                        </select>
+                <!-- Tab 4: Seguimiento -->
+                <div id="tab-form-tracking" class="form-tab-content">
+                    <div class="form-group">
+                        <label for="ticket-diagnostic">Diagnóstico Técnico / Estado de la Falla</label>
+                        <textarea id="ticket-diagnostic" class="form-control" rows="2" placeholder="Diagnóstico preliminar o análisis de la falla..."></textarea>
                     </div>
-                    <div class="form-group col-12" id="group-ticket-external-client" style="display:none;">
-                        <label for="ticket-external-client">Nombre / Razón Social del Cliente Externo <span class="required">*</span></label>
-                        <input type="text" id="ticket-external-client" class="form-control" placeholder="Ej: Escuela Nro 42, Juan Pérez">
+                    <div class="form-row" style="margin-top:10px;">
+                        <div class="form-group col-6">
+                            <label for="ticket-parts-needed">Repuestos / Insumos Necesarios</label>
+                            <input type="text" id="ticket-parts-needed" class="form-control" placeholder="Ej: Rodillo fusor, Toner TN-319">
+                        </div>
+                        <div class="form-group col-6">
+                            <label for="ticket-parts-used">Repuestos / Insumos Utilizados</label>
+                            <input type="text" id="ticket-parts-used" class="form-control" placeholder="Ej: Rodillo fusor instalado">
+                        </div>
                     </div>
-                </div>
-
-                <div class="form-row">
-                    <!-- Machine Selection -->
-                    <div class="form-group col-12" id="group-ticket-machine-select">
-                        <label for="ticket-machine-id">Equipo en Alquiler <span class="required">*</span></label>
-                        <select id="ticket-machine-id" class="form-control">
-                            <!-- Populated dynamically -->
-                        </select>
-                    </div>
-                    <div class="form-group col-12" id="group-ticket-external-machine" style="display:none;">
-                        <label for="ticket-external-machine">Detalle del Equipo Externo <span class="required">*</span></label>
-                        <input type="text" id="ticket-external-machine" class="form-control" placeholder="Ej: HP LaserJet M402 (N/N)">
+                    <div class="form-group" style="margin-top: 10px;">
+                        <label for="ticket-internal-notes">Observaciones Internas (No visible para clientes)</label>
+                        <textarea id="ticket-internal-notes" class="form-control" rows="2" placeholder="Comentarios del equipo administrativo o técnico..."></textarea>
                     </div>
                 </div>
 
-                <div class="form-row">
-                    <div class="form-group col-6">
-                        <label for="ticket-task-type">Tipo de Pedido <span class="required">*</span></label>
-                        <select id="ticket-task-type" class="form-control" required>
-                            <option value="Insumo">Cambio de Insumo</option>
-                            <option value="Repuesto">Cambio de Repuesto</option>
-                            <option value="Servicio">Servicio Técnico General</option>
-                            <option value="Otro">Otro / Consulta</option>
-                        </select>
+                <!-- Tab 5: Cierre -->
+                <div id="tab-form-close" class="form-tab-content">
+                    <div class="form-row">
+                        <div class="form-group col-6">
+                            <label for="ticket-status">Estado del Ticket <span class="required">*</span></label>
+                            <select id="ticket-status" class="form-control" required>
+                                <option value="nuevo">Nuevo</option>
+                                <option value="asignado">Asignado</option>
+                                <option value="en-proceso">En proceso</option>
+                                <option value="esperando-repuesto">Esperando repuesto</option>
+                                <option value="pendiente-cliente">Pendiente cliente</option>
+                                <option value="resuelto">Resuelto</option>
+                                <option value="cerrado">Cerrado</option>
+                            </select>
+                        </div>
+                        <div class="form-group col-6">
+                            <label for="ticket-close-date">Fecha de Resolución / Cierre</label>
+                            <input type="date" id="ticket-close-date" class="form-control">
+                        </div>
                     </div>
-                    <div class="form-group col-6">
-                        <label for="ticket-status">Estado del Pedido <span class="required">*</span></label>
-                        <select id="ticket-status" class="form-control" required>
-                            <option value="no-visto">No Visto</option>
-                            <option value="visto-no-resuelto">Visto - No Resuelto</option>
-                            <option value="visto-resuelto">Visto - Resuelto</option>
-                            <option value="sin-solucion">Sin Solución</option>
-                            <option value="pendiente-de-solucion">Pendiente de Solución</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="form-group" style="margin-top: 15px;">
-                    <label for="ticket-assigned-tech">Técnico Asignado (Recibirá aviso WhatsApp)</label>
-                    <select id="ticket-assigned-tech" class="form-control">
-                        <option value="">-- Seleccionar Técnico --</option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label for="ticket-description">Detalle del Problema o Motivo <span class="required">*</span></label>
-                    <textarea id="ticket-description" class="form-control" required rows="2" placeholder="Ej: La máquina traba papel en la bandeja 2 o pide tóner negro..."></textarea>
-                </div>
-
-                <div class="form-group card-divider" style="margin: 15px 0 10px 0; border-top: 1px solid rgba(0,0,0,0.08);"></div>
-
-                <!-- Technical actions (Filled by tech) -->
-                <div style="background-color: rgba(0,0,0,0.015); padding: 12px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.04);">
-                    <h4 style="font-size:12px; font-weight:700; color:var(--text-primary); margin-bottom:8px; display:flex; align-items:center; gap:5px;">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" style="width:14px; height:14px;"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-                        Sección del Servicio Técnico
-                    </h4>
-                    <div class="form-group mb-2">
-                        <label for="ticket-diagnostic" style="font-size:11px; font-weight:600;">Diagnóstico Técnico / Posible Solución</label>
-                        <textarea id="ticket-diagnostic" class="form-control text-xs" rows="2" style="font-size:11px;" placeholder="Detalla el diagnóstico preliminar o solución sugerida..."></textarea>
-                    </div>
-                    <div class="form-group mb-0">
-                        <label for="ticket-action-taken" style="font-size:11px; font-weight:600;">Trabajo Realizado / Resolución</label>
-                        <textarea id="ticket-action-taken" class="form-control text-xs" rows="2" style="font-size:11px;" placeholder="Detalla el trabajo final realizado para cerrar el caso..."></textarea>
+                    <div class="form-group" style="margin-top: 10px;">
+                        <label for="ticket-action-taken">Trabajo Realizado / Solución Aplicada</label>
+                        <textarea id="ticket-action-taken" class="form-control" rows="3" placeholder="Detalla los trabajos efectuados para resolver y cerrar este ticket..."></textarea>
                     </div>
                 </div>
 
-                <div class="modal-footer" style="margin-top: 15px;">
-                    <button type="button" class="btn btn-secondary" id="cancel-modal-ticket">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" id="btn-save-ticket">Guardar Pedido</button>
+                <div class="modal-footer" style="margin-top: 15px; border-top: 1px solid var(--border-color); padding-top: 15px; display: flex; justify-content: space-between;">
+                    <span class="text-xs text-secondary-light" style="align-self: center;" id="modal-tab-indicator">Paso 1 de 5</span>
+                    <div style="display:flex; gap:8px;">
+                        <button type="button" class="btn btn-secondary" id="btn-prev-form-tab" style="display:none;">Anterior</button>
+                        <button type="button" class="btn btn-primary" id="btn-next-form-tab">Siguiente</button>
+                        <button type="submit" class="btn btn-primary" id="btn-save-ticket" style="display:none;">Guardar Ticket</button>
+                    </div>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Modal: Ticket Detail & History (Vista Detalle e Historial) -->
+    <div id="modal-ticket-detail" class="modal" style="z-index: 1105;">
+        <div class="modal-content" style="max-width: 750px;">
+            <div class="modal-header">
+                <h3>Detalle de Ticket de Soporte</h3>
+                <span class="close-modal" id="close-modal-ticket-detail">&times;</span>
+            </div>
+            <div class="modal-body" style="padding: 20px; font-size: 13px;">
+                <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px;">
+                    <!-- Left Column: Fields summary -->
+                    <div style="display: flex; flex-direction: column; gap: 12px; border-right: 1px solid var(--border-color); padding-right: 20px;">
+                        <h4 style="margin: 0; font-size: 12px; font-weight: 700; color: var(--indigo); border-bottom: 1px dashed var(--border-color); padding-bottom: 6px; text-transform: uppercase;">📋 Información General</h4>
+                        <div style="display: grid; grid-template-columns: 120px 1fr; gap: 6px;">
+                            <span class="text-secondary">Nro Ticket:</span><strong id="detail-ticket-id-label">-</strong>
+                            <span class="text-secondary">Fecha / Hora:</span><span id="detail-ticket-datetime">-</span>
+                            <span class="text-secondary">Cliente:</span><strong id="detail-ticket-client">-</strong>
+                            <span class="text-secondary">Equipo:</span><span id="detail-ticket-machine">-</span>
+                            <span class="text-secondary">Nro Serie:</span><code id="detail-ticket-serial">-</code>
+                            <span class="text-secondary">Vía Ingreso:</span><span id="detail-ticket-request-type">-</span>
+                            <span class="text-secondary">Categoría:</span><span id="detail-ticket-category">-</span>
+                            <span class="text-secondary">Prioridad:</span><span id="detail-ticket-priority">-</span>
+                            <span class="text-secondary">Estado Actual:</span><span id="detail-ticket-status">-</span>
+                        </div>
+
+                        <h4 style="margin: 10px 0 0 0; font-size: 12px; font-weight: 700; color: var(--indigo); border-bottom: 1px dashed var(--border-color); padding-bottom: 6px; text-transform: uppercase;">⚠️ Descripción del Reporte</h4>
+                        <p id="detail-ticket-desc" style="white-space: pre-line; line-height: 1.4; padding: 8px; background-color: var(--bg-tertiary); border-radius: 6px; border: 1px solid var(--border-color); margin: 0; font-size: 12px;"></p>
+
+                        <h4 style="margin: 10px 0 0 0; font-size: 12px; font-weight: 700; color: var(--indigo); border-bottom: 1px dashed var(--border-color); padding-bottom: 6px; text-transform: uppercase;">🔧 Detalles Técnicos</h4>
+                        <div style="display: grid; grid-template-columns: 120px 1fr; gap: 6px;">
+                            <span class="text-secondary">Técnico Asig.:</span><strong id="detail-ticket-tech">-</strong>
+                            <span class="text-secondary">Fecha Compromiso:</span><span id="detail-ticket-sla">-</span>
+                            <span class="text-secondary">Fecha Cierre:</span><span id="detail-ticket-closed">-</span>
+                        </div>
+
+                        <div style="display:flex; flex-direction:column; gap:6px; margin-top:5px;">
+                            <span class="text-secondary" style="font-weight:600;">Diagnóstico Técnico:</span>
+                            <div id="detail-ticket-diagnostic" style="padding:8px; background-color:var(--bg-tertiary); border-radius:6px; border:1px solid var(--border-color); font-size:11px; min-height:30px; white-space:pre-line;">-</div>
+                            <span class="text-secondary" style="font-weight:600;">Solución Aplicada:</span>
+                            <div id="detail-ticket-action" style="padding:8px; background-color:var(--bg-tertiary); border-radius:6px; border:1px solid var(--border-color); font-size:11px; min-height:30px; white-space:pre-line;">-</div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 5px;">
+                            <div>
+                                <span class="text-secondary" style="font-size:11px; font-weight:600;">Repuestos Necesarios:</span>
+                                <div id="detail-ticket-parts-needed" style="padding:6px; background-color:var(--bg-tertiary); border-radius:4px; border:1px solid var(--border-color); font-size:11px; min-height:30px;">-</div>
+                            </div>
+                            <div>
+                                <span class="text-secondary" style="font-size:11px; font-weight:600;">Repuestos Usados:</span>
+                                <div id="detail-ticket-parts-used" style="padding:6px; background-color:var(--bg-tertiary); border-radius:4px; border:1px solid var(--border-color); font-size:11px; min-height:30px;">-</div>
+                            </div>
+                        </div>
+                        
+                        <div style="display:flex; flex-direction:column; gap:4px; margin-top:5px;">
+                            <span class="text-secondary" style="font-size:11px; font-weight:600;">Observaciones Internas:</span>
+                            <div id="detail-ticket-internal-notes" style="padding:6px; background-color:var(--bg-tertiary); border-radius:4px; border:1px solid var(--border-color); font-size:11px; min-height:35px; white-space:pre-line;">-</div>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Timeline & Quick Updates -->
+                    <div style="display: flex; flex-direction: column; justify-content: space-between; gap: 15px;">
+                        <div style="display: flex; flex-direction: column; flex-grow: 1;">
+                            <h4 style="margin: 0 0 10px 0; font-size: 12px; font-weight: 700; color: var(--indigo); border-bottom: 1px dashed var(--border-color); padding-bottom: 6px; text-transform: uppercase;">🕒 Historial y Bitácora</h4>
+                            <div class="ticket-timeline" id="detail-ticket-timeline" style="max-height: 200px; overflow-y: auto; padding-right: 5px;">
+                                <!-- History entries dynamic -->
+                            </div>
+                        </div>
+
+                        <!-- Quick Updates Section -->
+                        <div style="background-color: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px; display:flex; flex-direction:column; gap:10px;">
+                            <h5 style="margin:0; font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-primary); display:flex; align-items:center; gap:4px;">
+                                ⚡ Actualización Rápida
+                            </h5>
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+                                <div>
+                                    <label for="quick-ticket-status" style="font-size:10px; color:var(--text-secondary);">Estado:</label>
+                                    <select id="quick-ticket-status" class="form-control" style="font-size:11px; height:28px; padding:2px 6px;">
+                                        <option value="nuevo">Nuevo</option>
+                                        <option value="asignado">Asignado</option>
+                                        <option value="en-proceso">En proceso</option>
+                                        <option value="esperando-repuesto">Esperando repuesto</option>
+                                        <option value="pendiente-cliente">Pendiente cliente</option>
+                                        <option value="resuelto">Resuelto</option>
+                                        <option value="cerrado">Cerrado</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="quick-ticket-tech" style="font-size:10px; color:var(--text-secondary);">Técnico:</label>
+                                    <select id="quick-ticket-tech" class="form-control" style="font-size:11px; height:28px; padding:2px 6px;">
+                                        <!-- Options populated dynamically -->
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <label for="quick-ticket-comment" style="font-size:10px; color:var(--text-secondary);">Nota / Comentario de Seguimiento:</label>
+                                <textarea id="quick-ticket-comment" class="form-control" rows="2" style="font-size:11px;" placeholder="Ej: Visita agendada, repuesto recibido..."></textarea>
+                            </div>
+                            <button type="button" class="btn btn-primary" id="btn-save-quick-ticket" style="font-size:11px; padding:6px; font-weight:600; justify-content:center; border:none; border-radius:6px; color:white; background-color:var(--indigo);">
+                                Guardar Actualización
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="margin-top: 15px; border-top: 1px solid var(--border-color); padding-top: 15px; display:flex; justify-content: flex-end; gap:8px;">
+                <button type="button" class="btn btn-secondary" id="btn-close-detail-modal">Cerrar</button>
+                <button type="button" class="btn btn-primary" id="btn-edit-detail-modal">Editar Completo</button>
+            </div>
         </div>
     </div>
 

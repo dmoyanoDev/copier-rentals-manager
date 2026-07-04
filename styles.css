@@ -1648,3 +1648,170 @@ textarea.form-control {
     }
 }
 
+/* Technical Support Module Refactoring Styles */
+.badge.state-nuevo {
+    background-color: var(--indigo-light);
+    color: #a5b4fc;
+    border: 1px solid rgba(99, 102, 241, 0.4);
+}
+.badge.state-asignado {
+    background-color: rgba(99, 102, 241, 0.12);
+    color: #818cf8;
+    border: 1px solid rgba(99, 102, 241, 0.3);
+}
+.badge.state-en-proceso {
+    background-color: rgba(245, 158, 11, 0.12);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.badge.state-esperando-repuesto {
+    background-color: rgba(239, 68, 68, 0.12);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+.badge.state-pendiente-cliente {
+    background-color: rgba(107, 114, 128, 0.15);
+    color: #9ca3af;
+    border: 1px solid rgba(107, 114, 128, 0.3);
+}
+.badge.state-resuelto {
+    background-color: var(--emerald-light);
+    color: var(--emerald);
+    border: 1px solid var(--emerald);
+}
+.badge.state-cerrado {
+    background-color: rgba(16, 185, 129, 0.08);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    opacity: 0.8;
+}
+.badge.state-papelera {
+    background-color: rgba(239, 68, 68, 0.2);
+    color: #fca5a5;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    text-decoration: line-through;
+    opacity: 0.7;
+}
+
+.badge.prio-baja {
+    background-color: var(--emerald-light);
+    color: var(--emerald);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+.badge.prio-media {
+    background-color: var(--amber-light);
+    color: var(--amber);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+}
+.badge.prio-alta {
+    background-color: var(--danger-light);
+    color: var(--danger);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    animation: techPulse 2s infinite;
+}
+
+@keyframes techPulse {
+    0% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(0.97); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+/* Timeline Layout for Ticket History */
+.ticket-timeline {
+    position: relative;
+    padding-left: 20px;
+    margin-top: 15px;
+    border-left: 2px solid var(--border-color);
+}
+.timeline-item {
+    position: relative;
+    margin-bottom: 20px;
+}
+.timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -27px;
+    top: 4px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: var(--bg-secondary);
+    border: 2.5px solid var(--indigo);
+}
+.timeline-item.status-change::before {
+    border-color: var(--amber);
+}
+.timeline-item.resolved::before {
+    border-color: var(--emerald);
+}
+.timeline-item.deleted::before {
+    border-color: var(--danger);
+}
+.timeline-meta {
+    font-size: 11px;
+    color: var(--text-secondary-light);
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+.timeline-content {
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text-primary);
+}
+
+/* Modal Tab Navigation styling */
+.form-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 15px;
+    gap: 4px;
+}
+.form-tab-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: var(--transition-fast);
+}
+.form-tab-btn:hover {
+    color: var(--text-primary);
+    background-color: rgba(255, 255, 255, 0.02);
+}
+.form-tab-btn.active {
+    color: var(--indigo);
+    border-bottom-color: var(--indigo);
+}
+.form-tab-content {
+    display: none;
+}
+.form-tab-content.active {
+    display: block;
+}
+
+/* Sticky header for tickets table */
+#tickets-table th {
+    position: sticky;
+    top: 0;
+    background-color: var(--bg-secondary);
+    z-index: 10;
+}
+#tickets-table tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.025) !important;
+}
+
+/* Action button row layout */
+.flex-actions-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+
