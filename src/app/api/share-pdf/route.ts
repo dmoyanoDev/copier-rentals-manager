@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import { db } from '@/infrastructure/db/client';
+import { sharedPdfs } from '@/infrastructure/db/schema/sharedPdfs';
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,24 +10,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Faltan parámetros requeridos (pdfBase64 o filename).' }, { status: 400 });
     }
 
-    // Carpeta de destino local pública
-    const targetDir = path.join(process.cwd(), 'public', 'temp-pdf');
+    // Generar un ID único (slug) para el PDF compartido
+    const id = 'pdf-' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 
-    // Crear carpeta si no existe
-    if (!fs.existsSync(targetDir)) {
-      fs.mkdirSync(targetDir, { recursive: true });
-    }
-
-    // Guardar archivo binario
-    const filePath = path.join(targetDir, filename);
-    const buffer = Buffer.from(pdfBase64, 'base64');
-    fs.writeFileSync(filePath, buffer);
+    // Guardar en la base de datos Turso
+    await db.insert(sharedPdfs).values({
+      id,
+      filename,
+      pdfBase64,
+      createdAt: new Date().toISOString(),
+    });
 
     // Retornar la URL relativa pública para el cliente
-    const url = `/temp-pdf/${filename}`;
+    const url = `/api/pdf/${id}`;
     return NextResponse.json({ url });
   } catch (error: any) {
-    console.error('Error al compartir PDF:', error);
+    console.error('Error al compartir PDF en base de datos:', error);
     return NextResponse.json({ error: 'Error interno del servidor al procesar el PDF.' }, { status: 500 });
   }
 }
