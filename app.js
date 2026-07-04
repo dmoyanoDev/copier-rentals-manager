@@ -3659,7 +3659,6 @@ function renderDashboardTab() {
 
     // Update numbers depending on role
     const userRole = state.currentUser ? (state.currentUser.role || 'administrativo') : 'administrativo';
-    const isTech = userRole === 'tecnico';
 
     document.getElementById('stat-active-clients').textContent = activeClientsCount;
     document.getElementById('stat-rented-machines').textContent = rentedMachinesCount;
