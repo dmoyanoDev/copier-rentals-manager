@@ -2056,7 +2056,7 @@ textarea.form-control {
 }
 
 /* 2b. Specific Notebook Resolution Optimization (<= 1366px - e.g. 1366x768 notebooks) */
-@media (max-width: 1366px) {
+@media (max-width: 1366px) and (min-width: 1025px) {
     .sidebar {
         width: 230px !important;
     }
