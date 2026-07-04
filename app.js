@@ -61,8 +61,9 @@ let state = {
 
 // Current Active Tab
 let currentTab = 'dashboard';
-// Current Active Month (YYYY-MM format, default to current month or latest data month)
-let currentMonth = '2026-06'; // realistic starting point matching metadata
+// Current Active Month (YYYY-MM format, dynamic default based on current local date)
+const initialNow = new Date();
+let currentMonth = `${initialNow.getFullYear()}-${String(initialNow.getMonth() + 1).padStart(2, '0')}`;
 
 // Chart instances
 let chartEarningsInstance = null;
@@ -97,6 +98,7 @@ let firebaseActive = false;
 // Initialize Application
 document.addEventListener('DOMContentLoaded', async () => {
     window.sessionStartTimestamp = Date.now();
+    startLiveClock();
     // Set default month selector value
     monthSelector.value = currentMonth;
     
@@ -11407,6 +11409,25 @@ async function sendAutomatedEmail({ to, subject, body, attachment = null }) {
         showToast("Error de envío SMTP: " + err.message, "error");
         return { success: false, mode: 'error', error: err.message };
     }
+}
+
+function startLiveClock() {
+    const clockEl = document.getElementById('live-clock');
+    if (!clockEl) return;
+
+    const updateClock = () => {
+        const now = new Date();
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        const dateStr = now.toLocaleDateString('es-AR', options);
+        const timeStr = now.toLocaleTimeString('es-AR');
+        
+        // Capitalize first letter of dateStr
+        const formattedDate = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
+        clockEl.textContent = `${formattedDate} - ${timeStr}`;
+    };
+
+    updateClock();
+    setInterval(updateClock, 1000);
 }
 
 

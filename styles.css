@@ -2217,6 +2217,20 @@ textarea.form-control {
         font-size: 10px !important;
         padding: 6px 4px !important;
     }
+    .header-actions {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 8px !important;
+        width: 100% !important;
+    }
+    #live-clock {
+        text-align: center !important;
+        width: 100% !important;
+    }
+    .month-selector-wrapper {
+        width: 100% !important;
+        justify-content: space-between !important;
+    }
     #dashboard-tech-view .metrics-grid {
         grid-template-columns: 1fr !important;
         gap: 10px !important;
