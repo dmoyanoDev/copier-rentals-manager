@@ -174,6 +174,8 @@ body {
 /* Main Content Wrapper */
 .main-content {
     margin-left: 280px;
+    width: calc(100% - 280px);
+    box-sizing: border-box;
     flex-grow: 1;
     padding: 40px;
     background-color: var(--bg-primary);
@@ -1205,6 +1207,7 @@ textarea.form-control {
     }
     .main-content {
         margin-left: 240px;
+        width: calc(100% - 240px);
         padding: 30px 20px;
     }
     .logo-container {
@@ -1329,6 +1332,7 @@ textarea.form-control {
     
     .main-content {
         margin-left: 0;
+        width: 100%;
         padding: 72px 16px 84px 16px; /* Top padding for header, bottom padding for nav */
     }
     
