@@ -5,3 +5,4 @@ export * from './machines';
 export * from './readings';
 export * from './tickets';
 export * from './budgets';
+export * from './emailLogs';

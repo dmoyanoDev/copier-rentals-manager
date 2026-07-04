@@ -516,155 +516,19 @@ export default function PresupuestosPage() {
     };
 
     // PDF Generation Utility
+    // PDF Generation Utility using `@react-pdf/renderer` in the browser
     const generatePdfData = async (b: Budget) => {
         setPdfStatus('generating');
-        setPdfFeedbackMsg('Generando archivo PDF profesional...');
+        setPdfFeedbackMsg('Generando archivo PDF profesional con React-PDF...');
         
-        let tempStyle: HTMLStyleElement | null = null;
-        const disabledSheets: any[] = [];
-        let wrapper: HTMLDivElement | null = null;
-        const originalGetComputedStyle = window.getComputedStyle;
-
         try {
-            const html2pdf = (await import('html2pdf.js')).default;
-            const original = document.getElementById('print-only-budget');
-            if (!original) throw new Error('No se encontró el elemento de cotización imprimible.');
-
-            // 1. Monkeypatch window.getComputedStyle para interceptar y limpiar colores oklch/lab/oklab
-            window.getComputedStyle = function (elt, pseudoElt) {
-                const style = originalGetComputedStyle.call(window, elt, pseudoElt);
-                return new Proxy(style, {
-                    get(target, prop) {
-                        if (prop === 'getPropertyValue') {
-                            return function (propertyName: string) {
-                                const val = target.getPropertyValue(propertyName);
-                                if (typeof val === 'string' && (val.includes('oklch(') || val.includes('lab(') || val.includes('oklab('))) {
-                                    return val
-                                        .replace(/oklch\([^)]+\)/g, 'rgb(0, 0, 0)')
-                                        .replace(/oklab\([^)]+\)/g, 'rgb(0, 0, 0)')
-                                        .replace(/lab\([^)]+\)/g, 'rgb(0, 0, 0)');
-                                }
-                                return val;
-                            };
-                        }
-                        const value = target[prop as any] as any;
-                        if (typeof value === 'string') {
-                            if (value.includes('oklch(') || value.includes('lab(') || value.includes('oklab(')) {
-                                return value
-                                    .replace(/oklch\([^)]+\)/g, 'rgb(0, 0, 0)')
-                                    .replace(/oklab\([^)]+\)/g, 'rgb(0, 0, 0)')
-                                    .replace(/lab\([^)]+\)/g, 'rgb(0, 0, 0)');
-                            }
-                        }
-                        if (typeof value === 'function') {
-                            return value.bind(target);
-                        }
-                        return value;
-                    }
-                });
-            };
-
-            // 2. Crear elemento style temporal con reglas limpias para evitar oklch/lab en html2canvas
-            tempStyle = document.createElement('style');
-            tempStyle.id = 'pdf-temp-style';
-            tempStyle.innerHTML = `
-                #print-only-budget {
-                    font-family: Arial, sans-serif !important;
-                    background-color: #ffffff !important;
-                    color: #000000 !important;
-                    padding: 0px !important;
-                    display: block !important;
-                    width: 640px !important;
-                    box-sizing: border-box !important;
-                }
-                #print-only-budget * {
-                    color: #000000 !important;
-                    border-color: #cbd5e1 !important;
-                    box-sizing: border-box !important;
-                }
-                .flex { display: flex !important; }
-                .items-center { align-items: center !important; }
-                .gap-3 { gap: 12px !important; }
-                .h-12 { height: 48px !important; }
-                .w-auto { width: auto !important; }
-                .object-contain { object-fit: contain !important; }
-                .justify-between { justify-content: space-between !important; }
-                .grid { display: grid !important; }
-                .grid-cols-2 { grid-template-columns: 1fr 1fr !important; }
-                .gap-4 { gap: 16px !important; }
-                .space-y-6 > * + * { margin-top: 24px !important; }
-                .space-y-4 > * + * { margin-top: 16px !important; }
-                .space-y-2 > * + * { margin-top: 8px !important; }
-                .border-b { border-bottom: 1px solid #cbd5e1 !important; }
-                .border-t { border-top: 1px solid #cbd5e1 !important; }
-                .pb-4 { padding-bottom: 16px !important; }
-                .pb-1.5 { padding-bottom: 6px !important; }
-                .pt-4 { padding-top: 16px !important; }
-                .pt-16 { padding-top: 64px !important; }
-                .pt-12 { padding-top: 48px !important; }
-                .w-52 { width: 208px !important; }
-                .w-64 { width: 256px !important; }
-                .text-center { text-align: center !important; }
-                .text-right { text-align: right !important; }
-                .text-lg { font-size: 18px !important; }
-                .text-sm { font-size: 14px !important; }
-                .text-xs { font-size: 12px !important; }
-                .text-\\[10px\\] { font-size: 10px !important; }
-                .text-\\[9px\\] { font-size: 9px !important; }
-                .font-bold { font-weight: bold !important; }
-                .font-mono { font-family: monospace !important; }
-                .italic { font-style: italic !important; }
-                .p-4 { padding: 16px !important; }
-                .border { border: 1px solid #cbd5e1 !important; }
-                .rounded-xl { border-radius: 12px !important; }
-                .pl-3 { padding-left: 12px !important; }
-                .border-l-2 { border-left: 2px solid #1e3a8a !important; }
-                .leading-relaxed { line-height: 1.625 !important; }
-                .leading-normal { line-height: 1.5 !important; }
-                .whitespace-pre-wrap { white-space: pre-wrap !important; }
-                table { width: 100% !important; border-collapse: collapse !important; margin-top: 10px !important; }
-                th, td { border: 1px solid #cbd5e1 !important; padding: 8px !important; text-align: left !important; font-size: 10px !important; }
-                th { background-color: #f8fafc !important; font-weight: bold !important; }
-            `;
-            document.head.appendChild(tempStyle);
-
-            // 3. Deshabilitar temporalmente todos los stylesheets existentes de la página
-            const sheets = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'));
-            sheets.forEach((el: any) => {
-                if (el.id === 'pdf-temp-style') return;
-                if (el.sheet && !el.sheet.disabled) {
-                    el.sheet.disabled = true;
-                    disabledSheets.push(el.sheet);
-                }
-            });
-
-            // 4. Clonar nodo y prepararlo
-            const clone = original.cloneNode(true) as HTMLElement;
-            clone.classList.remove('hidden', 'print:block');
-            clone.style.display = 'block';
-
-            // Envoltura temporal
-            wrapper = document.createElement('div');
-            wrapper.style.position = 'fixed';
-            wrapper.style.top = '-9999px';
-            wrapper.style.left = '-9999px';
-            wrapper.style.width = '700px';
-            wrapper.appendChild(clone);
-            document.body.appendChild(wrapper);
-
-            const filename = `presupuesto-${b.numero}-${b.clientSnapshot.nombreRazonSocial.replace(/\s+/g, '_')}.pdf`;
-            const opt = {
-                margin: [15, 15, 15, 15] as [number, number, number, number],
-                filename: filename,
-                image: { type: 'jpeg' as const, quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true, logging: false, windowWidth: 700 },
-                jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
-            };
-
-            // 5. Ejecutar la compilación del PDF
-            const worker = html2pdf().from(clone).set(opt);
-            const pdfBlob = await worker.outputPdf('blob');
-
+            const { pdf } = await import('@react-pdf/renderer');
+            const { PresupuestoPDF } = await import('@/pdf/PresupuestoPDF');
+            
+            const docElement = React.createElement(PresupuestoPDF, { budget: b });
+            const pdfInstance = pdf(docElement as any);
+            const pdfBlob = await pdfInstance.toBlob();
+            
             // Convertir blob a base64
             const reader = new FileReader();
             const base64Promise = new Promise<string>((resolve) => {
@@ -672,7 +536,9 @@ export default function PresupuestosPage() {
             });
             reader.readAsDataURL(pdfBlob);
             const base64 = await base64Promise;
-
+            
+            const filename = `Presupuesto-${b.numero}-${b.clientSnapshot.nombreRazonSocial.replace(/\s+/g, '_')}.pdf`;
+            
             setPdfStatus('generated');
             setPdfFeedbackMsg('¡PDF Generado con éxito!');
             return { blob: pdfBlob, base64, filename };
@@ -681,18 +547,6 @@ export default function PresupuestosPage() {
             setPdfStatus('error');
             setPdfFeedbackMsg('Error: No se pudo compilar el PDF comercial. Detalle: ' + (err?.message || err));
             throw err;
-        } finally {
-            // 6. Limpieza y Restauración de los estilos y funciones originales
-            window.getComputedStyle = originalGetComputedStyle;
-            if (wrapper && wrapper.parentNode) {
-                document.body.removeChild(wrapper);
-            }
-            if (tempStyle && tempStyle.parentNode) {
-                document.head.removeChild(tempStyle);
-            }
-            disabledSheets.forEach(sheet => {
-                sheet.disabled = false;
-            });
         }
     };
 
@@ -775,40 +629,50 @@ export default function PresupuestosPage() {
         }
 
         setPdfStatus('sending');
-        setPdfFeedbackMsg('Enviando correo con PDF adjunto...');
+        setPdfFeedbackMsg('Enviando correo real con PDF adjunto...');
 
         try {
-            const res = await fetch('/api/send-budget-email', {
+            const res = await fetch('/api/send-email', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     to: shareEmail,
-                    subject: shareSubject,
-                    body: shareMessage,
-                    pdfBase64: tempPdf.base64,
-                    filename: tempPdf.filename
+                    clienteNombre: selectedBudget.clientSnapshot.nombreRazonSocial,
+                    numeroPresupuesto: selectedBudget.numero,
+                    presupuestoId: selectedBudget.id,
+                    pdfBase64: tempPdf.base64
                 })
             });
 
-            if (!res.ok) throw new Error('Error al enviar el correo.');
+            if (!res.ok) {
+                const errorData = await res.json();
+                throw new Error(errorData.error || 'Error al enviar el correo.');
+            }
             const data = await res.json();
             
             logSendEvent('email', shareEmail);
+            
+            // Actualizar localmente el estado del presupuesto a "enviado"
+            const updatedBudget = {
+                ...selectedBudget,
+                estado: 'enviado' as const
+            };
+            setBudgets(prev => prev.map(b => b.id === selectedBudget.id ? updatedBudget : b));
+            setSelectedBudget(updatedBudget);
+            
             setIsEmailModalOpen(false);
             setPdfStatus('sent');
             
             if (data.simulated) {
-                setPdfFeedbackMsg('¡Correo simulado enviado! (Consola de servidor registró el log)');
-                alert(`¡Correo simulado enviado con éxito! Revisa la consola de Next.js para verificar.`);
+                alert('¡Correo SIMULADO enviado con éxito! Revisa la consola (Configura YAHOO_APP_PASSWORD en .env para envíos reales).');
             } else {
-                setPdfFeedbackMsg('¡Correo enviado con éxito!');
-                alert('¡Correo enviado vía SMTP real!');
+                alert('¡Correo enviado con éxito real a través de SMTP de Yahoo!');
             }
         } catch (err: any) {
             console.error(err);
             setPdfStatus('error');
             setPdfFeedbackMsg('Error al enviar: ' + err.message);
-            alert('No se pudo enviar el correo.');
+            alert('No se pudo enviar el correo: ' + err.message);
         }
     };
 
