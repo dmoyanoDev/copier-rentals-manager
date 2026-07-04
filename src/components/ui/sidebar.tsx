@@ -164,7 +164,7 @@ export const Sidebar: React.FC = () => {
                         className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-slate-800/40 transition-colors text-left group"
                     >
                         <div className="w-9 h-9 rounded-lg bg-indigo-600/20 text-indigo-400 flex items-center justify-center font-bold text-sm border border-indigo-500/20 group-hover:scale-105 transition-transform">
-                            {currentUser?.fullname.split(' ').map(n => n[0]).join('')}
+                            {currentUser?.fullname ? currentUser.fullname.split(' ').map(n => n[0]).join('') : ''}
                         </div>
                         <div className="flex-1 min-w-0">
                             <span className="block text-xs font-semibold text-slate-200 truncate leading-none">
@@ -211,10 +211,10 @@ export const Sidebar: React.FC = () => {
                     className="flex flex-col items-center justify-center gap-1 py-1.5 px-3 text-slate-400"
                 >
                     <div className="w-5 h-5 rounded bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center">
-                        {currentUser?.fullname.split(' ').map(n => n[0]).join('')}
+                        {currentUser?.fullname ? currentUser.fullname.split(' ').map(n => n[0]).join('') : ''}
                     </div>
                     <span className="text-[9px] font-medium tracking-tight whitespace-nowrap capitalize">
-                        {currentUser?.role.slice(0, 4)}.
+                        {currentUser?.role ? currentUser.role.slice(0, 4) : ''}.
                     </span>
                 </button>
             </aside>
