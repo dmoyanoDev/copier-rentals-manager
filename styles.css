@@ -1201,7 +1201,7 @@ textarea.form-control {
     }
 }
 
-@media (min-width: 769px) and (max-width: 1200px) {
+@media (min-width: 1025px) and (max-width: 1200px) {
     .sidebar {
         width: 240px;
     }
@@ -1218,7 +1218,7 @@ textarea.form-control {
     }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
     .mobile-header {
         display: flex;
         position: fixed;
@@ -2232,6 +2232,26 @@ textarea.form-control {
         margin-top: 4px;
         text-align: center;
         justify-content: center;
+    }
+}
+
+/* 6. Ultra Narrow Screens & Galaxy Z Fold Folded screen (<= 380px) */
+@media (max-width: 380px) {
+    .metric-card {
+        padding: 12px 10px !important;
+        gap: 10px !important;
+    }
+    .metric-icon {
+        width: 36px !important;
+        height: 36px !important;
+        border-radius: 8px !important;
+    }
+    .metric-icon svg {
+        width: 18px !important;
+        height: 18px !important;
+    }
+    .metric-value {
+        font-size: 16px !important;
     }
 }
 
