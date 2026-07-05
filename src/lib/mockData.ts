@@ -7,6 +7,7 @@ export interface Client {
     phone: string;
     email: string;
     debt: number;
+    active?: boolean;
 }
 
 export interface Abono {
@@ -15,6 +16,7 @@ export interface Abono {
     price: number;
     limit: number;
     excessPrice: number;
+    active?: boolean;
 }
 
 export interface Machine {
