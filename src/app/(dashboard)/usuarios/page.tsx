@@ -123,7 +123,7 @@ export default function UsersPage() {
                                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                                             u.role === 'tecnico' ? 'bg-amber-500/10 text-amber-400' : 'bg-indigo-550/10 text-indigo-400'
                                         }`}>
-                                            {u.role.toUpperCase()}
+                                            {(u.role || 'administrativo').toUpperCase()}
                                         </span>
                                     </TableCell>
                                     <TableCell className="text-right space-x-1.5">
