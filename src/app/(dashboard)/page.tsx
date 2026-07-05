@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 
 export default function DashboardPage() {
-    const { clients, machines, readings, tickets, currentUser, users, currentMonth } = useManagement();
+    const { clients, machines, readings, tickets, currentUser, users, currentMonth, rentals, abonos } = useManagement();
 
     const isTech = currentUser?.role === 'tecnico';
 
@@ -16,46 +16,115 @@ export default function DashboardPage() {
     // 1. ADMINISTRATIVE DASHBOARD LOGIC
     // ==========================================
     const activeClientsCount = clients.length;
-    const rentedMachinesCount = machines.filter(m => m.clientId !== null).length;
 
-    // Projected Base Fee
+    // Filter active rentals for current month
+    const activeRentals = (rentals || []).filter(r => {
+        const startMonth = r.startDate ? r.startDate.substring(0, 7) : '';
+        const endMonth = r.endDate ? r.endDate.substring(0, 7) : '';
+        
+        const isStarted = !startMonth || startMonth <= currentMonth;
+        const isNotEnded = !r.endDate || endMonth >= currentMonth || r.status === 'activo' || r.status === 'pausado';
+        const isValidStatus = r.status === 'activo' || r.status === 'pausado' || r.status === 'vencido';
+        
+        return isStarted && isNotEnded && isValidStatus;
+    });
+
+    // Count rented machines in the month (either has active contract or reading loaded in the month)
+    const currentMonthReadings = readings.filter(r => r.month === currentMonth);
+    const uniqueReadingsMachines = new Set(currentMonthReadings.map(r => r.machineId));
+    
+    const targetMachineIds = new Set([
+        ...activeRentals.map(r => r.machineId),
+        ...currentMonthReadings.map(r => r.machineId)
+    ]);
+    const rentedMachinesCount = targetMachineIds.size;
+
+    // Projected Base Fee (Abono Mensual Fijo)
     let projectedBase = 0;
-    machines.filter(m => m.clientId !== null).forEach(m => {
-        const client = clients.find(c => c.id === m.clientId);
-        const abono = mockAbonosFind(m.abonoId);
+    activeRentals.forEach(r => {
+        const client = clients.find(c => c.id === r.clientId);
+        const machine = machines.find(m => m.id === r.machineId);
+        const abono = (abonos || []).find(a => a.id === r.abonoId);
         if (abono) {
-            const ivaRate = m.applyIva && client ? (client.taxCategory === 'Responsable Inscripto' ? 21 : 0) : 0;
-            projectedBase += abono.price * (1 + ivaRate / 100);
+            const price = Number(abono.price) || 0;
+            const applyIva = machine?.applyIva ?? false;
+            const ivaRate = (applyIva && client) ? (client.taxCategory === 'Responsable Inscripto' ? 21 : 0) : 0;
+            projectedBase += price * (1 + ivaRate / 100);
         }
     });
 
     // Total Invoiced and Excess
-    let totalInvoicedMonth = 0;
+    let totalRevenueMonth = 0;
     let totalExcessInvoiced = 0;
-    const currentMonthReadings = readings.filter(r => r.month === currentMonth);
+
+    // A. Realized billing from loaded readings
     currentMonthReadings.forEach(r => {
-        totalInvoicedMonth += r.totalAmount;
-        const abono = abonos.find(a => a.id === machines.find(m => m.id === r.machineId)?.abonoId);
-        const consumed = r.final - r.initial;
+        totalRevenueMonth += Number(r.totalAmount) || 0;
+
+        const machine = machines.find(m => m.id === r.machineId);
+        const abono = (abonos || []).find(a => a.id === machine?.abonoId);
+        const consumed = (r.final || 0) - (r.initial || 0);
         if (abono && consumed > abono.limit) {
-            const excess = (consumed - abono.limit) * abono.excessPrice;
-            totalExcessInvoiced += excess * (r.ivaAmount > 0 ? 1.21 : 1);
+            const excessCount = consumed - abono.limit;
+            const excessPrice = Number(r.excessPrice) || Number(abono.excessPrice) || 0;
+            const excessAmount = excessCount * excessPrice;
+            const hasIva = (r.ivaAmount || 0) > 0;
+            const ivaRate = hasIva ? 21 : 0;
+            totalExcessInvoiced += excessAmount * (1 + ivaRate / 100);
         }
     });
 
-    // Total Revenue this month (base + excess)
-    const totalRevenueMonth = projectedBase + totalExcessInvoiced;
+    // B. Accrued base fee for active rentals without a reading loaded yet
+    activeRentals.forEach(r => {
+        const hasReading = currentMonthReadings.some(rd => rd.machineId === r.machineId);
+        if (!hasReading) {
+            const client = clients.find(c => c.id === r.clientId);
+            const machine = machines.find(m => m.id === r.machineId);
+            const abono = (abonos || []).find(a => a.id === r.abonoId);
+            if (abono) {
+                const price = Number(abono.price) || 0;
+                const applyIva = machine?.applyIva ?? false;
+                const ivaRate = (applyIva && client) ? (client.taxCategory === 'Responsable Inscripto' ? 21 : 0) : 0;
+                totalRevenueMonth += price * (1 + ivaRate / 100);
+            }
+        }
+    });
 
     // Active tickets
     const activeTickets = tickets.filter(t => t.status !== 'resuelto' && t.status !== 'cerrado');
 
-    // Readings progress
-    const readingsFilledCount = currentMonthReadings.length;
+    // Readings progress (deduplicated by machine S/N)
+    const readingsFilledCount = uniqueReadingsMachines.size;
     const readingsProgressPct = rentedMachinesCount > 0 ? Math.round((readingsFilledCount / rentedMachinesCount) * 100) : 0;
 
     // Collections
-    const collectedAmt = readings.filter(r => r.month === currentMonth && r.status === 'paid').reduce((acc, r) => acc + r.totalAmount, 0);
-    const pendingAmt = readings.filter(r => r.month === currentMonth && r.status === 'pending').reduce((acc, r) => acc + r.totalAmount, 0);
+    let collectedAmt = 0;
+    let pendingAmt = 0;
+
+    currentMonthReadings.forEach(r => {
+        const amt = Number(r.totalAmount) || 0;
+        if (r.status === 'paid') {
+            collectedAmt += amt;
+        } else {
+            pendingAmt += amt;
+        }
+    });
+
+    // Add accrued but unbilled base fees as pending
+    activeRentals.forEach(r => {
+        const hasReading = currentMonthReadings.some(rd => rd.machineId === r.machineId);
+        if (!hasReading) {
+            const client = clients.find(c => c.id === r.clientId);
+            const machine = machines.find(m => m.id === r.machineId);
+            const abono = (abonos || []).find(a => a.id === r.abonoId);
+            if (abono) {
+                const price = Number(abono.price) || 0;
+                const applyIva = machine?.applyIva ?? false;
+                const ivaRate = (applyIva && client) ? (client.taxCategory === 'Responsable Inscripto' ? 21 : 0) : 0;
+                pendingAmt += price * (1 + ivaRate / 100);
+            }
+        }
+    });
 
     // ==========================================
     // 2. TECHNICAL DASHBOARD LOGIC
