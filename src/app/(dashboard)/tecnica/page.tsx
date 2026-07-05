@@ -11,18 +11,18 @@ import { Modal } from '@/components/ui/modal';
 import { Ticket, User } from '@/lib/mockData';
 import { autoAssignTech } from '@/domain/ticket/assignment';
 import { 
-    Plus, Edit, User as UserIcon, Calendar, Settings, AlertTriangle, 
+    Plus, PlusCircle, Edit, User as UserIcon, Calendar, Settings, AlertTriangle, 
     Search, Filter, Shield, Wrench, X, Clock, DollarSign, Activity, 
     CheckCircle, HelpCircle, Check, ArrowRight, Phone, Mail, MapPin, 
     Users, Bell, History, CheckSquare, Eye, RefreshCw, BarChart2, Star, Award
 } from 'lucide-react';
 
 export default function TechnicalPage() {
-    const { tickets, setTickets, currentUser, users, setUsers, clients, machines } = useManagement();
+    const { tickets, setTickets, currentUser, users, setUsers, clients, machines, setMachines } = useManagement();
     const isTech = currentUser?.role === 'tecnico';
 
     // Core Navigation Tabs: 'bitacora' | 'tecnicos' | 'config' | 'historial_envios' | 'metricas'
-    const [currentTab, setCurrentTab] = useState<'bitacora' | 'tecnicos' | 'config' | 'historial_envios' | 'metricas'>('bitacora');
+    const [currentTab, setCurrentTab] = useState<'bitacora' | 'mantenimiento' | 'tecnicos' | 'config' | 'historial_envios' | 'metricas'>('bitacora');
     
     // Selected states
     const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
@@ -72,6 +72,7 @@ export default function TechnicalPage() {
     const [editAssignedTechId, setEditAssignedTechId] = useState('');
     const [editTechnicalCost, setEditTechnicalCost] = useState('0');
     const [editObservations, setEditObservations] = useState('');
+    const [editMachineStatus, setEditMachineStatus] = useState<string>('');
     const [autoAssignExplanation, setAutoAssignExplanation] = useState<string | null>(null);
 
     // Creation Form states
@@ -369,6 +370,10 @@ export default function TechnicalPage() {
         setEditAssignedTechId(t.assignedTechId || '');
         setEditTechnicalCost(String(t.technicalCost || 0));
         setEditObservations(t.observations || '');
+        
+        const machine = machines.find(m => m.id === t.machineId);
+        setEditMachineStatus(machine ? machine.status : '');
+
         setAutoAssignExplanation(null);
     };
 
@@ -422,6 +427,20 @@ export default function TechnicalPage() {
             if (currentTech) {
                 const eventType = originalTech ? 'reasignado' : 'asignado';
                 notificationPromise = notifyTech(eventType, selectedTicket, currentTech);
+            }
+        }
+
+        // C. Sincronización del estado operativo de la máquina
+        if (selectedTicket.machineId && editMachineStatus) {
+            const mach = machines.find(m => m.id === selectedTicket.machineId);
+            if (mach && mach.status !== editMachineStatus) {
+                setMachines(prev => prev.map(m => m.id === selectedTicket.machineId ? { ...m, status: editMachineStatus as any } : m));
+                newHistory.push({
+                    date: new Date().toISOString().split('T')[0],
+                    time: new Date().toLocaleTimeString('es-AR').slice(0, 5),
+                    action: `Estado de la máquina cambiado a: ${editMachineStatus.toUpperCase()}`,
+                    user: currentUser?.fullname || 'Sistema'
+                });
             }
         }
 
@@ -850,6 +869,14 @@ export default function TechnicalPage() {
                         <CheckSquare size={13} /> Bitácora
                     </button>
                     <button 
+                        onClick={() => setCurrentTab('mantenimiento')}
+                        className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 shrink-0 ${
+                            currentTab === 'mantenimiento' ? 'bg-indigo-650 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                    >
+                        <Wrench size={13} className="text-amber-500" /> Preventivos
+                    </button>
+                    <button 
                         onClick={() => setCurrentTab('tecnicos')}
                         className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 shrink-0 ${
                             currentTab === 'tecnicos' ? 'bg-indigo-650 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
@@ -1131,6 +1158,178 @@ export default function TechnicalPage() {
                                                     <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); handleOpenDetail(t); }}>
                                                         Detalles →
                                                     </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })
+                                )}
+                            </TableBody>
+                        </Table>
+                    </TableContainer>
+                </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* TABS: MANTENIMIENTO PREVENTIVO */}
+            {/* ========================================================================= */}
+            {currentTab === 'mantenimiento' && (
+                <div className="space-y-6 animate-fade-in">
+                    {/* Metrics grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <Card className="bg-slate-950 border border-slate-850 p-4 space-y-1">
+                            <span className="text-[10px] text-slate-450 uppercase font-extrabold tracking-wider block">Preventivos Vencidos</span>
+                            <span className="text-2xl font-extrabold text-red-500 block">
+                                {machines.filter(m => (m.currentCounter || 0) - (m.lastServiceCounter || 0) >= (m.preventiveInterval || 15000)).length} equipos
+                            </span>
+                            <p className="text-[9px] text-slate-500 mt-1">Superaron el intervalo recomendado de copias sin service.</p>
+                        </Card>
+                        <Card className="bg-slate-950 border border-slate-850 p-4 space-y-1">
+                            <span className="text-[10px] text-slate-450 uppercase font-extrabold tracking-wider block">Próximos a Vencer</span>
+                            <span className="text-2xl font-extrabold text-amber-500 block">
+                                {machines.filter(m => {
+                                    const diff = (m.currentCounter || 0) - (m.lastServiceCounter || 0);
+                                    const limit = m.preventiveInterval || 15000;
+                                    return diff >= limit * 0.8 && diff < limit;
+                                }).length} equipos
+                            </span>
+                            <p className="text-[9px] text-slate-500 mt-1">Se encuentran dentro del 80% al 99% del límite de copias.</p>
+                        </Card>
+                        <Card className="bg-slate-950 border border-slate-850 p-4 space-y-1">
+                            <span className="text-[10px] text-slate-455 uppercase font-extrabold tracking-wider block">Estado de Mantenimiento</span>
+                            <span className="text-2xl font-extrabold text-emerald-450 block">
+                                {Math.round((machines.filter(m => ((m.currentCounter || 0) - (m.lastServiceCounter || 0)) < (m.preventiveInterval || 15000)).length / Math.max(1, machines.length)) * 100)}%
+                            </span>
+                            <p className="text-[9px] text-slate-500 mt-1">Porcentaje de flota operativa dentro del rango preventivo seguro.</p>
+                        </Card>
+                    </div>
+
+                    {/* Table of preventative actions */}
+                    <TableContainer>
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHeaderCell>Equipo / Modelo</TableHeaderCell>
+                                    <TableHeaderCell>Número de Serie</TableHeaderCell>
+                                    <TableHeaderCell>Cliente / Ubicación</TableHeaderCell>
+                                    <TableHeaderCell>Contador Actual</TableHeaderCell>
+                                    <TableHeaderCell>Último Service</TableHeaderCell>
+                                    <TableHeaderCell>Copias desde Service / Límite</TableHeaderCell>
+                                    <TableHeaderCell>Alerta</TableHeaderCell>
+                                    <TableHeaderCell className="text-right">Acciones</TableHeaderCell>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {machines.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={8} className="text-center py-12 text-slate-500 italic">
+                                            No hay copiadoras registradas en el sistema.
+                                        </TableCell>
+                                    </TableRow>
+                                ) : (
+                                    machines.map(m => {
+                                        const cl = clients.find(c => c.id === m.clientId);
+                                        const current = m.currentCounter || 0;
+                                        const last = m.lastServiceCounter || 0;
+                                        const limit = m.preventiveInterval || 15000;
+                                        const diff = current - last;
+                                        const isOverdue = diff >= limit;
+                                        const isWarning = diff >= limit * 0.8 && diff < limit;
+
+                                        let statusBadge = <span className="px-2 py-0.5 rounded text-[8px] font-extrabold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">NORMAL</span>;
+                                        if (isOverdue) {
+                                            statusBadge = <span className="px-2 py-0.5 rounded text-[8px] font-extrabold uppercase bg-red-500/10 text-red-500 border border-red-500/20 animate-pulse">VENCIDO</span>;
+                                        } else if (isWarning) {
+                                            statusBadge = <span className="px-2 py-0.5 rounded text-[8px] font-extrabold uppercase bg-amber-500/10 text-amber-500 border border-amber-500/20">ALERTA</span>;
+                                        }
+
+                                        // Quick trigger functions
+                                        const triggerReset = () => {
+                                            if (confirm(`¿Confirmas el registro del servicio preventivo de la máquina S/N ${m.serial}? Se actualizará el contador de último service a ${current.toLocaleString()}.`)) {
+                                                setMachines(prev => prev.map(item => item.id === m.id ? { ...item, lastServiceCounter: current } : item));
+                                                alert('¡Mantenimiento preventivo registrado exitosamente!');
+                                            }
+                                        };
+
+                                        const triggerCreatePreventiveTicket = async () => {
+                                            const computedSla = calculateSlaDate('media');
+                                            const newTicket: Ticket = {
+                                                id: 'ticket-' + Date.now(),
+                                                machineId: m.id,
+                                                clientId: m.clientId,
+                                                clientName: cl ? cl.name : 'Stock Disponible',
+                                                clientAddress: cl ? cl.address : 'Depósito',
+                                                machineDesc: `${m.brand} ${m.model}`,
+                                                serialNumber: m.serial,
+                                                clientType: cl ? 'existente' : 'externo',
+                                                date: new Date().toISOString().split('T')[0],
+                                                time: new Date().toLocaleTimeString('es-AR').slice(0, 5),
+                                                priority: 'media',
+                                                status: 'nuevo',
+                                                category: 'Servicio',
+                                                description: `Mantenimiento preventivo programado requerido. Copias acumuladas desde último service: ${diff.toLocaleString('es-AR')}.`,
+                                                diagnostic: '',
+                                                actionTaken: '',
+                                                partsNeeded: '',
+                                                partsUsed: '',
+                                                internalNotes: '',
+                                                assignedTechId: null,
+                                                slaDate: computedSla.toISOString(),
+                                                createdAt: Date.now(),
+                                                history: [
+                                                    {
+                                                        date: new Date().toISOString().split('T')[0],
+                                                        time: new Date().toLocaleTimeString('es-AR').slice(0, 5),
+                                                        action: 'Ticket de servicio preventivo autogenerado por límite de copias',
+                                                        user: currentUser?.fullname || 'Sistema'
+                                                    }
+                                                ]
+                                            };
+
+                                            setTickets(prev => [...prev, newTicket]);
+                                            alert('¡Orden de trabajo técnico para mantenimiento preventivo creada con éxito!');
+                                        };
+
+                                        return (
+                                            <TableRow key={m.id} className="hover:bg-slate-900/40">
+                                                <TableCell className="font-bold text-slate-100">{m.brand} {m.model}</TableCell>
+                                                <TableCell className="font-mono text-xs text-slate-350">{m.serial}</TableCell>
+                                                <TableCell className="text-xs text-slate-350">{cl ? cl.name : <span className="text-slate-550 italic">Stock en Taller</span>}</TableCell>
+                                                <TableCell className="font-mono-tabular text-xs text-slate-300">{current.toLocaleString('es-AR')}</TableCell>
+                                                <TableCell className="font-mono-tabular text-xs text-slate-400">{last.toLocaleString('es-AR')}</TableCell>
+                                                <TableCell className="text-xs font-mono-tabular">
+                                                    <div className="space-y-1">
+                                                        <span className={isOverdue ? "text-red-500 font-extrabold" : (isWarning ? "text-amber-500 font-bold" : "text-slate-400")}>
+                                                            {diff.toLocaleString('es-AR')} / {limit.toLocaleString('es-AR')}
+                                                        </span>
+                                                        <div className="w-full max-w-[120px] bg-slate-900 rounded-full h-1">
+                                                            <div className={`h-1 rounded-full ${
+                                                                isOverdue ? 'bg-red-500' : (isWarning ? 'bg-amber-500' : 'bg-emerald-500')
+                                                            }`} style={{ width: `${Math.min(100, (diff / limit) * 100)}%` }} />
+                                                        </div>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-xs">{statusBadge}</TableCell>
+                                                <TableCell className="text-right">
+                                                    <div className="flex justify-end gap-1.5">
+                                                        <Button 
+                                                            variant="secondary" 
+                                                            size="sm" 
+                                                            onClick={triggerReset}
+                                                            title="Registrar Mantenimiento (Reiniciar contador)"
+                                                            className="flex items-center gap-1 bg-slate-900 border-slate-800"
+                                                        >
+                                                            <Check size={12} className="text-emerald-500" /> Registrar Service
+                                                        </Button>
+                                                        {isOverdue && (
+                                                            <button 
+                                                                onClick={triggerCreatePreventiveTicket}
+                                                                title="Crear Ticket Preventivo"
+                                                                className="px-2.5 py-1 bg-indigo-650 hover:bg-indigo-600 text-white rounded-xl text-[10px] font-bold transition-all flex items-center gap-1"
+                                                            >
+                                                                <PlusCircle size={11} /> Abrir Ticket
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </TableCell>
                                             </TableRow>
                                         );
@@ -1867,6 +2066,23 @@ export default function TechnicalPage() {
                                         </select>
                                     </div>
                                 </div>
+
+                                {selectedTicket.machineId && (
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Estado Físico / Inventario de la Copiadora</label>
+                                        <select
+                                            value={editMachineStatus}
+                                            onChange={(e) => setEditMachineStatus(e.target.value)}
+                                            className="w-full bg-slate-950 border border-slate-850 rounded-xl px-3 py-1.5 text-slate-200 text-xs focus:outline-none"
+                                        >
+                                            <option value="Disponible">Disponible en Stock (Sin Alquiler)</option>
+                                            <option value="Alquilada">Operativa / Alquilada (En Cliente)</option>
+                                            <option value="En Taller">En Servicio Técnico / Taller</option>
+                                            <option value="Alerta Técnica">En Revisión / Falla en Campo</option>
+                                            <option value="Inactiva">Fuera de Servicio / Scrap</option>
+                                        </select>
+                                    </div>
+                                )}
 
                                 <div className="space-y-1">
                                     <label className="text-[10px] uppercase font-bold text-slate-505 block">Diagnóstico de Falla</label>

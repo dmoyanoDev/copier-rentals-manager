@@ -10,7 +10,7 @@ import { Reading, Machine, Client, Abono } from '@/lib/mockData';
 import { Search, Filter, PlusCircle, CheckCircle, AlertTriangle, FileText, UserPlus, FileCheck, Layers, Clipboard } from 'lucide-react';
 
 export default function ReadingsPage() {
-    const { clients, setClients, machines, setMachines, readings, setReadings, abonos, setAbonos, currentMonth, currentUser } = useManagement();
+    const { clients, setClients, machines, setMachines, readings, setReadings, abonos, setAbonos, currentMonth, currentUser, tickets } = useManagement();
     
     // Core states
     const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
@@ -447,6 +447,7 @@ export default function ReadingsPage() {
                                     filteredRentedMachines.map(m => {
                                         const client = clients.find(c => c.id === m.clientId);
                                         const reading = readings.find(r => r.machineId === m.id && r.month === currentMonth);
+                                        const hasActiveCriticalTicket = tickets.some(t => t.machineId === m.id && !['resuelto', 'cerrado'].includes(t.status) && ['alta', 'urgente'].includes(t.priority));
                                         
                                         let auditBadge = <span className="px-2 py-0.5 rounded text-[9px] font-extrabold bg-red-500/10 text-red-400">PENDIENTE</span>;
                                         if (reading) {
@@ -467,7 +468,14 @@ export default function ReadingsPage() {
                                                 <TableCell className="font-bold text-slate-100">{client ? client.name : 'Desconocido'}</TableCell>
                                                 <TableCell className="text-xs text-slate-300">
                                                     <strong>{m.brand} {m.model}</strong>
-                                                    <span className="block text-slate-500 text-[10px]">S/N: {m.serial}</span>
+                                                    <span className="block text-slate-500 text-[10px] flex items-center flex-wrap gap-1.5 mt-0.5">
+                                                        S/N: {m.serial}
+                                                        {hasActiveCriticalTicket && (
+                                                            <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded bg-red-500/10 text-red-400 font-extrabold text-[8px] uppercase animate-pulse border border-red-500/20">
+                                                                <AlertTriangle size={8} className="text-red-400" /> Incidencia Crítica
+                                                            </span>
+                                                        )}
+                                                    </span>
                                                 </TableCell>
                                                 <TableCell className="font-mono-tabular text-xs text-slate-300">{(reading ? (reading.initial || 0) : (m.currentCounter || 0)).toLocaleString()}</TableCell>
                                                 <TableCell className="font-mono-tabular text-xs text-slate-300">
