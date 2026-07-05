@@ -34,7 +34,7 @@ export default function MachinesPage() {
     const [currentCounter, setCurrentCounter] = useState('0');
     const [lastServiceCounter, setLastServiceCounter] = useState('0');
     const [preventiveInterval, setPreventiveInterval] = useState('15000');
-    const [status, setStatus] = useState<'Disponible' | 'Alquilada' | 'En Taller' | 'Alerta Técnica'>('Disponible');
+    const [status, setStatus] = useState<'Disponible' | 'Alquilada' | 'En Taller' | 'Alerta Técnica' | 'Inactiva'>('Disponible');
     const [clientId, setClientId] = useState('');
     const [abonoId, setAbonoId] = useState('');
     const [applyIva, setApplyIva] = useState(false);
@@ -227,6 +227,7 @@ export default function MachinesPage() {
                             <TableHeaderCell>Cliente Actual</TableHeaderCell>
                             <TableHeaderCell>Contador Actual</TableHeaderCell>
                             <TableHeaderCell>Mantenimiento Preventivo</TableHeaderCell>
+                            <TableHeaderCell>Disponibilidad</TableHeaderCell>
                             <TableHeaderCell>Estado</TableHeaderCell>
                             <TableHeaderCell className="text-right">Acciones</TableHeaderCell>
                         </TableRow>
@@ -234,7 +235,7 @@ export default function MachinesPage() {
                     <TableBody>
                         {filteredMachines.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={8} className="text-center py-10 text-slate-500 text-xs italic">
+                                <TableCell colSpan={9} className="text-center py-10 text-slate-500 text-xs italic">
                                     No se encontraron equipos registrados.
                                 </TableCell>
                             </TableRow>
@@ -257,28 +258,36 @@ export default function MachinesPage() {
                                             <Badge variant={m.type === 'Color' ? 'info' : 'secondary'}>{m.type}</Badge>
                                         </TableCell>
                                         <TableCell className="text-xs font-semibold text-slate-300">
-                                            {client ? client.name : <span className="text-slate-500 italic">Disponible</span>}
+                                            {client ? client.name : <span className="text-slate-500 italic">Sin cliente</span>}
                                         </TableCell>
                                         <TableCell className="font-mono-tabular text-xs text-slate-300">
                                             {currentCounter.toLocaleString('es-AR')} copias
                                         </TableCell>
                                         <TableCell className="text-xs">
-                                            <div className="flex items-center gap-1.5">
-                                                <span className="font-mono-tabular text-slate-400">
+                                            <div className="space-y-1">
+                                                <div className="font-mono-tabular text-slate-400 text-[11px]">
                                                     {copiesSinceService.toLocaleString('es-AR')} / {preventiveInterval.toLocaleString('es-AR')}
-                                                </span>
-                                                {isPreventiveAlert && (
-                                                    <span title="Mantenimiento preventivo requerido" className="text-amber-500 animate-pulse">
-                                                        <AlertTriangle size={14} />
-                                                    </span>
+                                                </div>
+                                                {isPreventiveAlert ? (
+                                                    <Badge variant="warning" className="flex items-center gap-1 font-bold animate-pulse text-[10px]">
+                                                        <AlertTriangle size={10} /> Mantenimiento Vencido
+                                                    </Badge>
+                                                ) : (
+                                                    <Badge variant="success" className="text-[10px]">Al día</Badge>
                                                 )}
                                             </div>
+                                        </TableCell>
+                                        <TableCell className="text-xs">
+                                            <Badge variant={m.status === 'Disponible' ? 'success' : 'danger'}>
+                                                {m.status === 'Disponible' ? 'Disponible' : 'No disponible'}
+                                            </Badge>
                                         </TableCell>
                                         <TableCell className="text-xs">
                                             <Badge variant={
                                                 m.status === 'Disponible' ? 'success' :
                                                 m.status === 'Alquilada' ? 'secondary' :
-                                                m.status === 'En Taller' ? 'warning' : 'danger'
+                                                m.status === 'En Taller' ? 'warning' :
+                                                m.status === 'Alerta Técnica' ? 'warning' : 'danger'
                                             }>
                                                 {m.status}
                                             </Badge>
@@ -387,11 +396,12 @@ export default function MachinesPage() {
                     />
                     
                     <Select
-                        label="Cliente Asignado"
+                        disabled={status === 'Inactiva' || status === 'En Taller'}
+                        label={status === 'Inactiva' || status === 'En Taller' ? "Cliente Asignado (No disponible por estado operativo)" : "Cliente Asignado"}
                         value={clientId}
                         onChange={(e) => handleClientIdChange(e.target.value)}
                         options={[
-                            { value: '', label: 'Disponible / No alquilada' },
+                            { value: '', label: 'Sin cliente / En Stock' },
                             ...clients.filter(c => c.active !== false).map(c => ({ value: c.id, label: c.name }))
                         ]}
                     />
@@ -472,13 +482,19 @@ export default function MachinesPage() {
                                 <h4 className="text-base font-extrabold text-slate-100">{selectedMachine.brand} {selectedMachine.model}</h4>
                                 <span className="text-xs text-slate-400 block mt-1">S/N: {selectedMachine.serial} | Categoría: {selectedMachine.type}</span>
                             </div>
-                            <Badge variant={
-                                selectedMachine.status === 'Disponible' ? 'success' :
-                                selectedMachine.status === 'Alquilada' ? 'secondary' :
-                                selectedMachine.status === 'En Taller' ? 'warning' : 'danger'
-                            }>
-                                {selectedMachine.status}
-                            </Badge>
+                            <div className="flex gap-2">
+                                <Badge variant={selectedMachine.status === 'Disponible' ? 'success' : 'danger'}>
+                                    {selectedMachine.status === 'Disponible' ? 'Disponible' : 'No disponible'}
+                                </Badge>
+                                <Badge variant={
+                                    selectedMachine.status === 'Disponible' ? 'success' :
+                                    selectedMachine.status === 'Alquilada' ? 'secondary' :
+                                    selectedMachine.status === 'En Taller' ? 'warning' :
+                                    selectedMachine.status === 'Alerta Técnica' ? 'warning' : 'danger'
+                                }>
+                                    {selectedMachine.status}
+                                </Badge>
+                            </div>
                         </div>
 
                         {/* Nav tabs */}

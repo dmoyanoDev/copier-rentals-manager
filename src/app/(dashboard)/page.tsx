@@ -3,12 +3,13 @@
 import React from 'react';
 import { useManagement } from '@/lib/context';
 import { Card, CardContent } from '@/components/ui/card';
-import { formatCurrency, formatPeriod, isTicketOverdue } from '@/lib/utils';
+import { formatCurrency, formatPeriod, isTicketOverdue, getSystemAlerts, SystemAlert } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { AlertCircle } from 'lucide-react';
 
 export default function DashboardPage() {
-    const { clients, machines, readings, tickets, currentUser, users, currentMonth, rentals, abonos } = useManagement();
+    const { clients, machines, readings, tickets, currentUser, users, currentMonth, rentals, abonos, gestiones, cobranzaConfig } = useManagement();
 
     const isTech = currentUser?.role === 'tecnico';
 
@@ -151,10 +152,16 @@ export default function DashboardPage() {
     });
     const criticalMachinesList = Object.values(criticalMachinesMap).filter(item => item.count > 1);
 
-    // Helper functions
-    function mockAbonosFind(abonoId: string | null) {
-        return abonos.find(a => a.id === abonoId);
-    }
+    const alerts = getSystemAlerts(clients, readings, machines, gestiones || [], cobranzaConfig || {
+        diasAvisoVencimiento: 3,
+        montoMinimoAlerta: 50000,
+        diasMoraCritica: 15,
+        plantillaEmail: '',
+        plantillaWhatsapp: '',
+        sonidosActivos: true,
+        volumenSonidos: 50,
+        autoAlertasActivas: true
+    });
 
     return (
         <div className="space-y-6 animate-fade-in">
@@ -403,6 +410,51 @@ export default function DashboardPage() {
                             </CardContent>
                         </Card>
                     </div>
+
+                    {/* Centro de Alertas de Cobranzas */}
+                    {alerts.length > 0 && (
+                        <Card className="border border-slate-800 bg-slate-900/10">
+                            <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950/40">
+                                <div className="flex items-center gap-2">
+                                    <AlertCircle className="text-amber-500 animate-pulse" size={16} />
+                                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">Centro de Alertas de Cobranzas</h3>
+                                </div>
+                                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-amber-500/10 text-amber-400">
+                                    {alerts.length} alertas activas
+                                </span>
+                            </div>
+                            <CardContent className="p-4 max-h-[220px] overflow-y-auto space-y-2">
+                                {alerts.map(a => {
+                                    const badgeStyles = {
+                                        crit: 'bg-red-955/20 text-red-400 border-red-900/30',
+                                        imp: 'bg-amber-955/25 text-amber-400 border-amber-900/50',
+                                        prev: 'bg-blue-950/40 text-blue-400 border-blue-900/50',
+                                        info: 'bg-emerald-950/40 text-emerald-400 border-emerald-900/50'
+                                    };
+                                    return (
+                                        <div key={a.id} className="p-2.5 border border-slate-850 rounded-xl flex items-center justify-between text-xs hover:bg-slate-900/20 gap-3">
+                                            <div className="flex items-start gap-2.5 flex-1">
+                                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase border ${badgeStyles[a.tipo]}`}>
+                                                    {a.tipo === 'crit' ? 'CRÍTICO' : a.tipo === 'imp' ? 'IMPORTANTE' : a.tipo === 'prev' ? 'PREVENTIVO' : 'INFO'}
+                                                </span>
+                                                <div>
+                                                    <span className="font-bold text-slate-100 block">{a.titulo} - {a.clientName}</span>
+                                                    <p className="text-[11px] text-slate-400 mt-0.5">{a.descripcion}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-1.5">
+                                                <Link href="/clientes">
+                                                    <Button variant="ghost" size="sm" className="h-7 text-[10px] px-2 text-indigo-400 hover:bg-indigo-950/20">
+                                                        Gestionar
+                                                    </Button>
+                                                </Link>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </CardContent>
+                        </Card>
+                    )}
 
                     {/* Active technical support tickets */}
                     <Card>

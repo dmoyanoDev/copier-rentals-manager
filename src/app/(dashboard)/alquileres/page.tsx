@@ -57,8 +57,8 @@ export default function RentalsPage() {
     const [showChangePlanModal, setShowChangePlanModal] = useState(false);
     const [selectedNewPlanId, setSelectedNewPlanId] = useState('');
 
-    // Available and rented machines filter
-    const availableMachines = machines.filter(m => m.clientId === null);
+    // Available and rented machines filter (only allow 'Disponible' status)
+    const availableMachines = machines.filter(m => m.status === 'Disponible' && m.clientId === null);
 
     const addTimelineLog = (r: Rental, action: string) => {
         const dateStr = new Date().toISOString().split('T')[0];
