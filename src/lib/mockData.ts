@@ -53,13 +53,17 @@ export interface Ticket {
     machineId: string | null;
     clientId: string | null;
     clientName: string;
+    clientAddress?: string;
+    clientPhone?: string;
+    clientEmail?: string;
+    clientContact?: string;
     machineDesc: string;
     serialNumber: string;
     clientType: 'existente' | 'externo';
     date: string; // YYYY-MM-DD
     time: string;
-    priority: 'alta' | 'media' | 'baja';
-    status: 'nuevo' | 'asignado' | 'en-proceso' | 'esperando-repuesto' | 'pendiente-cliente' | 'resuelto' | 'cerrado';
+    priority: 'baja' | 'media' | 'alta' | 'urgente';
+    status: 'nuevo' | 'asignado' | 'en-camino' | 'en-proceso' | 'esperando-repuesto' | 'resuelto' | 'cerrado';
     category: string;
     description: string;
     diagnostic: string;
@@ -68,7 +72,10 @@ export interface Ticket {
     partsUsed: string;
     internalNotes: string;
     assignedTechId: string | null;
+    technicalCost?: number;
+    observations?: string;
     slaDate: string;
+    resolvedAt?: number;
     closedAt?: number;
     createdAt?: number;
     history?: {
@@ -130,6 +137,10 @@ export const mockTickets: Ticket[] = [
         machineId: 'm-3',
         clientId: 'c-3',
         clientName: 'Colegio San Martín',
+        clientAddress: 'Av. Santa Fe 3400, Palermo, CABA',
+        clientPhone: '11-4821-3030',
+        clientEmail: 'administracion@colegiosanmartin.edu.ar',
+        clientContact: 'Secretaría de Rectoría',
         machineDesc: 'Brother MFC-L6900DW',
         serialNumber: 'U64188M7N888',
         clientType: 'existente',
@@ -145,7 +156,7 @@ export const mockTickets: Ticket[] = [
         partsUsed: '',
         internalNotes: 'Tener especial cuidado al desarmar unidad trasera.',
         assignedTechId: 'user-tech1',
-        slaDate: '2026-07-02',
+        slaDate: '2026-07-02T13:30:00.000Z',
         createdAt: Date.now() - 3 * 24 * 60 * 60 * 1000,
         history: [
             { date: '2026-07-01', time: '09:30', action: 'Ticket Creado', user: 'dmoyano' },
@@ -157,6 +168,10 @@ export const mockTickets: Ticket[] = [
         machineId: 'm-4',
         clientId: 'c-2',
         clientName: 'Sanatorio Güemes - Adm.',
+        clientAddress: 'Francisco Acuña de Figueroa 1240, CABA',
+        clientPhone: '11-4959-8200',
+        clientEmail: 'compras@sg.com.ar',
+        clientContact: 'Mantenimiento General',
         machineDesc: 'Konica Minolta bizhub C250i',
         serialNumber: 'AAV12300456',
         clientType: 'existente',
@@ -172,7 +187,7 @@ export const mockTickets: Ticket[] = [
         partsUsed: 'Kit de limpieza estándar',
         internalNotes: 'Se recomendó cambiar el tambor magenta en la próxima visita.',
         assignedTechId: 'user-tech2',
-        slaDate: '2026-07-05',
+        slaDate: '2026-07-05T14:20:00.000Z',
         createdAt: Date.now() - 24 * 60 * 60 * 1000,
         history: [
             { date: '2026-07-03', time: '14:20', action: 'Ticket Creado', user: 'dmoyano' },
