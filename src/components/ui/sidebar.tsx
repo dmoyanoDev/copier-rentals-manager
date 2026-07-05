@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useManagement } from '@/lib/context';
@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 export const Sidebar: React.FC = () => {
     const pathname = usePathname();
     const { currentUser, setCurrentUser, users } = useManagement();
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
     const menuItems = [
         {
@@ -126,13 +127,15 @@ export const Sidebar: React.FC = () => {
 
     return (
         <>
-            {/* Desktop Sidebar */}
-            <aside className="hidden lg:flex flex-col w-64 bg-slate-900 text-slate-300 border-r border-slate-800 h-screen fixed left-0 top-0 z-40">
+            {/* Desktop Sidebar (md breakpoint and up: width 768px+) */}
+            <aside className="hidden md:flex flex-col w-64 bg-slate-900 text-slate-300 border-r border-slate-800 h-screen fixed left-0 top-0 z-40">
                 <div className="h-16 flex items-center gap-3 px-6 border-b border-slate-800">
-                    <img src="/logo.png" alt="M&S Logo" className="w-8 h-8 object-contain rounded" />
+                    <div className="w-8 h-8 bg-indigo-650 rounded flex items-center justify-center font-extrabold text-white text-sm shadow-md">
+                        M&S
+                    </div>
                     <div>
-                        <span className="font-semibold text-white tracking-wide block text-xs">M&S Tecnología Digital</span>
-                        <span className="text-[9px] text-slate-500 font-medium block">Creador: David Moyano</span>
+                        <span className="font-bold text-white tracking-wide block text-xs">M&S Tecnología Digital</span>
+                        <span className="text-[9px] text-slate-500 font-medium block">CopyRent Manager</span>
                     </div>
                 </div>
 
@@ -164,7 +167,7 @@ export const Sidebar: React.FC = () => {
                         className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-slate-800/40 transition-colors text-left group"
                     >
                         <div className="w-9 h-9 rounded-lg bg-indigo-600/20 text-indigo-400 flex items-center justify-center font-bold text-sm border border-indigo-500/20 group-hover:scale-105 transition-transform">
-                            {currentUser?.fullname ? currentUser.fullname.split(' ').map(n => n[0]).join('') : ''}
+                            {currentUser?.fullname ? currentUser.fullname.split(' ').map(n => n[0]).join('') : 'U'}
                         </div>
                         <div className="flex-1 min-w-0">
                             <span className="block text-xs font-semibold text-slate-200 truncate leading-none">
@@ -181,43 +184,133 @@ export const Sidebar: React.FC = () => {
                 </div>
             </aside>
 
-            {/* Mobile / Tablet Bottom Bar (<1024px) */}
-            <aside className="lg:hidden fixed bottom-0 left-0 right-0 h-16 bg-slate-900 border-t border-slate-800 z-40 flex items-center justify-around px-2 shadow-2xl">
-                {menuItems.map(item => {
-                    const active = pathname === item.href;
-                    return (
-                        <Link
-                            key={item.href}
-                            href={item.href}
-                            className={cn(
-                                "flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-xl transition-all",
-                                active
-                                    ? "text-indigo-400 bg-indigo-950/30 font-semibold"
-                                    : "text-slate-400"
-                            )}
-                        >
-                            <div className={cn("w-5 h-5", active ? "text-indigo-400" : "text-slate-400")}>
-                                {item.icon}
-                            </div>
-                            <span className="text-[9px] font-medium tracking-tight whitespace-nowrap">
-                                {item.label.split(' ')[0]}
-                            </span>
-                        </Link>
-                    );
-                })}
-                {/* Mobile Quick Profile Cycle */}
+            {/* Mobile Bottom Bar (screens < 768px: iPhone, Z Fold folded) */}
+            <aside className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-slate-900 border-t border-slate-800 z-40 flex items-center justify-around px-2 shadow-2xl">
+                {/* 1. Panel de Control */}
+                <Link
+                    href="/"
+                    className={cn(
+                        "flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-xl transition-all",
+                        pathname === '/' ? "text-indigo-400 bg-indigo-950/30 font-semibold" : "text-slate-400"
+                    )}
+                >
+                    <div className="w-5 h-5">
+                        {menuItems[0].icon}
+                    </div>
+                    <span className="text-[9px] font-medium tracking-tight">Inicio</span>
+                </Link>
+
+                {/* 2. Área Técnica */}
+                <Link
+                    href="/tecnica"
+                    className={cn(
+                        "flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-xl transition-all",
+                        pathname === '/tecnica' ? "text-indigo-400 bg-indigo-950/30 font-semibold" : "text-slate-400"
+                    )}
+                >
+                    <div className="w-5 h-5">
+                        {menuItems[8].icon}
+                    </div>
+                    <span className="text-[9px] font-medium tracking-tight">Técnica</span>
+                </Link>
+
+                {/* 3. Alquileres */}
+                <Link
+                    href="/alquileres"
+                    className={cn(
+                        "flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-xl transition-all",
+                        pathname === '/alquileres' ? "text-indigo-400 bg-indigo-950/30 font-semibold" : "text-slate-400"
+                    )}
+                >
+                    <div className="w-5 h-5">
+                        {menuItems[1].icon}
+                    </div>
+                    <span className="text-[9px] font-medium tracking-tight">Alquileres</span>
+                </Link>
+
+                {/* 4. Menú Más (Abre el Drawer) */}
                 <button
-                    onClick={cycleUser}
+                    onClick={() => setIsMobileMenuOpen(true)}
                     className="flex flex-col items-center justify-center gap-1 py-1.5 px-3 text-slate-400"
                 >
-                    <div className="w-5 h-5 rounded bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center">
-                        {currentUser?.fullname ? currentUser.fullname.split(' ').map(n => n[0]).join('') : ''}
-                    </div>
-                    <span className="text-[9px] font-medium tracking-tight whitespace-nowrap capitalize">
-                        {currentUser?.role ? currentUser.role.slice(0, 4) : ''}.
-                    </span>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                    <span className="text-[9px] font-medium tracking-tight">Menú</span>
                 </button>
             </aside>
+
+            {/* Mobile Glassmorphic Drawer Menu overlay */}
+            {isMobileMenuOpen && (
+                <div className="fixed inset-0 z-50 flex flex-col bg-slate-950/90 backdrop-blur-md animate-fade-in md:hidden">
+                    {/* Drawer Header */}
+                    <div className="h-16 flex items-center justify-between px-6 border-b border-slate-850">
+                        <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 bg-indigo-650 rounded flex items-center justify-center font-extrabold text-white text-xs">
+                                M&S
+                            </div>
+                            <span className="font-bold text-white text-xs">Navegación</span>
+                        </div>
+                        <button 
+                            className="text-slate-400 hover:text-white p-2"
+                            onClick={() => setIsMobileMenuOpen(false)}
+                        >
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    {/* Drawer List */}
+                    <div className="flex-1 overflow-y-auto px-6 py-6 space-y-2">
+                        {menuItems.map(item => {
+                            const active = pathname === item.href;
+                            return (
+                                <Link
+                                    key={item.href}
+                                    href={item.href}
+                                    onClick={() => setIsMobileMenuOpen(false)}
+                                    className={cn(
+                                        "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-150",
+                                        active
+                                            ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10"
+                                            : "hover:bg-slate-800/60 hover:text-slate-100 text-slate-400"
+                                    )}
+                                >
+                                    {item.icon}
+                                    <span>{item.label}</span>
+                                </Link>
+                            );
+                        })}
+                    </div>
+
+                    {/* Drawer User profile */}
+                    <div className="p-6 border-t border-slate-850 bg-slate-950/40 mb-16">
+                        <button
+                            onClick={() => {
+                                cycleUser();
+                                setIsMobileMenuOpen(false);
+                            }}
+                            className="w-full flex items-center gap-3 p-3 rounded-xl bg-slate-900 border border-slate-800 text-left"
+                        >
+                            <div className="w-8 h-8 rounded bg-indigo-650 text-white font-bold text-xs flex items-center justify-center">
+                                {currentUser?.fullname ? currentUser.fullname.split(' ').map(n => n[0]).join('') : 'U'}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <span className="block text-xs font-semibold text-slate-200 truncate">
+                                    {currentUser?.fullname}
+                                </span>
+                                <span className="block text-[9px] text-slate-500 mt-0.5 capitalize">
+                                    Cambiar Operario (Rol: {currentUser?.role})
+                                </span>
+                            </div>
+                            <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            )}
         </>
     );
 };

@@ -11,12 +11,12 @@ export default function DashboardLayout({
 }) {
   return (
     <ManagementProvider>
-      <div className="min-h-screen flex flex-col lg:flex-row">
+      <div className="min-h-screen flex flex-col md:flex-row">
         {/* Responsive Sidebar component */}
         <Sidebar />
 
         {/* Main Content Workspace */}
-        <div className="flex-1 flex flex-col min-w-0 lg:pl-64 pb-16 lg:pb-0">
+        <div className="flex-1 flex flex-col min-w-0 md:pl-64 pb-16 md:pb-0">
           {/* Main Topbar Header */}
           <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-6 py-5 border-b border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-900/40 backdrop-blur-md sticky top-0 z-30">
             <div>
