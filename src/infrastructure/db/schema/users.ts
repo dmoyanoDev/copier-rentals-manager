@@ -7,6 +7,14 @@ export const users = sqliteTable('users', {
   email: text('email').unique().notNull(),
   passwordHash: text('password_hash').notNull(),
   role: text('role').default('administrativo').notNull(), // 'admin', 'tecnico', 'administrativo'
+  phone: text('phone'),
+  whatsapp: text('whatsapp'),
+  zone: text('zone'),
+  specialty: text('specialty'),
+  availability: text('availability').default('Disponible').notNull(), // Disponible, No disponible, Licencia
+  active: integer('active').default(1).notNull(), // 1 = Activo, 0 = Inactivo
+  workHours: text('work_hours'),
+  internalNotes: text('internal_notes'),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
 });

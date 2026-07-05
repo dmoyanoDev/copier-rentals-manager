@@ -12,24 +12,54 @@ import { Ticket, User } from '@/lib/mockData';
 import { 
     Plus, Edit, User as UserIcon, Calendar, Settings, AlertTriangle, 
     Search, Filter, Shield, Wrench, X, Clock, DollarSign, Activity, 
-    CheckCircle, HelpCircle, Check, ArrowRight, Phone, Mail, MapPin
+    CheckCircle, HelpCircle, Check, ArrowRight, Phone, Mail, MapPin, 
+    Users, Bell, History, CheckSquare, Eye, RefreshCw
 } from 'lucide-react';
 
 export default function TechnicalPage() {
-    const { tickets, setTickets, currentUser, users, clients, machines } = useManagement();
+    const { tickets, setTickets, currentUser, users, setUsers, clients, machines } = useManagement();
+    const isTech = currentUser?.role === 'tecnico';
+    
+    // Core Navigation Tabs: 'bitacora' | 'tecnicos' | 'config' | 'historial_envios'
+    const [currentTab, setCurrentTab] = useState<'bitacora' | 'tecnicos' | 'config' | 'historial_envios'>('bitacora');
+    
+    // Selected states
     const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
+    const [selectedTech, setSelectedTech] = useState<User | null>(null);
     const [isCreating, setIsCreating] = useState(false);
-    const [isTechListOpen, setIsTechListOpen] = useState(false);
+    
+    // Notification log audit logs state
+    const [notificationLogs, setNotificationLogs] = useState<any[]>([]);
+    const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+    const [viewedLogMsg, setViewedLogMsg] = useState<string | null>(null);
 
-    // Filter states
+    // Notification config state
+    const [configWhatsappEnabled, setConfigWhatsappEnabled] = useState(true);
+    const [configEmailEnabled, setConfigEmailEnabled] = useState(true);
+    const [configEvents, setConfigEvents] = useState<Record<string, boolean>>({});
+    const [configTemplates, setConfigTemplates] = useState<Record<string, string>>({});
+    const [isSavingConfig, setIsSavingConfig] = useState(false);
+
+    // Filter states for tickets bitacora
     const [searchQuery, setSearchQuery] = useState('');
     const [filterTech, setFilterTech] = useState('');
     const [filterPriority, setFilterPriority] = useState('');
     const [filterStatus, setFilterStatus] = useState('');
-    const [filterSla, setFilterSla] = useState(''); // 'vencido' | 'por_vencer' | 'ok'
-    const [activeTab, setActiveTab] = useState<string>('todos'); // KPI category filter
+    const [filterSla, setFilterSla] = useState(''); 
+    const [activeKpiTab, setActiveKpiTab] = useState<string>('todos');
 
-    // Edit Form temporary states (for detail drawer)
+    // Filter states for technicians
+    const [searchTechQuery, setSearchTechQuery] = useState('');
+    const [filterTechActive, setFilterTechActive] = useState('');
+    const [filterTechZone, setFilterTechZone] = useState('');
+    const [filterTechSpecialty, setFilterTechSpecialty] = useState('');
+
+    // Filter states for notifications history
+    const [searchLogQuery, setSearchLogQuery] = useState('');
+    const [filterLogChannel, setFilterLogChannel] = useState('');
+    const [filterLogStatus, setFilterLogStatus] = useState('');
+
+    // Edit Form temporary states (for ticket detail drawer)
     const [editStatus, setEditStatus] = useState<Ticket['status']>('nuevo');
     const [editDiagnostic, setEditDiagnostic] = useState('');
     const [editActionTaken, setEditActionTaken] = useState('');
@@ -42,8 +72,6 @@ export default function TechnicalPage() {
     // Creation Form states
     const [newClientType, setNewClientType] = useState<'existente' | 'externo'>('existente');
     const [newClientId, setNewClientId] = useState('');
-    
-    // Externo client manual inputs
     const [newClientName, setNewClientName] = useState('');
     const [newClientAddress, setNewClientAddress] = useState('');
     const [newClientPhone, setNewClientPhone] = useState('');
@@ -51,14 +79,28 @@ export default function TechnicalPage() {
     const [newClientContact, setNewClientContact] = useState('');
     const [newMachineDesc, setNewMachineDesc] = useState('');
     const [newSerialNumber, setNewSerialNumber] = useState('');
-
     const [newMachineId, setNewMachineId] = useState('');
     const [newCategory, setNewCategory] = useState('Servicio');
     const [newPriority, setNewPriority] = useState<'baja' | 'media' | 'alta' | 'urgente'>('media');
     const [newDescription, setNewDescription] = useState('');
     const [newAssignedTechId, setNewAssignedTechId] = useState('');
 
-    // Load URL ticket query if any
+    // Technician Form modal states
+    const [isTechFormOpen, setIsTechFormOpen] = useState(false);
+    const [editingTech, setEditingTech] = useState<User | null>(null);
+    const [formTechFullname, setFormTechFullname] = useState('');
+    const [formTechUsername, setFormTechUsername] = useState('');
+    const [formTechEmail, setFormTechEmail] = useState('');
+    const [formTechPhone, setFormTechPhone] = useState('');
+    const [formTechWhatsapp, setFormTechWhatsapp] = useState('');
+    const [formTechZone, setFormTechZone] = useState('');
+    const [formTechSpecialty, setFormTechSpecialty] = useState('');
+    const [formTechAvailability, setFormTechAvailability] = useState<'Disponible' | 'No disponible' | 'Licencia'>('Disponible');
+    const [formTechActive, setFormTechActive] = useState(true);
+    const [formTechWorkHours, setFormTechWorkHours] = useState('08:00 a 17:00 hs');
+    const [formTechInternalNotes, setFormTechInternalNotes] = useState('');
+
+    // Load URL ticket query on startup
     useEffect(() => {
         if (typeof window !== 'undefined') {
             const params = new URLSearchParams(window.location.search);
@@ -70,20 +112,76 @@ export default function TechnicalPage() {
         }
     }, [tickets]);
 
-    // SLA automatic calculation based on priority
+    // Fetch notifications config and logs
+    useEffect(() => {
+        fetchSettings();
+        fetchLogs();
+    }, []);
+
+    const fetchSettings = async () => {
+        try {
+            const res = await fetch('/api/tickets/settings');
+            const data = await res.json();
+            setConfigWhatsappEnabled(data.whatsappEnabled);
+            setConfigEmailEnabled(data.emailEnabled);
+            setConfigEvents(data.eventsConfig || {});
+            setConfigTemplates(data.templatesConfig || {});
+        } catch (e) {
+            console.error('Error fetching settings:', e);
+        }
+    };
+
+    const fetchLogs = async () => {
+        setIsLoadingLogs(true);
+        try {
+            const res = await fetch('/api/tickets/history');
+            const data = await res.json();
+            setNotificationLogs(data);
+        } catch (e) {
+            console.error('Error fetching logs:', e);
+        } finally {
+            setIsLoadingLogs(false);
+        }
+    };
+
+    const saveSettings = async () => {
+        setIsSavingConfig(true);
+        try {
+            const res = await fetch('/api/tickets/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    whatsappEnabled: configWhatsappEnabled,
+                    emailEnabled: configEmailEnabled,
+                    eventsConfig: configEvents,
+                    templatesConfig: configTemplates
+                })
+            });
+            if (res.ok) {
+                alert('¡Configuración de notificaciones guardada de forma segura!');
+            }
+        } catch (e) {
+            console.error('Error saving settings:', e);
+            alert('Error al guardar la configuración.');
+        } finally {
+            setIsSavingConfig(false);
+        }
+    };
+
+    // Calculate SLA dates dynamically
     const calculateSlaDate = (priority: 'baja' | 'media' | 'alta' | 'urgente'): Date => {
         const now = new Date();
         if (priority === 'urgente' || priority === 'alta') {
-            now.setHours(now.getHours() + 4); // 4 horas
+            now.setHours(now.getHours() + 4);
         } else if (priority === 'media') {
-            now.setDate(now.getDate() + 1); // 24 horas
+            now.setDate(now.getDate() + 1);
         } else {
-            now.setDate(now.getDate() + 2); // 48 horas
+            now.setDate(now.getDate() + 2);
         }
         return now;
     };
 
-    // Helper to calculate SLA label and status
+    // Parse SLA limit remaining time
     const getSlaStatus = (slaDateStr: string, status: string) => {
         if (status === 'resuelto' || status === 'cerrado') {
             return { text: 'Cumplido', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', status: 'ok' };
@@ -109,7 +207,7 @@ export default function TechnicalPage() {
         };
     };
 
-    // Client-side helper to post notification request to backend
+    // Client-side call to Next.js API route to post notification
     const notifyTech = async (event: string, ticket: Ticket, tech: User) => {
         try {
             const response = await fetch('/api/tickets/notify', {
@@ -118,14 +216,42 @@ export default function TechnicalPage() {
                 body: JSON.stringify({ event, ticket, tech }),
             });
             const data = await response.json();
-            return data.result?.logAction || `Notificación enviada por el evento: ${event}`;
+            fetchLogs(); // refresh audit history table
+            return data.result?.logAction || `Notificación enviada por evento: ${event}`;
         } catch (e) {
-            console.error('Error al enviar la notificación técnica:', e);
+            console.error('Error dispatching notify API:', e);
             return `Aviso técnico fallido para el evento: ${event}`;
         }
     };
 
-    // Select ticket for detail drawer
+    // Trigger manual resend from frontend
+    const handleManualResendNotification = async (event: string) => {
+        if (!selectedTicket) return;
+        const tech = users.find(u => u.id === selectedTicket.assignedTechId);
+        if (!tech) {
+            alert('¡Atención! Asigne un técnico al ticket para poder reenviar la alerta.');
+            return;
+        }
+
+        const logMsg = await notifyTech(event, selectedTicket, tech);
+        const updatedHistory = [...(selectedTicket.history || []), {
+            date: new Date().toISOString().split('T')[0],
+            time: new Date().toLocaleTimeString('es-AR').slice(0, 5),
+            action: `[Reenvío Manual] ${logMsg}`,
+            user: currentUser?.fullname || 'Administración'
+        }];
+
+        const updated: Ticket = {
+            ...selectedTicket,
+            history: updatedHistory
+        };
+
+        setTickets(prev => prev.map(t => t.id === selectedTicket.id ? updated : t));
+        setSelectedTicket(updated);
+        alert('¡Alerta de aviso reenviada exitosamente!');
+    };
+
+    // Detail drawer open
     const handleOpenDetail = (t: Ticket) => {
         setSelectedTicket(t);
         setEditStatus(t.status);
@@ -138,13 +264,13 @@ export default function TechnicalPage() {
         setEditObservations(t.observations || '');
     };
 
-    // Handle saving ticket changes from the details sidebar
+    // Save ticket details inside Drawer
     const handleSaveTicketDetails = async () => {
         if (!selectedTicket) return;
 
-        // 1. VALIDACIÓN: Obligatorio técnico si el estado es diferente de 'nuevo'
+        // 1. VALIDACIÓN OBLIGATORIA: Si no es nuevo, requiere técnico
         if (editStatus !== 'nuevo' && !editAssignedTechId) {
-            alert('¡Atención! Para cambiar el estado del ticket a uno diferente de "Nuevo", debe asignar un técnico responsable.');
+            alert('¡Atención! Para actualizar el ticket a un estado diferente de "Nuevo" (Triage inicial), debe asignar obligatoriamente un técnico responsable.');
             return;
         }
 
@@ -152,8 +278,6 @@ export default function TechnicalPage() {
         const originalTech = users.find(u => u.id === selectedTicket.assignedTechId);
         
         let newHistory = [...(selectedTicket.history || [])];
-
-        // Reglas de historial y notificaciones
         let notificationPromise: Promise<string> | null = null;
 
         // A. Cambio de estado
@@ -165,15 +289,16 @@ export default function TechnicalPage() {
                 user: currentUser?.fullname || 'Sistema'
             });
 
-            // Disparar alertas de estado (esperando repuesto o resuelto)
             if (editStatus === 'esperando-repuesto' && currentTech) {
                 notificationPromise = notifyTech('esperando_repuesto', selectedTicket, currentTech);
             } else if (editStatus === 'resuelto' && currentTech) {
                 notificationPromise = notifyTech('resuelto', selectedTicket, currentTech);
+            } else if (editStatus === 'cerrado' && currentTech) {
+                notificationPromise = notifyTech('cerrado', selectedTicket, currentTech);
             }
         }
 
-        // B. Asignación / Reasignación de técnico
+        // B. Reasignación / Asignación
         if (selectedTicket.assignedTechId !== editAssignedTechId && editAssignedTechId) {
             const actionText = originalTech 
                 ? `Reasignado de ${originalTech.fullname} a ${currentTech?.fullname}`
@@ -195,7 +320,6 @@ export default function TechnicalPage() {
         const isResolvedState = editStatus === 'resuelto';
         const isClosedState = editStatus === 'cerrado';
 
-        // Estructurar ticket actualizado
         const updated: Ticket = {
             ...selectedTicket,
             status: editStatus,
@@ -211,7 +335,6 @@ export default function TechnicalPage() {
             closedAt: isClosedState ? Date.now() : selectedTicket.closedAt
         };
 
-        // Si se disparó una notificación en el backend, esperar su resultado para ingresarlo en el historial
         if (notificationPromise) {
             const logActionText = await notificationPromise;
             updated.history?.push({
@@ -224,10 +347,10 @@ export default function TechnicalPage() {
 
         setTickets(prev => prev.map(t => t.id === selectedTicket.id ? updated : t));
         setSelectedTicket(updated);
-        alert('¡Ticket técnico guardado y actualizado con éxito!');
+        alert('¡Ficha del ticket técnico guardada correctamente!');
     };
 
-    // Open creation modal
+    // Open create ticket form modal
     const handleOpenCreate = () => {
         setNewClientType('existente');
         setNewClientId('');
@@ -246,7 +369,7 @@ export default function TechnicalPage() {
         setIsCreating(true);
     };
 
-    // Handle ticket creation logic
+    // Create support ticket
     const handleCreateTicket = async (e: React.FormEvent) => {
         e.preventDefault();
         
@@ -263,7 +386,7 @@ export default function TechnicalPage() {
             const machine = machines.find(m => m.id === newMachineId);
 
             if (!client || !machine) {
-                alert('Por favor selecciona un cliente y un equipo del inventario.');
+                alert('Selecciona un cliente y un equipo del sistema.');
                 return;
             }
             clientNameVal = client.name;
@@ -274,9 +397,8 @@ export default function TechnicalPage() {
             machineDescVal = `${machine.brand} ${machine.model}`;
             serialVal = machine.serial;
         } else {
-            // Externo manual fields
             if (!newClientName || !newMachineDesc) {
-                alert('Por favor ingresa al menos el Nombre del Cliente y la Descripción de la Máquina.');
+                alert('Escribe el Nombre del Cliente y el Modelo de la Máquina.');
                 return;
             }
             clientNameVal = newClientName;
@@ -288,10 +410,8 @@ export default function TechnicalPage() {
             serialVal = newSerialNumber;
         }
 
-        // Calular SLA automáticamente por prioridad
         const computedSla = calculateSlaDate(newPriority);
 
-        // Crear objeto ticket inicial
         const initialTicket: Ticket = {
             id: 'ticket-' + Date.now(),
             machineId: newClientType === 'existente' ? newMachineId : null,
@@ -322,15 +442,13 @@ export default function TechnicalPage() {
                 {
                     date: new Date().toISOString().split('T')[0],
                     time: new Date().toLocaleTimeString('es-AR').slice(0, 5),
-                    action: 'Ticket de soporte técnico registrado en el sistema.',
+                    action: 'Ticket registrado e ingresado al sistema.',
                     user: currentUser?.fullname || 'Sistema'
                 }
             ]
         };
 
         const assignedTech = users.find(u => u.id === newAssignedTechId);
-        
-        // Si tiene técnico asignado desde la creación, añadir log e invocar notificador
         if (assignedTech) {
             initialTicket.history?.push({
                 date: new Date().toISOString().split('T')[0],
@@ -339,7 +457,6 @@ export default function TechnicalPage() {
                 user: currentUser?.fullname || 'Sistema'
             });
 
-            // Disparar notificador
             const logText = await notifyTech('creado', initialTicket, assignedTech);
             initialTicket.history?.push({
                 date: new Date().toISOString().split('T')[0],
@@ -354,7 +471,106 @@ export default function TechnicalPage() {
         handleOpenDetail(initialTicket);
     };
 
-    // KPIs Calculations
+    // Open Technician creation form
+    const handleOpenCreateTech = () => {
+        setEditingTech(null);
+        setFormTechFullname('');
+        setFormTechUsername('');
+        setFormTechEmail('');
+        setFormTechPhone('');
+        setFormTechWhatsapp('');
+        setFormTechZone('');
+        setFormTechSpecialty('');
+        setFormTechAvailability('Disponible');
+        setFormTechActive(true);
+        setFormTechWorkHours('08:00 a 17:00 hs');
+        setFormTechInternalNotes('');
+        setIsTechFormOpen(true);
+    };
+
+    // Open Technician edit form
+    const handleOpenEditTech = (tech: User) => {
+        setEditingTech(tech);
+        setFormTechFullname(tech.fullname);
+        setFormTechUsername(tech.username);
+        setFormTechEmail(tech.email);
+        setFormTechPhone(tech.phone || '');
+        setFormTechWhatsapp(tech.whatsapp || '');
+        setFormTechZone(tech.zone || '');
+        setFormTechSpecialty(tech.specialty || '');
+        setFormTechAvailability(tech.availability || 'Disponible');
+        setFormTechActive(tech.active !== false);
+        setFormTechWorkHours(tech.workHours || '08:00 a 17:00 hs');
+        setFormTechInternalNotes(tech.internalNotes || '');
+        setIsTechFormOpen(true);
+    };
+
+    // Save Technician (Create or Edit)
+    const handleSaveTech = (e: React.FormEvent) => {
+        e.preventDefault();
+        
+        if (!formTechFullname || !formTechEmail || !formTechUsername) {
+            alert('Por favor completa los campos obligatorios: Nombre, Usuario y Email.');
+            return;
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(formTechEmail)) {
+            alert('Por favor ingresa un correo electrónico con formato válido.');
+            return;
+        }
+
+        if (editingTech) {
+            const updated = {
+                ...editingTech,
+                fullname: formTechFullname,
+                username: formTechUsername,
+                email: formTechEmail,
+                phone: formTechPhone,
+                whatsapp: formTechWhatsapp,
+                zone: formTechZone,
+                specialty: formTechSpecialty,
+                availability: formTechAvailability,
+                active: formTechActive,
+                workHours: formTechWorkHours,
+                internalNotes: formTechInternalNotes
+            };
+            setUsers(prev => prev.map(u => u.id === editingTech.id ? updated : u));
+            alert('¡Perfil del técnico actualizado con éxito!');
+        } else {
+            const newTech: User = {
+                id: 'user-tech-' + Date.now(),
+                fullname: formTechFullname,
+                username: formTechUsername,
+                email: formTechEmail,
+                role: 'tecnico',
+                phone: formTechPhone,
+                whatsapp: formTechWhatsapp,
+                zone: formTechZone,
+                specialty: formTechSpecialty,
+                availability: formTechAvailability,
+                active: formTechActive,
+                workHours: formTechWorkHours,
+                internalNotes: formTechInternalNotes
+            };
+            setUsers(prev => [...prev, newTech]);
+            alert('¡Nuevo técnico registrado en el sistema!');
+        }
+        setIsTechFormOpen(false);
+    };
+
+    // Logical delete of technician
+    const handleDeleteTech = (tech: User) => {
+        if (confirm(`¿Estás seguro de que deseas dar de baja al técnico ${tech.fullname}? No se borrará del sistema pero se marcará como Inactivo.`)) {
+            const updated = {
+                ...tech,
+                active: false
+            };
+            setUsers(prev => prev.map(u => u.id === tech.id ? updated : u));
+        }
+    };
+
+    // Dynamic stats calculations
     const totalCount = tickets.length;
     const newCount = tickets.filter(t => t.status === 'nuevo').length;
     const activeCount = tickets.filter(t => ['asignado', 'en-camino', 'en-proceso'].includes(t.status)).length;
@@ -365,9 +581,8 @@ export default function TechnicalPage() {
         return slaState.status === 'vencido' || slaState.status === 'por_vencer';
     }).length;
 
-    // Filters and search logic
+    // Filter tickets
     const filteredTickets = tickets.filter(t => {
-        // Search query
         const query = searchQuery.toLowerCase();
         const matchesQuery = 
             t.clientName.toLowerCase().includes(query) ||
@@ -375,300 +590,805 @@ export default function TechnicalPage() {
             (t.serialNumber && t.serialNumber.toLowerCase().includes(query)) ||
             t.id.toLowerCase().includes(query);
 
-        // Tech filter
         const matchesTech = !filterTech || t.assignedTechId === filterTech;
-
-        // Priority filter
         const matchesPriority = !filterPriority || t.priority === filterPriority;
-
-        // Status filter
         const matchesStatus = !filterStatus || t.status === filterStatus;
 
-        // SLA status filter
         const slaState = getSlaStatus(t.slaDate, t.status);
         const matchesSla = !filterSla || slaState.status === filterSla;
 
-        // KPI active tab filter
         let matchesTab = true;
-        if (activeTab === 'nuevos') matchesTab = t.status === 'nuevo';
-        else if (activeTab === 'activos') matchesTab = ['asignado', 'en-camino', 'en-proceso'].includes(t.status);
-        else if (activeTab === 'esperando') matchesTab = t.status === 'esperando-repuesto';
-        else if (activeTab === 'resueltos') matchesTab = ['resuelto', 'cerrado'].includes(t.status);
-        else if (activeTab === 'criticos') matchesTab = slaState.status === 'vencido' || slaState.status === 'por_vencer';
+        if (activeKpiTab === 'nuevos') matchesTab = t.status === 'nuevo';
+        else if (activeKpiTab === 'activos') matchesTab = ['asignado', 'en-camino', 'en-proceso'].includes(t.status);
+        else if (activeKpiTab === 'esperando') matchesTab = t.status === 'esperando-repuesto';
+        else if (activeKpiTab === 'resueltos') matchesTab = ['resuelto', 'cerrado'].includes(t.status);
+        else if (activeKpiTab === 'criticos') matchesTab = slaState.status === 'vencido' || slaState.status === 'por_vencer';
 
         return matchesQuery && matchesTech && matchesPriority && matchesStatus && matchesSla && matchesTab;
     });
 
-    const isTech = currentUser?.role === 'tecnico';
+    // Filter technicians
+    const filteredTechs = users.filter(u => {
+        if (u.role !== 'tecnico') return false;
+
+        const query = searchTechQuery.toLowerCase();
+        const matchesQuery = 
+            u.fullname.toLowerCase().includes(query) || 
+            (u.zone && u.zone.toLowerCase().includes(query)) ||
+            (u.specialty && u.specialty.toLowerCase().includes(query));
+
+        const matchesActive = !filterTechActive || 
+            (filterTechActive === 'activo' ? u.active !== false : u.active === false);
+
+        const matchesZone = !filterTechZone || (u.zone && u.zone.toLowerCase().includes(filterTechZone.toLowerCase()));
+        const matchesSpecialty = !filterTechSpecialty || (u.specialty && u.specialty.toLowerCase().includes(filterTechSpecialty.toLowerCase()));
+
+        return matchesQuery && matchesActive && matchesZone && matchesSpecialty;
+    });
+
+    // Filter notification history logs
+    const filteredLogs = notificationLogs.filter(log => {
+        const query = searchLogQuery.toLowerCase();
+        const matchesQuery = 
+            log.ticketId.toLowerCase().includes(query) ||
+            log.recipient.toLowerCase().includes(query) ||
+            log.event.toLowerCase().includes(query);
+
+        const matchesChannel = !filterLogChannel || log.channel === filterLogChannel;
+        const matchesStatus = !filterLogStatus || log.status === filterLogStatus;
+
+        return matchesQuery && matchesChannel && matchesStatus;
+    });
+
+    const getTechWarningInfo = (techId: string | null) => {
+        if (!techId) return null;
+        const tech = users.find(u => u.id === techId);
+        if (!tech) return null;
+
+        const hasEmail = !!tech.email;
+        const hasWhatsapp = !!tech.whatsapp;
+
+        if (!hasEmail && !hasWhatsapp) {
+            return { type: 'critical', text: '🚨 El técnico no tiene email ni WhatsApp configurados. No recibirá notificaciones.' };
+        }
+        if (!hasEmail) {
+            return { type: 'warning', text: '⚠️ Sin email registrado. Recibirá solo WhatsApp (si el canal está habilitado).' };
+        }
+        if (!hasWhatsapp) {
+            return { type: 'warning', text: '⚠️ Sin WhatsApp registrado. Recibirá solo Email (si el canal está habilitado).' };
+        }
+        return { type: 'ok', text: '✓ Canales de notificaciones de WhatsApp e Email listos.' };
+    };
+
+    const techWarn = getTechWarningInfo(editAssignedTechId);
     const clientMachines = machines.filter(m => m.clientId === newClientId);
 
     return (
-        <div className="space-y-6 animate-fade-in relative">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+        <div className="space-y-6 animate-fade-in relative text-slate-100">
+            {/* Header section */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-b border-slate-850 pb-4">
                 <div>
                     <h2 className="text-base font-semibold text-slate-100 uppercase tracking-wider">Módulo de Asistencia Técnica</h2>
-                    <p className="text-[10px] text-slate-400">Seguimiento de incidencias, SLA y despacho técnico de copiadoras M&S.</p>
+                    <p className="text-[10px] text-slate-400">Seguimiento de incidentes, SLAs automáticos, técnicos y notificaciones.</p>
                 </div>
-                {!isTech && (
-                    <Button variant="primary" size="sm" onClick={handleOpenCreate}>
-                        <Plus size={16} className="mr-1.5" /> Abrir Nuevo Ticket
-                    </Button>
-                )}
+                {/* Tab Navigation header */}
+                <div className="flex bg-slate-950 p-1.5 rounded-xl border border-slate-850 gap-1.5 text-xs">
+                    <button 
+                        onClick={() => setCurrentTab('bitacora')}
+                        className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
+                            currentTab === 'bitacora' ? 'bg-indigo-650 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                    >
+                        <CheckSquare size={13} /> Bitácora
+                    </button>
+                    <button 
+                        onClick={() => setCurrentTab('tecnicos')}
+                        className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
+                            currentTab === 'tecnicos' ? 'bg-indigo-650 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                    >
+                        <Users size={13} /> Técnicos
+                    </button>
+                    <button 
+                        onClick={() => setCurrentTab('config')}
+                        className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
+                            currentTab === 'config' ? 'bg-indigo-650 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                    >
+                        <Bell size={13} /> Canales y Avisos
+                    </button>
+                    <button 
+                        onClick={() => setCurrentTab('historial_envios')}
+                        className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
+                            currentTab === 'historial_envios' ? 'bg-indigo-650 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                    >
+                        <History size={13} /> Auditoría Notificaciones
+                    </button>
+                </div>
             </div>
 
-            {/* KPIs Grid Toolbar */}
-            <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 pt-1">
-                <button 
-                    onClick={() => setActiveTab('todos')}
-                    className={`p-3 rounded-xl border text-left transition-all relative ${
-                        activeTab === 'todos' 
-                            ? 'bg-slate-900 border-indigo-500/50 shadow-lg shadow-indigo-950/20' 
-                            : 'bg-slate-950 border-slate-850/60 hover:bg-slate-900/60'
-                    }`}
-                >
-                    <span className="block text-[9px] uppercase font-bold text-slate-450">Total Tickets</span>
-                    <span className="block text-lg font-extrabold text-slate-100 mt-1">{totalCount}</span>
-                </button>
-                <button 
-                    onClick={() => setActiveTab('nuevos')}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                        activeTab === 'nuevos' 
-                            ? 'bg-slate-900 border-violet-500/50 shadow-lg shadow-violet-950/20' 
-                            : 'bg-slate-950 border-slate-850/60 hover:bg-slate-900/60'
-                    }`}
-                >
-                    <span className="block text-[9px] uppercase font-bold text-slate-450">Nuevos (Triage)</span>
-                    <span className="block text-lg font-extrabold text-violet-400 mt-1">{newCount}</span>
-                </button>
-                <button 
-                    onClick={() => setActiveTab('activos')}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                        activeTab === 'activos' 
-                            ? 'bg-slate-900 border-amber-500/50 shadow-lg shadow-amber-950/20' 
-                            : 'bg-slate-950 border-slate-850/60 hover:bg-slate-900/60'
-                    }`}
-                >
-                    <span className="block text-[9px] uppercase font-bold text-slate-450">Activos / En Proceso</span>
-                    <span className="block text-lg font-extrabold text-amber-400 mt-1">{activeCount}</span>
-                </button>
-                <button 
-                    onClick={() => setActiveTab('esperando')}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                        activeTab === 'esperando' 
-                            ? 'bg-slate-900 border-orange-500/50 shadow-lg shadow-orange-950/20' 
-                            : 'bg-slate-950 border-slate-850/60 hover:bg-slate-900/60'
-                    }`}
-                >
-                    <span className="block text-[9px] uppercase font-bold text-slate-450">Esperando Repuesto</span>
-                    <span className="block text-lg font-extrabold text-orange-450 mt-1">{partsWaitCount}</span>
-                </button>
-                <button 
-                    onClick={() => setActiveTab('resueltos')}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                        activeTab === 'resueltos' 
-                            ? 'bg-slate-900 border-emerald-500/50 shadow-lg shadow-emerald-950/20' 
-                            : 'bg-slate-950 border-slate-850/60 hover:bg-slate-900/60'
-                    }`}
-                >
-                    <span className="block text-[9px] uppercase font-bold text-slate-450">Resueltos / Cerrados</span>
-                    <span className="block text-lg font-extrabold text-emerald-450 mt-1">{resolvedCount}</span>
-                </button>
-                <button 
-                    onClick={() => setActiveTab('criticos')}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                        activeTab === 'criticos' 
-                            ? 'bg-slate-900 border-red-500/50 shadow-lg shadow-red-950/20' 
-                            : 'bg-slate-950 border-slate-850/60 hover:bg-slate-900/60'
-                    }`}
-                >
-                    <span className="block text-[9px] uppercase font-bold text-slate-450 flex items-center gap-1">
-                        SLA Críticos {criticalCount > 0 && <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />}
-                    </span>
-                    <span className="block text-lg font-extrabold text-red-500 mt-1">{criticalCount}</span>
-                </button>
-            </div>
-
-            {/* Filters Toolbar */}
-            <div className="p-4 bg-slate-950 border border-slate-850/60 rounded-xl space-y-3">
-                <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
-                    <Filter size={14} /> Filtros de Asistencia
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
-                    <div className="relative">
-                        <span className="absolute inset-y-0 left-3 flex items-center text-slate-500">
-                            <Search size={14} />
-                        </span>
-                        <input
-                            type="text"
-                            placeholder="Buscar cliente, modelo, serie..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                        />
-                    </div>
-                    <select
-                        value={filterTech}
-                        onChange={(e) => setFilterTech(e.target.value)}
-                        className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-350 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    >
-                        <option value="">Técnico Responsable: Todos</option>
-                        {users.filter(u => u.role === 'tecnico').map(u => (
-                            <option key={u.id} value={u.id}>{u.fullname}</option>
-                        ))}
-                    </select>
-                    <select
-                        value={filterPriority}
-                        onChange={(e) => setFilterPriority(e.target.value)}
-                        className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-350 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    >
-                        <option value="">Prioridad: Todas</option>
-                        <option value="baja">Baja</option>
-                        <option value="media">Media</option>
-                        <option value="alta">Alta</option>
-                        <option value="urgente">Urgente</option>
-                    </select>
-                    <select
-                        value={filterStatus}
-                        onChange={(e) => setFilterStatus(e.target.value)}
-                        className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-350 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    >
-                        <option value="">Estado: Todos</option>
-                        <option value="nuevo">Nuevo</option>
-                        <option value="asignado">Asignado</option>
-                        <option value="en-camino">En Camino</option>
-                        <option value="en-proceso">En Proceso</option>
-                        <option value="esperando-repuesto">Esperando Repuesto</option>
-                        <option value="resuelto">Resuelto</option>
-                        <option value="cerrado">Cerrado</option>
-                    </select>
-                    <select
-                        value={filterSla}
-                        onChange={(e) => setFilterSla(e.target.value)}
-                        className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-350 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    >
-                        <option value="">Estado SLA: Todos</option>
-                        <option value="vencido">Vencido</option>
-                        <option value="por_vencer">Por vencer (menor a 4h)</option>
-                        <option value="ok">A tiempo / Cumplido</option>
-                    </select>
-                </div>
-                {(searchQuery || filterTech || filterPriority || filterStatus || filterSla || activeTab !== 'todos') && (
-                    <div className="flex justify-end">
+            {/* ========================================================================= */}
+            {/* TABS 1: TICKETS BITÁCORA */}
+            {/* ========================================================================= */}
+            {currentTab === 'bitacora' && (
+                <div className="space-y-6 animate-fade-in">
+                    {/* KPIs grid */}
+                    <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 pt-1">
                         <button 
-                            onClick={() => {
-                                setSearchQuery('');
-                                setFilterTech('');
-                                setFilterPriority('');
-                                setFilterStatus('');
-                                setFilterSla('');
-                                setActiveTab('todos');
-                            }}
-                            className="text-[10px] text-indigo-400 hover:text-indigo-300 font-semibold"
+                            onClick={() => setActiveKpiTab('todos')}
+                            className={`p-3 rounded-xl border text-left transition-all relative ${
+                                activeKpiTab === 'todos' 
+                                    ? 'bg-slate-900 border-indigo-500/50 shadow-lg shadow-indigo-950/20' 
+                                    : 'bg-slate-950 border-slate-850/60 hover:bg-slate-900/60'
+                            }`}
                         >
-                            Limpiar todos los filtros y pestañas
+                            <span className="block text-[9px] uppercase font-bold text-slate-450">Total Tickets</span>
+                            <span className="block text-lg font-extrabold text-slate-100 mt-1">{totalCount}</span>
+                        </button>
+                        <button 
+                            onClick={() => setActiveKpiTab('nuevos')}
+                            className={`p-3 rounded-xl border text-left transition-all ${
+                                activeKpiTab === 'nuevos' 
+                                    ? 'bg-slate-900 border-violet-500/50 shadow-lg shadow-violet-950/20' 
+                                    : 'bg-slate-950 border-slate-850/60 hover:bg-slate-900/60'
+                            }`}
+                        >
+                            <span className="block text-[9px] uppercase font-bold text-slate-450">Nuevos (Triage)</span>
+                            <span className="block text-lg font-extrabold text-violet-400 mt-1">{newCount}</span>
+                        </button>
+                        <button 
+                            onClick={() => setActiveKpiTab('activos')}
+                            className={`p-3 rounded-xl border text-left transition-all ${
+                                activeKpiTab === 'activos' 
+                                    ? 'bg-slate-900 border-amber-500/50 shadow-lg shadow-amber-950/20' 
+                                    : 'bg-slate-950 border-slate-850/60 hover:bg-slate-900/60'
+                            }`}
+                        >
+                            <span className="block text-[9px] uppercase font-bold text-slate-450">Activos / En Viaje</span>
+                            <span className="block text-lg font-extrabold text-amber-400 mt-1">{activeCount}</span>
+                        </button>
+                        <button 
+                            onClick={() => setActiveKpiTab('esperando')}
+                            className={`p-3 rounded-xl border text-left transition-all ${
+                                activeKpiTab === 'esperando' 
+                                    ? 'bg-slate-900 border-orange-500/50 shadow-lg shadow-orange-950/20' 
+                                    : 'bg-slate-950 border-slate-850/60 hover:bg-slate-900/60'
+                            }`}
+                        >
+                            <span className="block text-[9px] uppercase font-bold text-slate-450">Esperando Repuesto</span>
+                            <span className="block text-lg font-extrabold text-orange-450 mt-1">{partsWaitCount}</span>
+                        </button>
+                        <button 
+                            onClick={() => setActiveKpiTab('resueltos')}
+                            className={`p-3 rounded-xl border text-left transition-all ${
+                                activeKpiTab === 'resueltos' 
+                                    ? 'bg-slate-900 border-emerald-500/50 shadow-lg shadow-emerald-950/20' 
+                                    : 'bg-slate-950 border-slate-850/60 hover:bg-slate-900/60'
+                            }`}
+                        >
+                            <span className="block text-[9px] uppercase font-bold text-slate-455">Resueltos / Cerrados</span>
+                            <span className="block text-lg font-extrabold text-emerald-450 mt-1">{resolvedCount}</span>
+                        </button>
+                        <button 
+                            onClick={() => setActiveKpiTab('criticos')}
+                            className={`p-3 rounded-xl border text-left transition-all ${
+                                activeKpiTab === 'criticos' 
+                                    ? 'bg-slate-900 border-red-500/50 shadow-lg shadow-red-950/20' 
+                                    : 'bg-slate-950 border-slate-850/60 hover:bg-slate-900/60'
+                            }`}
+                        >
+                            <span className="block text-[9px] uppercase font-bold text-slate-450 flex items-center gap-1">
+                                SLA Críticos {criticalCount > 0 && <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />}
+                            </span>
+                            <span className="block text-lg font-extrabold text-red-500 mt-1">{criticalCount}</span>
                         </button>
                     </div>
-                )}
-            </div>
 
-            {/* Main Tickets Table */}
-            <TableContainer>
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHeaderCell>ID / Prioridad</TableHeaderCell>
-                            <TableHeaderCell>Cliente</TableHeaderCell>
-                            <TableHeaderCell>Equipo / Serie</TableHeaderCell>
-                            <TableHeaderCell>Categoría / Falla</TableHeaderCell>
-                            <TableHeaderCell>Técnico</TableHeaderCell>
-                            <TableHeaderCell>Fecha Límite (SLA)</TableHeaderCell>
-                            <TableHeaderCell>Estado</TableHeaderCell>
-                            <TableHeaderCell className="text-right">Acción</TableHeaderCell>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {filteredTickets.length === 0 ? (
-                            <TableRow>
-                                <TableCell colSpan={8} className="text-center py-12 text-slate-500 text-xs italic">
-                                    No se encontraron tickets con los filtros actuales.
-                                </TableCell>
-                            </TableRow>
-                        ) : (
-                            filteredTickets.map(t => {
-                                const tech = users.find(u => u.id === t.assignedTechId);
-                                const sla = getSlaStatus(t.slaDate, t.status);
+                    {/* Filter toolbar */}
+                    <div className="p-4 bg-slate-950 border border-slate-850/60 rounded-xl space-y-3">
+                        <div className="flex justify-between items-center text-xs font-semibold text-slate-400">
+                            <div className="flex items-center gap-2">
+                                <Filter size={14} /> Filtros de Asistencia
+                            </div>
+                            <Button variant="primary" size="sm" onClick={handleOpenCreate}>
+                                <Plus size={14} className="mr-1" /> Nuevo Ticket
+                            </Button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
+                            <div className="relative">
+                                <span className="absolute inset-y-0 left-3 flex items-center text-slate-500">
+                                    <Search size={14} />
+                                </span>
+                                <input
+                                    type="text"
+                                    placeholder="Buscar cliente, modelo, serie..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                />
+                            </div>
+                            <select
+                                value={filterTech}
+                                onChange={(e) => setFilterTech(e.target.value)}
+                                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-350 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            >
+                                <option value="">Técnico Responsable: Todos</option>
+                                {users.filter(u => u.role === 'tecnico').map(u => (
+                                    <option key={u.id} value={u.id}>{u.fullname}</option>
+                                ))}
+                            </select>
+                            <select
+                                value={filterPriority}
+                                onChange={(e) => setFilterPriority(e.target.value)}
+                                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-350 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            >
+                                <option value="">Prioridad: Todas</option>
+                                <option value="baja">Baja</option>
+                                <option value="media">Media</option>
+                                <option value="alta">Alta</option>
+                                <option value="urgente">Urgente</option>
+                            </select>
+                            <select
+                                value={filterStatus}
+                                onChange={(e) => setFilterStatus(e.target.value)}
+                                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-350 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            >
+                                <option value="">Estado: Todos</option>
+                                <option value="nuevo">Nuevo</option>
+                                <option value="asignado">Asignado</option>
+                                <option value="en-camino">En Camino</option>
+                                <option value="en-proceso">En Proceso</option>
+                                <option value="esperando-repuesto">Esperando Repuesto</option>
+                                <option value="resuelto">Resuelto</option>
+                                <option value="cerrado">Cerrado</option>
+                            </select>
+                            <select
+                                value={filterSla}
+                                onChange={(e) => setFilterSla(e.target.value)}
+                                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-350 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            >
+                                <option value="">Estado SLA: Todos</option>
+                                <option value="vencido">Vencido</option>
+                                <option value="por_vencer">Por vencer (menor a 4h)</option>
+                                <option value="ok">A tiempo / Cumplido</option>
+                            </select>
+                        </div>
+                    </div>
 
-                                return (
-                                    <TableRow key={t.id} className="hover:bg-slate-900/45 cursor-pointer transition-colors" onClick={() => handleOpenDetail(t)}>
-                                        <TableCell className="text-xs">
-                                            <span className="block font-mono text-[10px] text-slate-500 mb-1">
-                                                TCK-{t.id.replace('ticket-', '')}
-                                            </span>
-                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-extrabold tracking-wider ${
-                                                t.priority === 'urgente' || t.priority === 'alta' ? 'bg-red-500/10 text-red-500' :
-                                                t.priority === 'media' ? 'bg-amber-500/10 text-amber-500' :
-                                                'bg-emerald-500/10 text-emerald-500'
-                                            }`}>
-                                                {t.priority.toUpperCase()}
-                                            </span>
-                                        </TableCell>
-                                        <TableCell className="font-bold text-slate-100 max-w-[160px] truncate">
-                                            {t.clientName}
-                                        </TableCell>
-                                        <TableCell className="text-xs text-slate-350">
-                                            <strong>{t.machineDesc}</strong>
-                                            <span className="block text-slate-500 text-[10px] font-mono mt-0.5">{t.serialNumber || 'Sin Nro Serie'}</span>
-                                        </TableCell>
-                                        <TableCell className="text-xs text-slate-350 max-w-[180px] truncate">
-                                            <span className="font-bold text-indigo-400 block text-[10px]">{t.category}</span>
-                                            <span className="text-slate-400 block mt-0.5">{t.description}</span>
-                                        </TableCell>
-                                        <TableCell className="text-xs">
-                                            {tech ? (
-                                                <div className="flex items-center gap-1.5">
-                                                    <div className="w-5 h-5 rounded-full bg-slate-800 text-[9px] font-bold text-indigo-450 flex items-center justify-center border border-slate-700">
-                                                        {tech.fullname.split(' ').map(n => n[0]).join('')}
-                                                    </div>
-                                                    <span className="text-slate-300 font-semibold">{tech.fullname}</span>
-                                                </div>
-                                            ) : (
-                                                <span className="text-slate-500 italic">Sin asignar</span>
-                                            )}
-                                        </TableCell>
-                                        <TableCell className="text-xs">
-                                            <span className={`px-2 py-0.5 rounded-xl border text-[9px] font-semibold ${sla.color}`}>
-                                                {sla.text}
-                                            </span>
-                                        </TableCell>
-                                        <TableCell className="text-xs">
-                                            <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${
-                                                t.status === 'nuevo' ? 'bg-indigo-950/60 text-indigo-400 border border-indigo-900/50' :
-                                                t.status === 'asignado' ? 'bg-blue-950/60 text-blue-400 border border-blue-900/50' :
-                                                t.status === 'en-camino' ? 'bg-cyan-950/60 text-cyan-400 border border-cyan-900/50' :
-                                                t.status === 'en-proceso' ? 'bg-amber-950/60 text-amber-400 border border-amber-900/50' :
-                                                t.status === 'esperando-repuesto' ? 'bg-orange-950/60 text-orange-400 border border-orange-900/50' :
-                                                t.status === 'resuelto' ? 'bg-emerald-950/60 text-emerald-450 border border-emerald-900/50' :
-                                                'bg-slate-900 text-slate-500 border border-slate-800' // cerrado
-                                            }`}>
-                                                {t.status.replace('-', ' ')}
-                                            </span>
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); handleOpenDetail(t); }}>
-                                                Detalles →
-                                            </Button>
+                    {/* Table View */}
+                    <TableContainer>
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHeaderCell>ID / Prioridad</TableHeaderCell>
+                                    <TableHeaderCell>Cliente</TableHeaderCell>
+                                    <TableHeaderCell>Equipo / Serie</TableHeaderCell>
+                                    <TableHeaderCell>Categoría / Falla</TableHeaderCell>
+                                    <TableHeaderCell>Técnico</TableHeaderCell>
+                                    <TableHeaderCell>Fecha Límite (SLA)</TableHeaderCell>
+                                    <TableHeaderCell>Estado</TableHeaderCell>
+                                    <TableHeaderCell className="text-right">Acción</TableHeaderCell>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {filteredTickets.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={8} className="text-center py-12 text-slate-500 text-xs italic">
+                                            No se encontraron tickets con los filtros actuales.
                                         </TableCell>
                                     </TableRow>
-                                );
-                            })
-                        )}
-                    </TableBody>
-                </Table>
-            </TableContainer>
+                                ) : (
+                                    filteredTickets.map(t => {
+                                        const tech = users.find(u => u.id === t.assignedTechId);
+                                        const sla = getSlaStatus(t.slaDate, t.status);
 
-            {/* DETAIL SLIDE-OVER DRAWER (PANEL LATERAL) */}
+                                        return (
+                                            <TableRow key={t.id} className="hover:bg-slate-900/45 cursor-pointer transition-colors" onClick={() => handleOpenDetail(t)}>
+                                                <TableCell className="text-xs">
+                                                    <span className="block font-mono text-[10px] text-slate-500 mb-1">
+                                                        TCK-{t.id.replace('ticket-', '')}
+                                                    </span>
+                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-extrabold tracking-wider ${
+                                                        t.priority === 'urgente' || t.priority === 'alta' ? 'bg-red-500/10 text-red-500' :
+                                                        t.priority === 'media' ? 'bg-amber-500/10 text-amber-500' :
+                                                        'bg-emerald-500/10 text-emerald-500'
+                                                    }`}>
+                                                        {t.priority.toUpperCase()}
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell className="font-bold text-slate-100 max-w-[160px] truncate">
+                                                    {t.clientName}
+                                                </TableCell>
+                                                <TableCell className="text-xs text-slate-350">
+                                                    <strong>{t.machineDesc}</strong>
+                                                    <span className="block text-slate-500 text-[10px] font-mono mt-0.5">{t.serialNumber || 'Sin Nro Serie'}</span>
+                                                </TableCell>
+                                                <TableCell className="text-xs text-slate-350 max-w-[180px] truncate">
+                                                    <span className="font-bold text-indigo-400 block text-[10px]">{t.category}</span>
+                                                    <span className="text-slate-400 block mt-0.5">{t.description}</span>
+                                                </TableCell>
+                                                <TableCell className="text-xs">
+                                                    {tech ? (
+                                                        <div className="flex items-center gap-1.5">
+                                                            <div className="w-5 h-5 rounded-full bg-slate-800 text-[9px] font-bold text-indigo-450 flex items-center justify-center border border-slate-700">
+                                                                {tech.fullname.split(' ').map(n => n[0]).join('')}
+                                                            </div>
+                                                            <span className="text-slate-355 font-semibold">{tech.fullname}</span>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-slate-500 italic">Sin asignar</span>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell className="text-xs">
+                                                    <span className={`px-2 py-0.5 rounded-xl border text-[9px] font-semibold ${sla.color}`}>
+                                                        {sla.text}
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell className="text-xs">
+                                                    <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${
+                                                        t.status === 'nuevo' ? 'bg-indigo-950/60 text-indigo-400 border border-indigo-900/50' :
+                                                        t.status === 'asignado' ? 'bg-blue-950/60 text-blue-400 border border-blue-900/50' :
+                                                        t.status === 'en-camino' ? 'bg-cyan-950/60 text-cyan-400 border border-cyan-900/50' :
+                                                        t.status === 'en-proceso' ? 'bg-amber-950/60 text-amber-400 border border-amber-900/50' :
+                                                        t.status === 'esperando-repuesto' ? 'bg-orange-950/60 text-orange-400 border border-orange-900/50' :
+                                                        t.status === 'resuelto' ? 'bg-emerald-950/60 text-emerald-450 border border-emerald-900/50' :
+                                                        'bg-slate-900 text-slate-550 border border-slate-800'
+                                                    }`}>
+                                                        {t.status.replace('-', ' ')}
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); handleOpenDetail(t); }}>
+                                                        Detalles →
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })
+                                )}
+                            </TableBody>
+                        </Table>
+                    </TableContainer>
+                </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* TABS 2: PERSONAL TÉCNICO */}
+            {/* ========================================================================= */}
+            {currentTab === 'tecnicos' && (
+                <div className="space-y-4 animate-fade-in">
+                    {/* Filter / Search tech */}
+                    <div className="p-4 bg-slate-950 border border-slate-850/60 rounded-xl space-y-3">
+                        <div className="flex justify-between items-center text-xs font-semibold text-slate-400">
+                            <div className="flex items-center gap-2">
+                                <Filter size={14} /> Filtros de Técnicos
+                            </div>
+                            <Button variant="primary" size="sm" onClick={handleOpenCreateTech}>
+                                <Plus size={14} className="mr-1" /> Registrar Técnico
+                            </Button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                            <div className="relative">
+                                <span className="absolute inset-y-0 left-3 flex items-center text-slate-500">
+                                    <Search size={14} />
+                                </span>
+                                <input
+                                    type="text"
+                                    placeholder="Buscar por nombre, zona, marca..."
+                                    value={searchTechQuery}
+                                    onChange={(e) => setSearchTechQuery(e.target.value)}
+                                    className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                />
+                            </div>
+                            <select
+                                value={filterTechActive}
+                                onChange={(e) => setFilterTechActive(e.target.value)}
+                                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-350 text-xs focus:outline-none"
+                            >
+                                <option value="">Estado: Todos</option>
+                                <option value="activo">Activos</option>
+                                <option value="inactivo">Inactivos</option>
+                            </select>
+                            <input
+                                type="text"
+                                placeholder="Filtrar por Zona..."
+                                value={filterTechZone}
+                                onChange={(e) => setFilterTechZone(e.target.value)}
+                                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-355 text-xs focus:outline-none"
+                            />
+                            <input
+                                type="text"
+                                placeholder="Filtrar por Especialidad..."
+                                value={filterTechSpecialty}
+                                onChange={(e) => setFilterTechSpecialty(e.target.value)}
+                                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-355 text-xs focus:outline-none"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Technicians List Table */}
+                    <TableContainer>
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHeaderCell>Nombre y Apellido</TableHeaderCell>
+                                    <TableHeaderCell>Usuario / Email</TableHeaderCell>
+                                    <TableHeaderCell>WhatsApp / Tel</TableHeaderCell>
+                                    <TableHeaderCell>Zona de Cobertura</TableHeaderCell>
+                                    <TableHeaderCell>Especialidad / Marcas</TableHeaderCell>
+                                    <TableHeaderCell>Estado / Disponibilidad</TableHeaderCell>
+                                    <TableHeaderCell className="text-right">Acciones</TableHeaderCell>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {filteredTechs.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={7} className="text-center py-12 text-slate-500 text-xs italic">
+                                            No hay personal técnico registrado con los filtros aplicados.
+                                        </TableCell>
+                                    </TableRow>
+                                ) : (
+                                    filteredTechs.map(tech => {
+                                        return (
+                                            <TableRow key={tech.id} className="hover:bg-slate-900/40">
+                                                <TableCell className="font-bold text-slate-100">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-6 h-6 rounded-full bg-slate-800 text-[10px] font-bold text-indigo-400 flex items-center justify-center border border-slate-700">
+                                                            {tech.fullname.split(' ').map(n => n[0]).join('')}
+                                                        </div>
+                                                        <div>
+                                                            <span className="block">{tech.fullname}</span>
+                                                            <span className="block text-[9px] text-slate-500 font-mono mt-0.5">ID: {tech.id}</span>
+                                                        </div>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-xs text-slate-350">
+                                                    <span className="block font-bold text-[10px] text-slate-400">@{tech.username}</span>
+                                                    <span className="block text-[10px] text-indigo-400">{tech.email}</span>
+                                                </TableCell>
+                                                <TableCell className="text-xs text-slate-355 font-mono">
+                                                    <span className="block text-emerald-505 font-bold">{tech.whatsapp || 'Sin WhatsApp'}</span>
+                                                    <span className="block text-slate-500 text-[10px]">{tech.phone || 'Sin Fijo'}</span>
+                                                </TableCell>
+                                                <TableCell className="text-xs text-slate-350 max-w-[150px] truncate">
+                                                    {tech.zone || 'No asignada'}
+                                                </TableCell>
+                                                <TableCell className="text-xs text-slate-355 max-w-[155px] truncate font-semibold">
+                                                    {tech.specialty || 'Servicio General'}
+                                                </TableCell>
+                                                <TableCell className="text-xs">
+                                                    <div className="space-y-1">
+                                                        <span className={`inline-flex px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${
+                                                            tech.active !== false ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
+                                                        }`}>
+                                                            {tech.active !== false ? 'Activo' : 'Inactivo'}
+                                                        </span>
+                                                        <span className={`block text-[9px] font-semibold text-slate-450 ${
+                                                            tech.availability === 'Disponible' ? 'text-indigo-450' : 'text-slate-500'
+                                                        }`}>
+                                                            ● {tech.availability || 'Disponible'}
+                                                        </span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <div className="flex justify-end gap-1.5">
+                                                        <Button 
+                                                            variant="secondary" 
+                                                            size="sm" 
+                                                            onClick={() => setSelectedTech(tech)}
+                                                        >
+                                                            Ficha
+                                                        </Button>
+                                                        <Button 
+                                                            variant="secondary" 
+                                                            size="sm" 
+                                                            onClick={() => handleOpenEditTech(tech)}
+                                                        >
+                                                            Editar
+                                                        </Button>
+                                                        {tech.active !== false && (
+                                                            <button 
+                                                                onClick={() => handleDeleteTech(tech)}
+                                                                className="px-2 py-1 bg-red-950/20 text-red-400 border border-red-900/30 rounded-xl text-[10px] font-bold hover:bg-red-900/20 transition-all"
+                                                            >
+                                                                Baja
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })
+                                )}
+                            </TableBody>
+                        </Table>
+                    </TableContainer>
+                </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* TABS 3: CONFIGURACIÓN DE AVISOS */}
+            {/* ========================================================================= */}
+            {currentTab === 'config' && (
+                <div className="space-y-6 animate-fade-in max-w-3xl">
+                    <Card className="bg-slate-955 border border-slate-850">
+                        <CardContent className="p-5 space-y-6 text-xs text-slate-350">
+                            <div>
+                                <h3 className="font-bold text-slate-100 text-sm">Habilitación de Canales de Alerta</h3>
+                                <p className="text-[10px] text-slate-450">Define qué redes de despacho estarán activas en todo el sistema técnico.</p>
+                                
+                                <div className="grid grid-cols-2 gap-4 mt-3">
+                                    <label className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${
+                                        configEmailEnabled ? 'bg-slate-900 border-indigo-500 text-slate-100' : 'bg-slate-950 border-slate-850 text-slate-500'
+                                    }`}>
+                                        <input 
+                                            type="checkbox" 
+                                            checked={configEmailEnabled} 
+                                            onChange={(e) => setConfigEmailEnabled(e.target.checked)}
+                                            className="w-4 h-4 accent-indigo-500 rounded" 
+                                        />
+                                        <div>
+                                            <span className="font-bold block">Canal Correo Electrónico</span>
+                                            <span className="text-[9px] text-slate-400 block mt-0.5">SMTP Yahoo configurado por servidor</span>
+                                        </div>
+                                    </label>
+
+                                    <label className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${
+                                        configWhatsappEnabled ? 'bg-slate-900 border-indigo-500 text-slate-100' : 'bg-slate-950 border-slate-850 text-slate-500'
+                                    }`}>
+                                        <input 
+                                            type="checkbox" 
+                                            checked={configWhatsappEnabled} 
+                                            onChange={(e) => setConfigWhatsappEnabled(e.target.checked)}
+                                            className="w-4 h-4 accent-indigo-500 rounded" 
+                                        />
+                                        <div>
+                                            <span className="font-bold block">Canal WhatsApp (Twilio/API)</span>
+                                            <span className="text-[9px] text-slate-400 block mt-0.5">Envío directo de plantillas por consola</span>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+
+                            {/* Event triggers configuration checkboxes */}
+                            <div className="border-t border-slate-850 pt-4">
+                                <h3 className="font-bold text-slate-100 text-sm">Eventos que Disparan Alertas</h3>
+                                <p className="text-[10px] text-slate-455">Enciende o apaga el despacho automático al técnico según el estado del ticket.</p>
+                                
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+                                    {[
+                                        { key: 'creado', label: 'Ticket Creado' },
+                                        { key: 'asignado', label: 'Ticket Asignado' },
+                                        { key: 'reasignado', label: 'Técnico Reasignado' },
+                                        { key: 'sla_por_vencer', label: 'SLA por Vencer (menor a 4h)' },
+                                        { key: 'sla_vencido', label: 'SLA Vencido' },
+                                        { key: 'esperando_repuesto', label: 'Esperando Repuesto' },
+                                        { key: 'resuelto', label: 'Ticket Resuelto' },
+                                        { key: 'cerrado', label: 'Ticket Cerrado' },
+                                    ].map(ev => (
+                                        <label key={ev.key} className="flex items-center gap-2 p-2 bg-slate-900 border border-slate-855/60 rounded-xl cursor-pointer hover:bg-slate-900">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={configEvents[ev.key] !== false} 
+                                                onChange={(e) => setConfigEvents(prev => ({ ...prev, [ev.key]: e.target.checked }))}
+                                                className="w-3.5 h-3.5 accent-indigo-500 rounded"
+                                            />
+                                            <span className="font-medium text-[10px] text-slate-200">{ev.label}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Custom message templates configurations */}
+                            <div className="border-t border-slate-855 pt-4 space-y-4">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <h3 className="font-bold text-slate-100 text-sm">Edición de Plantillas de Mensajes</h3>
+                                        <p className="text-[10px] text-slate-450">Define los textos globales con variables dinámicas.</p>
+                                    </div>
+                                    <span className="text-[9px] bg-indigo-950 text-indigo-400 px-2 py-0.5 rounded font-extrabold">Soporta HTML en Email</span>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] uppercase font-bold text-slate-505">Plantilla Base WhatsApp / Texto Plano</label>
+                                        <textarea
+                                            value={configTemplates.whatsapp || ''}
+                                            onChange={(e) => setConfigTemplates(prev => ({ ...prev, whatsapp: e.target.value }))}
+                                            className="w-full bg-slate-900 border border-slate-850 rounded-xl p-3 text-slate-200 font-mono text-[10px] h-32 resize-y focus:border-indigo-500"
+                                            placeholder="Escribe la plantilla de WhatsApp..."
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] uppercase font-bold text-slate-505">Plantilla Base Email (Cuerpo HTML)</label>
+                                        <textarea
+                                            value={configTemplates.email || ''}
+                                            onChange={(e) => setConfigTemplates(prev => ({ ...prev, email: e.target.value }))}
+                                            className="w-full bg-slate-900 border border-slate-855 rounded-xl p-3 text-slate-200 font-mono text-[10px] h-48 resize-y focus:border-indigo-500"
+                                            placeholder="Escribe la plantilla HTML de Correo..."
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Cheat sheet variables mapping */}
+                                <div className="p-3 bg-slate-900 border border-slate-850 rounded-xl">
+                                    <span className="text-[9px] font-extrabold text-indigo-400 block mb-1">Variables dinámicas de reemplazo disponibles:</span>
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[9px] text-slate-400 font-mono">
+                                        <div><strong>{"{ticket}"}</strong>: Nro de Ticket</div>
+                                        <div><strong>{"{evento}"}</strong>: Nombre Evento</div>
+                                        <div><strong>{"{cliente}"}</strong>: Nombre Cliente</div>
+                                        <div><strong>{"{direccion}"}</strong>: Dirección</div>
+                                        <div><strong>{"{equipo}"}</strong>: Marca y Modelo</div>
+                                        <div><strong>{"{serie}"}</strong>: Nro Serie</div>
+                                        <div><strong>{"{falla}"}</strong>: Falla descrita</div>
+                                        <div><strong>{"{prioridad}"}</strong>: Prioridad</div>
+                                        <div><strong>{"{tecnico}"}</strong>: Nombre Técnico</div>
+                                        <div><strong>{"{sla}"}</strong>: Límite SLA</div>
+                                        <div><strong>{"{enlace}"}</strong>: Enlace al ticket</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <Button 
+                                variant="primary" 
+                                size="md" 
+                                className="w-full" 
+                                onClick={saveSettings}
+                                disabled={isSavingConfig}
+                            >
+                                {isSavingConfig ? 'Guardando...' : 'Guardar Configuración en la Base de Datos'}
+                            </Button>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* TABS 4: HISTORIAL DE NOTIFICACIONES */}
+            {/* ========================================================================= */}
+            {currentTab === 'historial_envios' && (
+                <div className="space-y-4 animate-fade-in">
+                    {/* Log Filter toolbar */}
+                    <div className="p-4 bg-slate-950 border border-slate-850/60 rounded-xl space-y-3">
+                        <div className="flex justify-between items-center text-xs font-semibold text-slate-450">
+                            <div className="flex items-center gap-2">
+                                <History size={14} /> Auditoría e Historial General de Alertas
+                            </div>
+                            <Button variant="secondary" size="sm" onClick={fetchLogs} className="flex items-center gap-1">
+                                <RefreshCw size={12} className={isLoadingLogs ? 'animate-spin' : ''} /> Recargar Historial
+                            </Button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                            <div className="relative">
+                                <span className="absolute inset-y-0 left-3 flex items-center text-slate-500">
+                                    <Search size={14} />
+                                </span>
+                                <input
+                                    type="text"
+                                    placeholder="Buscar por nro ticket, receptor, evento..."
+                                    value={searchLogQuery}
+                                    onChange={(e) => setSearchLogQuery(e.target.value)}
+                                    className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-slate-200 text-xs focus:outline-none"
+                                />
+                            </div>
+                            <select
+                                value={filterLogChannel}
+                                onChange={(e) => setFilterLogChannel(e.target.value)}
+                                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-350 text-xs focus:outline-none"
+                            >
+                                <option value="">Canal: Todos</option>
+                                <option value="email">Email</option>
+                                <option value="whatsapp">WhatsApp</option>
+                            </select>
+                            <select
+                                value={filterLogStatus}
+                                onChange={(e) => setFilterLogStatus(e.target.value)}
+                                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-350 text-xs focus:outline-none"
+                            >
+                                <option value="">Estado Envío: Todos</option>
+                                <option value="enviado">Enviado</option>
+                                <option value="error">Error / Fallido</option>
+                                <option value="pendiente">Pendiente</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Logs Audit Table */}
+                    <TableContainer>
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHeaderCell>Fecha y Hora</TableHeaderCell>
+                                    <TableHeaderCell>Ticket ID</TableHeaderCell>
+                                    <TableHeaderCell>Técnico</TableHeaderCell>
+                                    <TableHeaderCell>Canal</TableHeaderCell>
+                                    <TableHeaderCell>Receptor</TableHeaderCell>
+                                    <TableHeaderCell>Evento Gatillo</TableHeaderCell>
+                                    <TableHeaderCell>Estado</TableHeaderCell>
+                                    <TableHeaderCell className="text-right">Mensaje</TableHeaderCell>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {isLoadingLogs ? (
+                                    <TableRow>
+                                        <TableCell colSpan={8} className="text-center py-12 text-slate-400 text-xs italic">
+                                            Cargando auditoría histórica de notificaciones...
+                                        </TableCell>
+                                    </TableRow>
+                                ) : filteredLogs.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={8} className="text-center py-12 text-slate-500 text-xs italic">
+                                            No hay registros de notificaciones con los filtros actuales.
+                                        </TableCell>
+                                    </TableRow>
+                                ) : (
+                                    filteredLogs.map(log => {
+                                        const tech = users.find(u => u.id === log.techId);
+                                        const techName = tech ? tech.fullname : `ID: ${log.techId}`;
+
+                                        return (
+                                            <TableRow key={log.id} className="hover:bg-slate-900/40">
+                                                <TableCell className="font-mono text-xs text-slate-400">
+                                                    {new Date(log.createdAt).toLocaleString('es-AR')}
+                                                </TableCell>
+                                                <TableCell className="font-mono font-bold text-[10px] text-indigo-400">
+                                                    TCK-{log.ticketId.replace('ticket-', '')}
+                                                </TableCell>
+                                                <TableCell className="text-xs text-slate-300 font-medium">
+                                                    {techName}
+                                                </TableCell>
+                                                <TableCell className="text-xs">
+                                                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                                                        log.channel === 'email' ? 'bg-indigo-950/60 text-indigo-400' : 'bg-emerald-950/60 text-emerald-455'
+                                                    }`}>
+                                                        {log.channel}
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell className="text-xs text-slate-355 max-w-[140px] truncate font-mono">
+                                                    {log.recipient}
+                                                </TableCell>
+                                                <TableCell className="text-xs text-slate-300 capitalize font-bold">
+                                                    {log.event.replace('_', ' ')}
+                                                </TableCell>
+                                                <TableCell className="text-xs">
+                                                    <div className="space-y-1">
+                                                        <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${
+                                                            log.status === 'enviado' ? 'bg-emerald-500/10 text-emerald-455' : 
+                                                            log.status === 'error' ? 'bg-red-500/10 text-red-455' : 'bg-slate-800 text-slate-400'
+                                                        }`}>
+                                                            {log.status}
+                                                        </span>
+                                                        {log.errorDetail && (
+                                                            <span className="block text-[8px] text-red-400 max-w-[120px] truncate">{log.errorDetail}</span>
+                                                        )}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <Button 
+                                                        variant="secondary" 
+                                                        size="sm" 
+                                                        onClick={() => setViewedLogMsg(log.message)}
+                                                    >
+                                                        Ver Cuerpo
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })
+                                )}
+                            </TableBody>
+                        </Table>
+                    </TableContainer>
+                </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* TICKET DETAILS DRAWER */}
+            {/* ========================================================================= */}
             {selectedTicket && (
-                <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/70 backdrop-blur-xs animate-fade-in print:hidden">
+                <div className="fixed inset-0 z-50 flex justify-end bg-slate-955/70 backdrop-blur-xs animate-fade-in print:hidden">
                     <div className="absolute inset-0" onClick={() => setSelectedTicket(null)} />
                     <div className="relative max-w-md w-full bg-slate-900 border-l border-slate-800 shadow-2xl h-full flex flex-col z-10 animate-slide-in">
                         {/* Drawer Header */}
@@ -684,8 +1404,34 @@ export default function TechnicalPage() {
 
                         {/* Drawer Content */}
                         <div className="flex-1 overflow-y-auto p-5 space-y-6 text-xs text-slate-300">
+                            {techWarn && (
+                                <div className={`p-3 rounded-xl border text-[10px] font-semibold leading-relaxed ${
+                                    techWarn.type === 'critical' ? 'bg-red-500/10 border-red-500/20 text-red-400' :
+                                    techWarn.type === 'warning' ? 'bg-amber-500/10 border-amber-500/20 text-amber-450' :
+                                    'bg-indigo-950/40 border-indigo-900/50 text-indigo-400'
+                                }`}>
+                                    {techWarn.text}
+                                </div>
+                            )}
+
+                            {/* Actions toolbar */}
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={() => handleManualResendNotification('asignado')}
+                                    className="flex-1 px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-[10px] font-bold hover:bg-slate-900 transition-all text-center"
+                                >
+                                    Reenviar Aviso Asignación
+                                </button>
+                                <button 
+                                    onClick={() => handleManualResendNotification('resuelto')}
+                                    className="flex-1 px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-[10px] font-bold hover:bg-slate-900 transition-all text-center"
+                                >
+                                    Reenviar Alerta Resuelto
+                                </button>
+                            </div>
+
                             {/* Priority and Category block */}
-                            <div className="grid grid-cols-2 gap-4 bg-slate-950/40 p-4 rounded-xl border border-slate-850/60">
+                            <div className="grid grid-cols-2 gap-4 bg-slate-955/40 p-4 rounded-xl border border-slate-850/60">
                                 <div>
                                     <span className="text-[9px] uppercase font-bold text-slate-500 block">Prioridad</span>
                                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-extrabold mt-1 uppercase ${
@@ -705,7 +1451,7 @@ export default function TechnicalPage() {
                             {/* Client & Contact information */}
                             <div className="space-y-3">
                                 <h4 className="font-bold text-indigo-400 border-b border-slate-850 pb-1.5 uppercase text-[9px] tracking-wider">Datos del Cliente</h4>
-                                <div className="space-y-2 bg-slate-950/20 p-3 rounded-xl border border-slate-850/30">
+                                <div className="space-y-2 bg-slate-955/20 p-3 rounded-xl border border-slate-850/30">
                                     <div className="flex items-start gap-2">
                                         <UserIcon size={14} className="text-slate-500 mt-0.5 shrink-0" />
                                         <div>
@@ -741,8 +1487,8 @@ export default function TechnicalPage() {
 
                             {/* Machine Equipment description */}
                             <div className="space-y-3">
-                                <h4 className="font-bold text-indigo-400 border-b border-slate-850 pb-1.5 uppercase text-[9px] tracking-wider">Equipo Relacionado</h4>
-                                <div className="bg-slate-950/20 p-3 rounded-xl border border-slate-850/30 space-y-1">
+                                <h4 className="font-bold text-indigo-400 border-b border-slate-855 pb-1.5 uppercase text-[9px] tracking-wider">Equipo Relacionado</h4>
+                                <div className="bg-slate-955/20 p-3 rounded-xl border border-slate-855/30 space-y-1">
                                     <span className="font-bold text-slate-200 block text-xs">{selectedTicket.machineDesc}</span>
                                     <span className="text-[10px] text-slate-450 block font-mono">Nro Serie: {selectedTicket.serialNumber || 'Sin número registrado'}</span>
                                 </div>
@@ -786,7 +1532,7 @@ export default function TechnicalPage() {
                                             className="w-full bg-slate-950 border border-slate-850 rounded-xl px-3 py-1.5 text-slate-200 text-xs focus:outline-none disabled:opacity-50"
                                         >
                                             <option value="">Sin Asignar</option>
-                                            {users.filter(u => u.role === 'tecnico').map(t => (
+                                            {users.filter(u => u.role === 'tecnico' && u.active !== false).map(t => (
                                                 <option key={t.id} value={t.id}>{t.fullname}</option>
                                             ))}
                                         </select>
@@ -799,71 +1545,71 @@ export default function TechnicalPage() {
                                         value={editDiagnostic}
                                         onChange={(e) => setEditDiagnostic(e.target.value)}
                                         placeholder="Detalla el problema técnico encontrado..."
-                                        className="w-full bg-slate-950 border border-slate-850 rounded-xl px-3 py-2 text-slate-200 text-xs h-16 resize-none outline-none focus:border-indigo-500/50"
+                                        className="w-full bg-slate-950 border border-slate-855 rounded-xl px-3 py-2 text-slate-200 text-xs h-16 resize-none outline-none focus:border-indigo-500/50"
                                     />
                                 </div>
 
                                 <div className="space-y-1">
-                                    <label className="text-[10px] uppercase font-bold text-slate-500 block">Acción Realizada</label>
+                                    <label className="text-[10px] uppercase font-bold text-slate-505 block">Acción Realizada</label>
                                     <textarea
                                         value={editActionTaken}
                                         onChange={(e) => setEditActionTaken(e.target.value)}
                                         placeholder="Detalles sobre el trabajo correctivo..."
-                                        className="w-full bg-slate-950 border border-slate-850 rounded-xl px-3 py-2 text-slate-200 text-xs h-16 resize-none outline-none focus:border-indigo-500/50"
+                                        className="w-full bg-slate-950 border border-slate-855 rounded-xl px-3 py-2 text-slate-200 text-xs h-16 resize-none outline-none focus:border-indigo-500/50"
                                     />
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-1">
-                                        <label className="text-[10px] uppercase font-bold text-slate-500 block">Repuestos Necesarios</label>
+                                        <label className="text-[10px] uppercase font-bold text-slate-505 block">Repuestos Necesarios</label>
                                         <input
                                             type="text"
                                             value={editPartsNeeded}
                                             onChange={(e) => setEditPartsNeeded(e.target.value)}
-                                            placeholder="Pieza a comprar/solicitar"
-                                            className="w-full bg-slate-950 border border-slate-850 rounded-xl px-3 py-1.5 text-slate-200 text-xs outline-none"
+                                            placeholder="Pieza a comprar"
+                                            className="w-full bg-slate-955 border border-slate-855 rounded-xl px-3 py-1.5 text-slate-200 text-xs outline-none"
                                         />
                                     </div>
                                     <div className="space-y-1">
-                                        <label className="text-[10px] uppercase font-bold text-slate-500 block">Repuestos Utilizados</label>
+                                        <label className="text-[10px] uppercase font-bold text-slate-505 block">Repuestos Utilizados</label>
                                         <input
                                             type="text"
                                             value={editPartsUsed}
                                             onChange={(e) => setEditPartsUsed(e.target.value)}
                                             placeholder="Repuestos instalados"
-                                            className="w-full bg-slate-950 border border-slate-850 rounded-xl px-3 py-1.5 text-slate-200 text-xs outline-none"
+                                            className="w-full bg-slate-955 border border-slate-855 rounded-xl px-3 py-1.5 text-slate-200 text-xs outline-none"
                                         />
                                     </div>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-1">
-                                        <label className="text-[10px] uppercase font-bold text-slate-500 block">Costo de Mano de Obra ($)</label>
+                                        <label className="text-[10px] uppercase font-bold text-slate-505 block">Costo de Mano de Obra ($)</label>
                                         <input
                                             type="number"
                                             value={editTechnicalCost}
                                             onChange={(e) => setEditTechnicalCost(e.target.value)}
-                                            className="w-full bg-slate-950 border border-slate-850 rounded-xl px-3 py-1.5 text-slate-200 text-xs outline-none"
+                                            className="w-full bg-slate-955 border border-slate-855 rounded-xl px-3 py-1.5 text-slate-200 text-xs outline-none"
                                         />
                                     </div>
                                     <div className="space-y-1">
-                                        <label className="text-[10px] uppercase font-bold text-slate-500 block">Fecha Límite SLA</label>
+                                        <label className="text-[10px] uppercase font-bold text-slate-505 block">Fecha Límite SLA</label>
                                         <input
                                             type="text"
                                             disabled
                                             value={selectedTicket.slaDate ? new Date(selectedTicket.slaDate).toLocaleString('es-AR') : 'No asignada'}
-                                            className="w-full bg-slate-950 border border-slate-850 rounded-xl px-3 py-1.5 text-slate-500 text-xs outline-none disabled:opacity-50"
+                                            className="w-full bg-slate-955 border border-slate-855 rounded-xl px-3 py-1.5 text-slate-500 text-xs outline-none disabled:opacity-50"
                                         />
                                     </div>
                                 </div>
 
                                 <div className="space-y-1">
-                                    <label className="text-[10px] uppercase font-bold text-slate-500 block">Observaciones del Servicio</label>
+                                    <label className="text-[10px] uppercase font-bold text-slate-505 block">Observaciones del Servicio</label>
                                     <textarea
                                         value={editObservations}
                                         onChange={(e) => setEditObservations(e.target.value)}
-                                        placeholder="Comentarios adicionales del servicio técnico..."
-                                        className="w-full bg-slate-950 border border-slate-850 rounded-xl px-3 py-2 text-slate-200 text-xs h-16 resize-none outline-none"
+                                        placeholder="Comentarios del servicio técnico..."
+                                        className="w-full bg-slate-955 border border-slate-855 rounded-xl px-3 py-2 text-slate-200 text-xs h-16 resize-none outline-none"
                                     />
                                 </div>
 
@@ -874,7 +1620,7 @@ export default function TechnicalPage() {
 
                             {/* Chronological History Timeline */}
                             <div className="space-y-3 pt-4 border-t border-slate-800">
-                                <h4 className="font-bold text-indigo-400 border-b border-slate-850 pb-1.5 uppercase text-[9px] tracking-wider">Historial e Envíos del Ticket</h4>
+                                <h4 className="font-bold text-indigo-400 border-b border-slate-850 pb-1.5 uppercase text-[9px] tracking-wider">Historial de Auditoría</h4>
                                 <div className="space-y-3 pl-2 border-l border-slate-850 mt-2">
                                     {selectedTicket.history && selectedTicket.history.map((h, i) => (
                                         <div key={i} className="relative pl-4 space-y-0.5">
@@ -892,6 +1638,240 @@ export default function TechnicalPage() {
                     </div>
                 </div>
             )}
+
+            {/* ========================================================================= */}
+            {/* TECHNICIAN DETAIL CARD DRAWER */}
+            {/* ========================================================================= */}
+            {selectedTech && (
+                <div className="fixed inset-0 z-50 flex justify-end bg-slate-955/70 backdrop-blur-xs animate-fade-in print:hidden">
+                    <div className="absolute inset-0" onClick={() => setSelectedTech(null)} />
+                    <div className="relative max-w-md w-full bg-slate-900 border-l border-slate-800 shadow-2xl h-full flex flex-col z-10 animate-slide-in">
+                        {/* Drawer Header */}
+                        <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950/40">
+                            <div>
+                                <span className="text-[10px] font-mono text-indigo-400 font-extrabold uppercase tracking-wider">Ficha del Personal</span>
+                                <h3 className="font-bold text-sm text-slate-100 mt-0.5">{selectedTech.fullname}</h3>
+                            </div>
+                            <button className="text-slate-400 hover:text-white p-1" onClick={() => setSelectedTech(null)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Drawer Content */}
+                        <div className="flex-1 overflow-y-auto p-5 space-y-6 text-xs text-slate-300">
+                            {/* Contact card */}
+                            <div className="bg-slate-955/40 p-4 rounded-xl border border-slate-850/60 space-y-2">
+                                <div className="flex items-center gap-1.5 text-slate-200">
+                                    <Phone size={14} className="text-slate-500" /> 
+                                    <strong>Teléfono:</strong> <span className="font-mono">{selectedTech.phone || 'No registrado'}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-slate-200">
+                                    <Phone size={14} className="text-emerald-500" /> 
+                                    <strong>WhatsApp:</strong> <span className="font-mono text-emerald-455">{selectedTech.whatsapp || 'No registrado'}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-slate-200">
+                                    <Mail size={14} className="text-indigo-400" /> 
+                                    <strong>Email:</strong> <span className="font-mono">{selectedTech.email}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-slate-200">
+                                    <Clock size={14} className="text-slate-500" /> 
+                                    <strong>Horario Laboral:</strong> <span>{selectedTech.workHours || 'No configurado'}</span>
+                                </div>
+                            </div>
+
+                            {/* Zone and Brands Specialty */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="p-3 bg-slate-955/20 border border-slate-850/30 rounded-xl space-y-1">
+                                    <span className="text-[9px] uppercase font-bold text-slate-500 block">Zona de Cobertura</span>
+                                    <span className="font-bold text-slate-250 block">{selectedTech.zone || 'General'}</span>
+                                </div>
+                                <div className="p-3 bg-slate-955/20 border border-slate-850/30 rounded-xl space-y-1">
+                                    <span className="text-[9px] uppercase font-bold text-slate-500 block">Especialidad / Marcas</span>
+                                    <span className="font-bold text-slate-250 block">{selectedTech.specialty || 'General / Multimarca'}</span>
+                                </div>
+                            </div>
+
+                            {/* Internal notes */}
+                            <div className="space-y-1.5">
+                                <span className="text-[9px] uppercase font-bold text-slate-500 block">Observaciones y Notas Internas</span>
+                                <p className="p-3 bg-slate-900 border border-slate-850 rounded-xl leading-relaxed text-slate-400 italic">
+                                    {selectedTech.internalNotes || 'Sin notas adicionales.'}
+                                </p>
+                            </div>
+
+                            {/* List of active tickets assigned to this technician */}
+                            <div className="space-y-3 pt-4 border-t border-slate-800">
+                                <h4 className="font-bold text-indigo-400 border-b border-slate-850 pb-1.5 uppercase text-[9px] tracking-wider">Tickets Activos Asignados</h4>
+                                <div className="space-y-2">
+                                    {tickets.filter(t => t.assignedTechId === selectedTech.id && t.status !== 'cerrado' && t.status !== 'resuelto').length === 0 ? (
+                                        <p className="text-[10px] text-slate-500 italic py-2">Este técnico no tiene ningún ticket activo asignado en este momento.</p>
+                                    ) : (
+                                        tickets.filter(t => t.assignedTechId === selectedTech.id && t.status !== 'cerrado' && t.status !== 'resuelto').map(t => (
+                                            <div 
+                                                key={t.id} 
+                                                className="p-3 bg-slate-955/30 border border-slate-855 rounded-xl flex justify-between items-center cursor-pointer hover:bg-slate-950/60"
+                                                onClick={() => { setSelectedTech(null); handleOpenDetail(t); }}
+                                            >
+                                                <div>
+                                                    <span className="block font-mono text-[9px] text-slate-500">TCK-{t.id.replace('ticket-', '')}</span>
+                                                    <span className="block font-bold text-slate-200 mt-0.5">{t.clientName}</span>
+                                                    <span className="block text-[10px] text-slate-450 mt-0.5">{t.machineDesc}</span>
+                                                </div>
+                                                <span className={`px-2 py-0.5 rounded text-[8px] font-extrabold uppercase ${
+                                                    t.priority === 'urgente' || t.priority === 'alta' ? 'bg-red-500/10 text-red-500' : 'bg-slate-800 text-slate-400'
+                                                }`}>
+                                                    {t.status.replace('-', ' ')}
+                                                </span>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* AUDIT LOG MESSAGE VIEWER POPUP MODAL */}
+            {/* ========================================================================= */}
+            {viewedLogMsg && (
+                <div className="fixed inset-0 bg-slate-955/80 z-50 flex items-center justify-center p-4">
+                    <Card className="w-full max-w-lg border-slate-800 bg-slate-900">
+                        <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+                            <h3 className="font-bold text-xs text-slate-100">Cuerpo del Mensaje Despachado</h3>
+                            <button className="text-slate-400 hover:text-white" onClick={() => setViewedLogMsg(null)}>
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <CardContent className="p-4">
+                            {viewedLogMsg.includes('<div') || viewedLogMsg.includes('<table') ? (
+                                <div 
+                                    className="bg-white p-4 rounded-xl overflow-auto max-h-96 border border-slate-700" 
+                                    dangerouslySetInnerHTML={{ __html: viewedLogMsg }} 
+                                />
+                            ) : (
+                                <pre className="w-full bg-slate-950 p-4 rounded-xl text-slate-300 font-mono text-[10px] whitespace-pre-wrap max-h-96 overflow-auto border border-slate-800">
+                                    {viewedLogMsg}
+                                </pre>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* TECHNICIAN CREATE/EDIT MODAL FORM */}
+            {/* ========================================================================= */}
+            <Modal
+                isOpen={isTechFormOpen}
+                onClose={() => setIsTechFormOpen(false)}
+                title={editingTech ? 'Editar Ficha del Técnico' : 'Registrar Nuevo Técnico'}
+                footer={
+                    <>
+                        <Button variant="ghost" size="sm" onClick={() => setIsTechFormOpen(false)}>
+                            Cancelar
+                        </Button>
+                        <Button variant="primary" size="sm" onClick={handleSaveTech}>
+                            {editingTech ? 'Guardar Cambios' : 'Registrar'}
+                        </Button>
+                    </>
+                }
+            >
+                <form className="space-y-4" onSubmit={handleSaveTech}>
+                    <div className="grid grid-cols-2 gap-4">
+                        <Input
+                            label="Nombre y Apellido *"
+                            value={formTechFullname}
+                            onChange={(e) => setFormTechFullname(e.target.value)}
+                            placeholder="Ej: Marcelo Gómez"
+                        />
+                        <Input
+                            label="Usuario de Acceso *"
+                            value={formTechUsername}
+                            onChange={(e) => setFormTechUsername(e.target.value)}
+                            placeholder="Ej: mgomez"
+                        />
+                    </div>
+
+                    <Input
+                        label="Correo Electrónico (Notificaciones) *"
+                        type="email"
+                        value={formTechEmail}
+                        onChange={(e) => setFormTechEmail(e.target.value)}
+                        placeholder="Ej: mgomez@mstecnologia.com.ar"
+                    />
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <Input
+                            label="Teléfono de Contacto"
+                            value={formTechPhone}
+                            onChange={(e) => setFormTechPhone(e.target.value)}
+                            placeholder="Ej: 381-4523190"
+                        />
+                        <Input
+                            label="Número de WhatsApp (Sin +)*"
+                            value={formTechWhatsapp}
+                            onChange={(e) => setFormTechWhatsapp(e.target.value)}
+                            placeholder="Ej: 5493814523190"
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <Input
+                            label="Zona o Localidad de Cobertura"
+                            value={formTechZone}
+                            onChange={(e) => setFormTechZone(e.target.value)}
+                            placeholder="Ej: Tucumán (Yerba Buena)"
+                        />
+                        <Input
+                            label="Especialidad / Marcas"
+                            value={formTechSpecialty}
+                            onChange={(e) => setFormTechSpecialty(e.target.value)}
+                            placeholder="Ej: Ricoh Color, HP, Brother"
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <Select
+                            label="Disponibilidad Actual"
+                            value={formTechAvailability}
+                            onChange={(e) => setFormTechAvailability(e.target.value as any)}
+                            options={[
+                                { value: 'Disponible', label: 'Disponible' },
+                                { value: 'No disponible', label: 'No disponible' },
+                                { value: 'Licencia', label: 'Licencia / Vacaciones' }
+                            ]}
+                        />
+                        <Input
+                            label="Horario Laboral"
+                            value={formTechWorkHours}
+                            onChange={(e) => setFormTechWorkHours(e.target.value)}
+                            placeholder="Ej: 08:00 a 17:00 hs"
+                        />
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-2">
+                        <input 
+                            type="checkbox" 
+                            checked={formTechActive} 
+                            onChange={(e) => setFormTechActive(e.target.checked)}
+                            className="w-4 h-4 accent-indigo-500 rounded" 
+                            id="formTechActive"
+                        />
+                        <label htmlFor="formTechActive" className="text-xs font-bold text-slate-355 cursor-pointer">
+                            Marcar técnico como Activo / Disponible para asignación
+                        </label>
+                    </div>
+
+                    <Input
+                        label="Observaciones y Notas Internas"
+                        value={formTechInternalNotes}
+                        onChange={(e) => setFormTechInternalNotes(e.target.value)}
+                        placeholder="Ej: Especialista en unidades fusoras..."
+                    />
+                </form>
+            </Modal>
 
             {/* CREATION SUPPORT TICKET MODAL */}
             <Modal
@@ -914,7 +1894,7 @@ export default function TechnicalPage() {
                         <label className={`flex items-center justify-center p-3 rounded-xl border cursor-pointer transition-all ${
                             newClientType === 'existente' 
                                 ? 'bg-slate-900 border-indigo-500 text-slate-100 font-bold' 
-                                : 'bg-slate-950 border-slate-850 hover:bg-slate-900/50 text-slate-400'
+                                : 'bg-slate-955 border-slate-855 hover:bg-slate-900/50 text-slate-400'
                         }`}>
                             <input 
                                 type="radio" 
@@ -928,7 +1908,7 @@ export default function TechnicalPage() {
                         <label className={`flex items-center justify-center p-3 rounded-xl border cursor-pointer transition-all ${
                             newClientType === 'externo' 
                                 ? 'bg-slate-900 border-indigo-500 text-slate-100 font-bold' 
-                                : 'bg-slate-950 border-slate-850 hover:bg-slate-900/50 text-slate-400'
+                                : 'bg-slate-955 border-slate-855 hover:bg-slate-900/50 text-slate-400'
                         }`}>
                             <input 
                                 type="radio" 
@@ -1056,7 +2036,7 @@ export default function TechnicalPage() {
                         onChange={(e) => setNewAssignedTechId(e.target.value)}
                         options={[
                             { value: '', label: 'Sin Asignar (Pendiente Triage)' },
-                            ...users.filter(u => u.role === 'tecnico').map(t => ({ value: t.id, label: t.fullname }))
+                            ...users.filter(u => u.role === 'tecnico' && u.active !== false).map(t => ({ value: t.id, label: t.fullname }))
                         ]}
                     />
 

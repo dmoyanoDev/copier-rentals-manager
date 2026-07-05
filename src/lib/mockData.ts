@@ -94,12 +94,47 @@ export interface User {
     email: string;
     role: 'administrativo' | 'tecnico';
     phone?: string;
+    whatsapp?: string;
+    zone?: string;
+    specialty?: string;
+    availability?: 'Disponible' | 'No disponible' | 'Licencia';
+    active?: boolean;
+    workHours?: string;
+    internalNotes?: string;
 }
 
 export const mockUsers: User[] = [
     { id: 'user-admin', username: 'dmoyano', fullname: 'Darío Moyano', email: 'dmoyano@mstecnologia.com.ar', role: 'administrativo' },
-    { id: 'user-tech1', username: 'tech1', fullname: 'Marcelo Gómez', email: 'mgomez@mstecnologia.com.ar', role: 'tecnico', phone: '11-5432-8765' },
-    { id: 'user-tech2', username: 'tech2', fullname: 'Lucas Peralta', email: 'lperalta@mstecnologia.com.ar', role: 'tecnico', phone: '11-9876-5432' }
+    { 
+        id: 'user-tech1', 
+        username: 'tech1', 
+        fullname: 'Marcelo Gómez', 
+        email: 'mgomez@mstecnologia.com.ar', 
+        role: 'tecnico', 
+        phone: '381-4523190',
+        whatsapp: '3814523190',
+        zone: 'San Miguel de Tucumán (Centro / Norte)',
+        specialty: 'HP / Brother / Ricoh Monocromática',
+        availability: 'Disponible',
+        active: true,
+        workHours: '08:00 a 17:00 hs',
+        internalNotes: 'Especialista en unidades de fusor y arrastre de papel.'
+    },
+    { 
+        id: 'user-tech2', 
+        username: 'tech2', 
+        fullname: 'Lucas Peralta', 
+        email: 'lperalta@mstecnologia.com.ar', 
+        role: 'tecnico', 
+        phone: '381-9988776',
+        whatsapp: '3819988776',
+        zone: 'Yerba Buena / Lules',
+        specialty: 'Konica Minolta Color / Ricoh Color',
+        availability: 'Disponible',
+        active: true,
+        workHours: '09:00 a 18:00 hs',
+        internalNotes: 'Técnico certificado con experiencia en equipos de producción color.'
+    }
 ];
 
 export const mockAbonos: Abono[] = [
