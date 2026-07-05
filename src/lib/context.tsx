@@ -8,12 +8,14 @@ import {
     Ticket,
     User,
     Abono,
+    Rental,
     mockClients,
     mockMachines,
     mockReadings,
     mockTickets,
     mockUsers,
-    mockAbonos
+    mockAbonos,
+    mockRentals
 } from './mockData';
 import { Budget, BudgetTemplate, MachinePreset } from '@/domain/budget/types';
 import { defaultMachinePresets, defaultBudgetTemplates } from '@/domain/budget/presets';
@@ -35,6 +37,8 @@ interface ManagementContextType {
     setAbonos: React.Dispatch<React.SetStateAction<Abono[]>>;
     users: User[];
     setUsers: React.Dispatch<React.SetStateAction<User[]>>;
+    rentals: Rental[];
+    setRentals: React.Dispatch<React.SetStateAction<Rental[]>>;
     
     // Budgets layer
     budgets: Budget[];
@@ -56,6 +60,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const [tickets, setTickets] = useState<Ticket[]>([]);
     const [abonos, setAbonos] = useState<Abono[]>([]);
     const [users, setUsers] = useState<User[]>([]);
+    const [rentals, setRentals] = useState<Rental[]>([]);
     
     // Budgets states
     const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -80,6 +85,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 setTickets(parsed.tickets || mockTickets);
                 setAbonos(parsed.abonos || mockAbonos);
                 setUsers(parsed.users || mockUsers);
+                setRentals(parsed.rentals || mockRentals);
                 
                 // Budgets loaded states
                 setBudgets(parsed.budgets || []);
@@ -105,6 +111,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setTickets(mockTickets);
         setAbonos(mockAbonos);
         setUsers(mockUsers);
+        setRentals(mockRentals);
         setBudgets([]);
         setTemplates(defaultBudgetTemplates);
         setMachinePresets(defaultMachinePresets);
@@ -121,13 +128,14 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 tickets, 
                 abonos, 
                 users,
+                rentals,
                 budgets,
                 templates,
                 machinePresets
             };
             localStorage.setItem('copyrent_data', JSON.stringify(stateToSave));
         }
-    }, [clients, machines, readings, tickets, abonos, users, budgets, templates, machinePresets]);
+    }, [clients, machines, readings, tickets, abonos, users, rentals, budgets, templates, machinePresets]);
 
     return (
         <ManagementContext.Provider
@@ -148,6 +156,8 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 setAbonos,
                 users,
                 setUsers,
+                rentals,
+                setRentals,
                 budgets,
                 setBudgets,
                 templates,

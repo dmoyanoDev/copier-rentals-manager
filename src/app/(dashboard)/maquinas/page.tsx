@@ -15,7 +15,7 @@ import { Machine } from '@/lib/mockData';
 import { formatCurrency, formatPeriod } from '@/lib/utils';
 
 export default function MachinesPage() {
-    const { machines, setMachines, clients, abonos, readings, setReadings } = useManagement();
+    const { machines, setMachines, clients, abonos, readings, setReadings, rentals } = useManagement();
     const [searchQuery, setSearchQuery] = useState('');
     const [filterStatus, setFilterStatus] = useState('');
     
@@ -24,7 +24,7 @@ export default function MachinesPage() {
     const [isDetailOpen, setIsDetailOpen] = useState(false);
     const [editingMachine, setEditingMachine] = useState<Machine | null>(null);
     const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
-    const [detailTab, setDetailTab] = useState<'info' | 'readings'>('info');
+    const [detailTab, setDetailTab] = useState<'info' | 'readings' | 'rentals'>('info');
 
     // Form inputs
     const [brand, setBrand] = useState('');
@@ -503,6 +503,16 @@ export default function MachinesPage() {
                             >
                                 Lecturas Registradas
                             </button>
+                            <button
+                                onClick={() => setDetailTab('rentals')}
+                                className={`px-3 py-1 text-xs font-semibold rounded-t-lg transition-all ${
+                                    detailTab === 'rentals' 
+                                        ? 'border-b-2 border-indigo-500 text-indigo-400 font-bold' 
+                                        : 'text-slate-500'
+                                }`}
+                            >
+                                Historial Contratos
+                            </button>
                         </div>
 
                         {/* TAB 1: CONTRATO Y ESTADO */}
@@ -582,6 +592,36 @@ export default function MachinesPage() {
                                             </div>
                                         </div>
                                     ))
+                                )}
+                            </div>
+                        )}
+
+                        {/* TAB 3: HISTORIAL CONTRATOS */}
+                        {detailTab === 'rentals' && (
+                            <div className="space-y-2">
+                                {rentals.filter(r => r.machineId === selectedMachine.id).length === 0 ? (
+                                    <p className="text-xs text-slate-500 italic py-4">Este equipo no registra contratos de alquiler.</p>
+                                ) : (
+                                    rentals.filter(r => r.machineId === selectedMachine.id).map(r => {
+                                        const cl = clients.find(c => c.id === r.clientId);
+                                        const ab = abonos.find(a => a.id === r.abonoId);
+                                        return (
+                                            <div key={r.id} className="p-3 bg-slate-955 border border-slate-850 rounded-xl text-xs flex justify-between items-center">
+                                                <div>
+                                                    <span className="font-bold text-slate-205 block">{cl ? cl.name : 'Cliente Desconocido'}</span>
+                                                    <span className="text-[10px] text-slate-500 block">
+                                                        Inicio: {r.startDate} {r.endDate ? `| Fin: ${r.endDate}` : ''}
+                                                    </span>
+                                                    <span className="text-[10px] text-indigo-400 font-medium mt-1 block">Plan: {ab ? ab.name : 'Abono N/A'}</span>
+                                                </div>
+                                                <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${
+                                                    r.status === 'activo' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-500/10 text-slate-400 border border-slate-800'
+                                                }`}>
+                                                    {r.status}
+                                                </span>
+                                            </div>
+                                        );
+                                    })
                                 )}
                             </div>
                         )}

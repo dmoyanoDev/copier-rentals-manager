@@ -51,6 +51,18 @@ export interface Reading {
     history?: { date: string; time: string; action: string; user: string; }[];
 }
 
+export interface Rental {
+    id: string;
+    clientId: string;
+    machineId: string;
+    abonoId: string;
+    startDate: string; // YYYY-MM-DD
+    endDate?: string;  // YYYY-MM-DD
+    status: 'activo' | 'pausado' | 'finalizado' | 'vencido';
+    observations?: string;
+    history?: { date: string; time: string; action: string; user: string; }[];
+}
+
 export interface Ticket {
     id: string;
     machineId: string | null;
@@ -230,6 +242,33 @@ export const mockTickets: Ticket[] = [
         history: [
             { date: '2026-07-03', time: '14:20', action: 'Ticket Creado', user: 'dmoyano' },
             { date: '2026-07-03', time: '15:00', action: 'Cambio de estado a En Proceso', user: 'tech2' }
+        ]
+    }
+];
+
+export const mockRentals: Rental[] = [
+    {
+        id: 'rental-1',
+        clientId: 'c-1', // Imprenta Rápida
+        machineId: 'm-1', // Ricoh MP 301
+        abonoId: 'abono-1', // Plan Básico
+        startDate: '2026-01-15',
+        status: 'activo',
+        observations: 'Contrato comercial de prueba inicial',
+        history: [
+            { date: '2026-01-15', time: '09:00', action: 'Contrato de alquiler activado', user: 'Darío Moyano' }
+        ]
+    },
+    {
+        id: 'rental-2',
+        clientId: 'c-2', // Sanatorio Güemes
+        machineId: 'm-4', // Konica C250i
+        abonoId: 'abono-2', // Plan Color
+        startDate: '2026-02-01',
+        status: 'activo',
+        observations: 'Uso comercial intensivo',
+        history: [
+            { date: '2026-02-01', time: '10:30', action: 'Contrato de alquiler activado', user: 'Darío Moyano' }
         ]
     }
 ];

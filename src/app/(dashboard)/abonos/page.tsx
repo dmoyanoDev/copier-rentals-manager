@@ -14,7 +14,7 @@ import { Plus, Trash2, Edit, FileText, CheckCircle, ShieldAlert, Sparkles } from
 import { Abono } from '@/lib/mockData';
 
 export default function AbonosPage() {
-    const { abonos, setAbonos, machines, clients } = useManagement();
+    const { abonos, setAbonos, machines, clients, rentals } = useManagement();
     const [searchQuery, setSearchQuery] = useState('');
     const [filterActive, setFilterActive] = useState('');
     
@@ -340,21 +340,31 @@ export default function AbonosPage() {
 
                         {/* Equipos bajo el plan */}
                         <div className="space-y-3 pt-3 border-t border-slate-850">
-                            <span className="text-slate-500 font-bold block text-xs">CLIENTES Y EQUIPOS VINCULADOS</span>
+                            <span className="text-slate-500 font-bold block text-xs">CONTRATOS VINCULADOS</span>
                             
-                            {machines.filter(m => m.abonoId === selectedAbono.id).length === 0 ? (
-                                <p className="text-xs text-slate-550 italic py-2">Ningún equipo tiene contratado este plan en la actualidad.</p>
+                            {rentals.filter(r => r.abonoId === selectedAbono.id).length === 0 ? (
+                                <p className="text-xs text-slate-555 italic py-2">Ningún contrato de alquiler registra este abono actualmente o históricamente.</p>
                             ) : (
                                 <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
-                                    {machines.filter(m => m.abonoId === selectedAbono.id).map(m => {
-                                        const cl = clients.find(c => c.id === m.clientId);
+                                    {rentals.filter(r => r.abonoId === selectedAbono.id).map(r => {
+                                        const cl = clients.find(c => c.id === r.clientId);
+                                        const m = machines.find(mach => mach.id === r.machineId);
                                         return (
-                                            <div key={m.id} className="p-3 bg-slate-950/50 border border-slate-850 rounded-xl text-xs flex justify-between items-center">
+                                            <div key={r.id} className="p-3 bg-slate-950/50 border border-slate-850 rounded-xl text-xs flex justify-between items-center animate-fade-in">
                                                 <div>
-                                                    <span className="font-bold text-slate-205 block">{cl ? cl.name : 'Cliente N/A'}</span>
-                                                    <span className="text-[10px] text-slate-500 block">Copiadora: {m.brand} {m.model} (S/N: {m.serial})</span>
+                                                    <span className="font-bold text-slate-205 block">{cl ? cl.name : 'Cliente Desconocido'}</span>
+                                                    <span className="text-[10px] text-slate-500 block">
+                                                        Copiadora: {m ? `${m.brand} ${m.model}` : 'Retirada'} S/N: {m ? m.serial : 'N/A'}
+                                                    </span>
+                                                    <span className="text-[9px] text-slate-550 block mt-0.5">
+                                                        Inicio: {r.startDate} {r.endDate ? `| Fin: ${r.endDate}` : ''}
+                                                    </span>
                                                 </div>
-                                                <Badge variant="secondary">{m.status}</Badge>
+                                                <span className={`px-2 py-0.5 rounded text-[8px] font-extrabold uppercase ${
+                                                    r.status === 'activo' ? 'bg-emerald-500/10 text-emerald-450 border border-emerald-500/20' : 'bg-slate-500/10 text-slate-400 border border-slate-800'
+                                                }`}>
+                                                    {r.status}
+                                                </span>
                                             </div>
                                         );
                                     })}

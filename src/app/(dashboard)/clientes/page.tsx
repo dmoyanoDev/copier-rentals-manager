@@ -13,7 +13,7 @@ import { Plus, Trash2, Edit, FileText, CheckCircle, AlertTriangle, ShieldCheck, 
 import { Client } from '@/lib/mockData';
 
 export default function ClientsPage() {
-    const { clients, setClients, machines, readings, abonos } = useManagement();
+    const { clients, setClients, machines, readings, abonos, rentals } = useManagement();
     const [searchQuery, setSearchQuery] = useState('');
     const [filterStatus, setFilterStatus] = useState('');
 
@@ -411,22 +411,25 @@ export default function ClientsPage() {
                         {/* TAB 1: MÁQUINAS */}
                         {detailTab === 'machines' && (
                             <div className="space-y-2">
-                                {machines.filter(m => m.clientId === selectedClient.id).length === 0 ? (
-                                    <p className="text-xs text-slate-500 italic py-4">Sin copiadoras asignadas.</p>
+                                {rentals.filter(r => r.clientId === selectedClient.id).length === 0 ? (
+                                    <p className="text-xs text-slate-500 italic py-4">Sin alquileres registrados.</p>
                                 ) : (
-                                    machines.filter(m => m.clientId === selectedClient.id).map(m => {
-                                        const ab = abonos.find(a => a.id === m.abonoId);
+                                    rentals.filter(r => r.clientId === selectedClient.id).map(r => {
+                                        const m = machines.find(mach => mach.id === r.machineId);
+                                        const ab = abonos.find(a => a.id === r.abonoId);
                                         return (
-                                            <div key={m.id} className="p-3 bg-slate-950/50 border border-slate-850 rounded-xl text-xs flex justify-between items-center">
+                                            <div key={r.id} className="p-3 bg-slate-950/50 border border-slate-850 rounded-xl text-xs flex justify-between items-center">
                                                 <div>
-                                                    <span className="font-bold text-slate-205 block">{m.brand} {m.model}</span>
-                                                    <span className="text-[10px] text-slate-500 block">S/N: {m.serial} | Tipo: {m.type}</span>
+                                                    <span className="font-bold text-slate-205 block">{m ? `${m.brand} ${m.model}` : 'Equipo de Alquiler'}</span>
+                                                    <span className="text-[10px] text-slate-500 block">
+                                                        S/N: {m ? m.serial : 'N/A'} | Inicio: {r.startDate} {r.endDate ? `| Fin: ${r.endDate}` : ''}
+                                                    </span>
                                                     <span className="text-[10px] text-indigo-400 font-medium mt-1 block">Plan: {ab ? ab.name : 'Abono no asignado'}</span>
                                                 </div>
-                                                <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                                                    m.status === 'Disponible' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-indigo-500/10 text-indigo-400'
+                                                <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${
+                                                    r.status === 'activo' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-500/10 text-slate-400 border border-slate-800'
                                                 }`}>
-                                                    {m.status.toUpperCase()}
+                                                    {r.status}
                                                 </span>
                                             </div>
                                         );
