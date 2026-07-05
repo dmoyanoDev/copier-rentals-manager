@@ -44,8 +44,9 @@ export interface Reading {
     ivaAmount: number;
     totalAmount: number;
     status: 'pending' | 'paid';
-    readingStatus: 'cargada' | 'observada' | 'validada';
+    readingStatus: 'cargada' | 'observada' | 'validada' | 'facturada';
     readingComment?: string;
+    history?: { date: string; time: string; action: string; user: string; }[];
 }
 
 export interface Ticket {
