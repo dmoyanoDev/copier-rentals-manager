@@ -35,7 +35,7 @@ export default function ReadingsPage() {
             return;
         }
 
-        const initialVal = selectedMachine.currentCounter;
+        const initialVal = selectedMachine.currentCounter || 0;
         if (finalVal < initialVal) {
             setValidationError(`Error: El contador final (${finalVal.toLocaleString()}) no puede ser menor al contador anterior (${initialVal.toLocaleString()}).`);
             return;
@@ -131,14 +131,14 @@ export default function ReadingsPage() {
                                                 <strong>{m.brand} {m.model}</strong>
                                                 <span className="block text-slate-400 text-[10px]">{m.serial}</span>
                                             </TableCell>
-                                            <TableCell className="font-mono-tabular text-xs text-slate-300">{(reading ? reading.initial : m.currentCounter).toLocaleString()}</TableCell>
+                                            <TableCell className="font-mono-tabular text-xs text-slate-300">{(reading ? (reading.initial || 0) : (m.currentCounter || 0)).toLocaleString()}</TableCell>
                                             <TableCell className="font-mono-tabular text-xs text-slate-300">
-                                                {reading ? reading.final.toLocaleString() : '-'}
+                                                {reading ? (reading.final || 0).toLocaleString() : '-'}
                                             </TableCell>
                                             <TableCell className="text-xs">
                                                 {reading ? (
                                                     <span className={reading.excessCount > 0 ? "text-amber-500 font-bold" : "text-slate-400"}>
-                                                        {(reading.final - reading.initial).toLocaleString()} copias
+                                                        {((reading.final || 0) - (reading.initial || 0)).toLocaleString()} copias
                                                     </span>
                                                 ) : '-'}
                                             </TableCell>
@@ -272,7 +272,7 @@ export default function ReadingsPage() {
 
                             <div className="text-xs bg-indigo-950/20 p-3 rounded-xl border border-indigo-900/30 flex justify-between">
                                 <span className="text-slate-400 font-semibold">Contador Anterior:</span>
-                                <span className="font-bold text-slate-200 font-mono-tabular">{selectedMachine.currentCounter.toLocaleString()} copias</span>
+                                <span className="font-bold text-slate-200 font-mono-tabular">{(selectedMachine.currentCounter || 0).toLocaleString()} copias</span>
                             </div>
 
                             <div className="space-y-1">
