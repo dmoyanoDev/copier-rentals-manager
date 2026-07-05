@@ -128,18 +128,18 @@ export const Sidebar: React.FC = () => {
     return (
         <>
             {/* Desktop Sidebar (md breakpoint and up: width 768px+) */}
-            <aside className="hidden md:flex flex-col w-64 bg-slate-900 text-slate-300 border-r border-slate-800 h-screen fixed left-0 top-0 z-40">
-                <div className="h-16 flex items-center gap-3 px-6 border-b border-slate-800">
-                    <div className="w-8 h-8 bg-indigo-650 rounded flex items-center justify-center font-extrabold text-white text-sm shadow-md">
+            <aside className="hidden md:flex flex-col w-20 xl:w-64 bg-slate-900 text-slate-300 border-r border-slate-800 h-screen fixed left-0 top-0 z-40 transition-all duration-300">
+                <div className="h-16 flex items-center gap-3 px-4 xl:px-6 border-b border-slate-800 justify-center xl:justify-start">
+                    <div className="w-8 h-8 bg-indigo-650 rounded flex items-center justify-center font-extrabold text-white text-sm shadow-md shrink-0">
                         M&S
                     </div>
-                    <div>
-                        <span className="font-bold text-white tracking-wide block text-xs">M&S Tecnología Digital</span>
-                        <span className="text-[9px] text-slate-500 font-medium block">CopyRent Manager</span>
+                    <div className="hidden xl:block overflow-hidden transition-all duration-300">
+                        <span className="font-bold text-white tracking-wide block text-xs truncate">M&S Tecnología Digital</span>
+                        <span className="text-[9px] text-slate-500 font-medium block truncate">CopyRent Manager</span>
                     </div>
                 </div>
 
-                <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
+                <nav className="flex-1 px-2 xl:px-4 py-6 space-y-1.5 overflow-y-auto">
                     {menuItems.map(item => {
                         const active = pathname === item.href;
                         return (
@@ -147,37 +147,39 @@ export const Sidebar: React.FC = () => {
                                 key={item.href}
                                 href={item.href}
                                 className={cn(
-                                    "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-150",
+                                    "flex items-center gap-3 px-3 xl:px-4 py-3 rounded-xl text-sm font-medium transition-all duration-150 justify-center xl:justify-start",
                                     active
                                         ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10"
                                         : "hover:bg-slate-800/60 hover:text-slate-100 text-slate-400"
                                 )}
+                                title={item.label}
                             >
-                                {item.icon}
-                                <span>{item.label}</span>
+                                <span className="shrink-0">{item.icon}</span>
+                                <span className="hidden xl:block transition-all duration-300 truncate">{item.label}</span>
                             </Link>
                         );
                     })}
                 </nav>
 
                 {/* Desktop User profile */}
-                <div className="p-4 border-t border-slate-800 bg-slate-950/40">
+                <div className="p-3 xl:p-4 border-t border-slate-800 bg-slate-950/40">
                     <button
                         onClick={cycleUser}
-                        className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-slate-800/40 transition-colors text-left group"
+                        className="w-full flex items-center gap-3 p-1.5 xl:p-2.5 rounded-xl hover:bg-slate-800/40 transition-colors text-left justify-center xl:justify-start group"
+                        title={currentUser?.fullname || 'Usuario'}
                     >
-                        <div className="w-9 h-9 rounded-lg bg-indigo-600/20 text-indigo-400 flex items-center justify-center font-bold text-sm border border-indigo-500/20 group-hover:scale-105 transition-transform">
+                        <div className="w-9 h-9 rounded-lg bg-indigo-600/20 text-indigo-400 flex items-center justify-center font-bold text-sm border border-indigo-500/20 group-hover:scale-105 transition-transform shrink-0">
                             {currentUser?.fullname ? currentUser.fullname.split(' ').map(n => n[0]).join('') : 'U'}
                         </div>
-                        <div className="flex-1 min-w-0">
+                        <div className="hidden xl:flex flex-col flex-1 min-w-0 transition-all duration-300">
                             <span className="block text-xs font-semibold text-slate-200 truncate leading-none">
                                 {currentUser?.fullname}
                             </span>
-                            <span className="block text-[10px] text-slate-500 mt-1 capitalize">
+                            <span className="block text-[10px] text-slate-500 mt-1 capitalize truncate">
                                 Rol: {currentUser?.role}
                             </span>
                         </div>
-                        <svg className="w-4 h-4 text-slate-600 group-hover:text-slate-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="hidden xl:block w-4 h-4 text-slate-600 group-hover:text-slate-400 transition-colors shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                         </svg>
                     </button>

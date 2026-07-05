@@ -22,7 +22,7 @@ import {
     Landmark, Mail, Share2, Printer, Download, Search, Filter, Send, 
     MessageSquare, AlertCircle, TrendingUp, Calendar, CheckSquare, Square, 
     Volume2, VolumeX, Settings, History, Phone, CreditCard, ChevronRight, Bell,
-    Info, FileSpreadsheet, Eye, UserCheck
+    Info, FileSpreadsheet, Eye, UserCheck, MoreVertical
 } from 'lucide-react';
 import { Client } from '@/lib/mockData';
 import { LocalClient } from '@/lib/context';
@@ -72,6 +72,10 @@ export default function ClientsPage() {
     // Monthly period filters
     const [filterStartMonth, setFilterStartMonth] = useState('');
     const [filterEndMonth, setFilterEndMonth] = useState('');
+
+    // Contextual actions dropdown menus states for mobile/tablet responsive layout
+    const [activeActionMenuId, setActiveActionMenuId] = useState<string | null>(null);
+    const [activeAccMenuId, setActiveAccMenuId] = useState<string | null>(null);
     
     // PDF Versioning selector
     const [pdfVersion, setPdfVersion] = useState<'comercial' | 'interna'>('comercial');
@@ -967,10 +971,10 @@ export default function ClientsPage() {
             )}
 
             {/* Nav Main Tabs */}
-            <div className="flex gap-2 border-b border-slate-800 pb-1">
+            <div className="flex flex-wrap md:flex-nowrap gap-1 border-b border-slate-800 pb-1">
                 <button
                     onClick={() => setActiveTab('list')}
-                    className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-t-xl transition-all ${
+                    className={`flex-1 md:flex-none text-center justify-center px-4 py-2.5 text-xs font-bold uppercase tracking-wider rounded-t-xl transition-all ${
                         activeTab === 'list' 
                             ? 'bg-slate-900 border-t-2 border-indigo-500 text-indigo-400 font-extrabold' 
                             : 'text-slate-500 hover:text-slate-400'
@@ -980,7 +984,7 @@ export default function ClientsPage() {
                 </button>
                 <button
                     onClick={() => setActiveTab('accounts')}
-                    className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-t-xl transition-all flex items-center gap-1.5 ${
+                    className={`flex-1 md:flex-none text-center justify-center px-4 py-2.5 text-xs font-bold uppercase tracking-wider rounded-t-xl transition-all flex items-center gap-1.5 ${
                         activeTab === 'accounts' 
                             ? 'bg-slate-900 border-t-2 border-indigo-500 text-indigo-400 font-extrabold' 
                             : 'text-slate-500 hover:text-slate-400'
@@ -990,7 +994,7 @@ export default function ClientsPage() {
                 </button>
                 <button
                     onClick={() => setActiveTab('config')}
-                    className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-t-xl transition-all flex items-center gap-1.5 ${
+                    className={`flex-1 md:flex-none text-center justify-center px-4 py-2.5 text-xs font-bold uppercase tracking-wider rounded-t-xl transition-all flex items-center gap-1.5 ${
                         activeTab === 'config' 
                             ? 'bg-slate-900 border-t-2 border-indigo-500 text-indigo-400 font-extrabold' 
                             : 'text-slate-500 hover:text-slate-400'
@@ -1003,30 +1007,30 @@ export default function ClientsPage() {
             {activeTab === 'list' && (
                 <div className="space-y-6">
                     {/* Action Bar */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <div className="flex flex-1 gap-3 max-w-lg">
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-900/20 p-4 rounded-2xl border border-slate-800/80">
+                        <div className="flex flex-col sm:flex-row flex-1 gap-2 w-full lg:max-w-xl">
                             <input
                                 type="text"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 placeholder="Buscar cliente por nombre, CUIT, dirección..."
-                                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:ring-1 focus:ring-indigo-500"
+                                className="w-full bg-slate-950 border border-slate-850 rounded-xl px-3.5 py-2 text-xs text-slate-105 placeholder-slate-550 outline-none focus:ring-1 focus:ring-indigo-500"
                             />
 
                             <select
                                 value={filterStatus}
                                 onChange={(e) => setFilterStatus(e.target.value)}
-                                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-300 text-xs focus:outline-none"
+                                className="w-full sm:w-44 bg-slate-950 border border-slate-850 rounded-xl px-3 py-2 text-slate-300 text-xs focus:outline-none"
                             >
-                                <option value="">Estado: Todos</option>
+                                <option value="">Todos los estados</option>
                                 <option value="active">Solo Activos</option>
                                 <option value="inactive">Solo Inactivos</option>
                                 <option value="debt">Solo con Deuda</option>
                             </select>
                         </div>
 
-                        <Button variant="primary" size="sm" onClick={() => handleOpenForm()}>
-                            <Plus size={16} className="mr-1.5" /> Nuevo Cliente
+                        <Button variant="primary" size="sm" onClick={() => handleOpenForm()} className="w-full lg:w-auto shrink-0 justify-center">
+                            <Plus size={15} className="mr-1.5" /> Nuevo Cliente
                         </Button>
                     </div>
 
@@ -1078,35 +1082,80 @@ export default function ClientsPage() {
                                                     </LocalBadge>
                                                 </TableCell>
                                                 <TableCell className="text-right">
-                                                    <div className="flex justify-end gap-1.5">
-                                                        <button 
-                                                            title="Estado de Cuenta Contable"
-                                                            onClick={() => openAccountView(c)}
-                                                            className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-850 transition-colors"
-                                                        >
-                                                            <Landmark size={13} className="text-emerald-450" />
-                                                        </button>
-                                                        <button 
-                                                            title="Ficha del Cliente"
-                                                            onClick={() => handleOpenDetail(c)}
-                                                            className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-850 transition-colors"
-                                                        >
-                                                            <FileText size={13} className="text-indigo-400" />
-                                                        </button>
-                                                        <button 
-                                                            title="Editar Cliente"
-                                                            onClick={() => handleOpenForm(c)}
-                                                            className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-850 transition-colors"
-                                                        >
-                                                            <Edit size={13} className="text-slate-400" />
-                                                        </button>
-                                                        <button 
-                                                            title="Eliminar Cliente"
-                                                            onClick={() => handleDeleteClient(c.id)}
-                                                            className="p-1.5 bg-red-955/20 border border-red-900/30 rounded-lg hover:bg-red-900/20 transition-colors"
-                                                        >
-                                                            <Trash2 size={13} className="text-red-400" />
-                                                        </button>
+                                                    <div className="relative flex justify-end">
+                                                        {/* Desktop buttons (visible on xl screens and up) */}
+                                                        <div className="hidden xl:flex justify-end gap-1.5">
+                                                            <button 
+                                                                title="Estado de Cuenta Contable"
+                                                                onClick={() => openAccountView(c)}
+                                                                className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-850 transition-colors"
+                                                            >
+                                                                <Landmark size={13} className="text-emerald-450" />
+                                                            </button>
+                                                            <button 
+                                                                title="Ficha del Cliente"
+                                                                onClick={() => handleOpenDetail(c)}
+                                                                className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-850 transition-colors"
+                                                            >
+                                                                <FileText size={13} className="text-indigo-400" />
+                                                            </button>
+                                                            <button 
+                                                                title="Editar Cliente"
+                                                                onClick={() => handleOpenForm(c)}
+                                                                className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-850 transition-colors"
+                                                            >
+                                                                <Edit size={13} className="text-slate-400" />
+                                                            </button>
+                                                            <button 
+                                                                title="Eliminar Cliente"
+                                                                onClick={() => handleDeleteClient(c.id)}
+                                                                className="p-1.5 bg-red-955/20 border border-red-900/30 rounded-lg hover:bg-red-900/20 transition-colors"
+                                                            >
+                                                                <Trash2 size={13} className="text-red-400" />
+                                                            </button>
+                                                        </div>
+
+                                                        {/* Mobile/Tablet dropdown menu button */}
+                                                        <div className="xl:hidden relative">
+                                                            <button
+                                                                onClick={() => setActiveActionMenuId(activeActionMenuId === c.id ? null : c.id)}
+                                                                className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg text-slate-400 hover:bg-slate-850 transition-colors"
+                                                                title="Acciones"
+                                                            >
+                                                                <MoreVertical size={14} />
+                                                            </button>
+                                                            {activeActionMenuId === c.id && (
+                                                                <>
+                                                                    <div className="fixed inset-0 z-10" onClick={() => setActiveActionMenuId(null)}></div>
+                                                                    <div className="absolute right-0 mt-1 w-44 bg-slate-950 border border-slate-850 rounded-xl shadow-2xl z-20 p-1 flex flex-col text-xs text-left animate-fade-in">
+                                                                        <button
+                                                                            onClick={() => { openAccountView(c); setActiveActionMenuId(null); }}
+                                                                            className="w-full px-3 py-2 hover:bg-slate-900 rounded-lg flex items-center gap-2 text-emerald-450"
+                                                                        >
+                                                                            <Landmark size={13} /> Cta. Corriente
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => { handleOpenDetail(c); setActiveActionMenuId(null); }}
+                                                                            className="w-full px-3 py-2 hover:bg-slate-900 rounded-lg flex items-center gap-2 text-indigo-400"
+                                                                        >
+                                                                            <FileText size={13} /> Ficha Cliente
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => { handleOpenForm(c); setActiveActionMenuId(null); }}
+                                                                            className="w-full px-3 py-2 hover:bg-slate-900 rounded-lg flex items-center gap-2 text-slate-300"
+                                                                        >
+                                                                            <Edit size={13} /> Editar Cliente
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => { handleDeleteClient(c.id); setActiveActionMenuId(null); }}
+                                                                            className="w-full px-3 py-2 hover:bg-slate-900 rounded-lg flex items-center gap-2 text-red-400 hover:bg-red-950/20"
+                                                                        >
+                                                                            <Trash2 size={13} /> Eliminar Cliente
+                                                                        </button>
+                                                                    </div>
+                                                                </>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </TableCell>
                                             </TableRow>
@@ -1122,9 +1171,9 @@ export default function ClientsPage() {
             {activeTab === 'accounts' && (
                 <div className="space-y-6">
                     {/* General Accounts Filter Bar */}
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/40 p-4 rounded-2xl border border-slate-800">
-                        <div className="flex flex-wrap gap-3 items-center flex-1 max-w-2xl">
-                            <div className="relative flex-1 min-w-[200px]">
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-900/40 p-4 rounded-2xl border border-slate-800">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 w-full lg:max-w-2xl">
+                            <div className="relative w-full">
                                 <Search size={14} className="absolute left-3 top-3 text-slate-500" />
                                 <input
                                     type="text"
@@ -1138,7 +1187,7 @@ export default function ClientsPage() {
                             <select
                                 value={accFilterDebt}
                                 onChange={(e) => setAccFilterDebt(e.target.value as any)}
-                                className="bg-slate-955 border border-slate-850 rounded-xl px-3 py-2 text-slate-300 text-xs focus:outline-none"
+                                className="w-full bg-slate-955 border border-slate-850 rounded-xl px-3 py-2 text-slate-300 text-xs focus:outline-none"
                             >
                                 <option value="all">Filtro Deuda: Todos</option>
                                 <option value="debtors">Clientes Deudores (Saldo &gt; 0)</option>
@@ -1152,12 +1201,12 @@ export default function ClientsPage() {
                                 value={accMinMora}
                                 onChange={(e) => setAccMinMora(e.target.value)}
                                 placeholder="Mora Mínima (días)..."
-                                className="bg-slate-955 border border-slate-850 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:ring-1 focus:ring-indigo-500 max-w-[150px]"
+                                className="w-full bg-slate-955 border border-slate-850 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:ring-1 focus:ring-indigo-500"
                             />
                         </div>
 
-                        <div className="flex gap-2">
-                            <Button variant="secondary" size="sm" onClick={printConsolidatedReport} className="flex items-center gap-1">
+                        <div className="flex gap-2 w-full lg:w-auto justify-end shrink-0">
+                            <Button variant="secondary" size="sm" onClick={printConsolidatedReport} className="flex items-center gap-1 w-full lg:w-auto justify-center">
                                 <Printer size={14} /> Reporte Consolidado
                             </Button>
                         </div>
@@ -1165,19 +1214,19 @@ export default function ClientsPage() {
 
                     {/* Bulk Actions Console */}
                     {selectedBulkIds.length > 0 && (
-                        <div className="bg-indigo-950/20 border border-indigo-900/50 p-4 rounded-xl flex items-center justify-between animate-fade-in text-xs">
-                            <span className="font-semibold text-indigo-300">
+                        <div className="bg-indigo-950/20 border border-indigo-900/50 p-4 rounded-xl flex flex-col md:flex-row gap-3 items-center justify-between animate-fade-in text-xs">
+                            <span className="font-semibold text-indigo-300 text-center md:text-left">
                                 {selectedBulkIds.length} clientes seleccionados para acciones masivas
                             </span>
-                            <div className="flex gap-2">
-                                <Button variant="ghost" size="sm" onClick={() => setSelectedBulkIds([])} className="text-slate-400">
+                            <div className="flex flex-wrap gap-2 w-full md:w-auto justify-center md:justify-end">
+                                <Button variant="ghost" size="sm" onClick={() => setSelectedBulkIds([])} className="text-slate-400 flex-1 md:flex-none">
                                     Desmarcar todos
                                 </Button>
-                                <Button variant="secondary" size="sm" onClick={triggerBulkExcel} className="flex items-center gap-1">
-                                    <Download size={13} /> Exportar Excel Masivo
+                                <Button variant="secondary" size="sm" onClick={triggerBulkExcel} className="flex items-center gap-1 flex-1 md:flex-none justify-center">
+                                    <Download size={13} /> Exportar Excel
                                 </Button>
-                                <Button variant="primary" size="sm" onClick={triggerBulkEmail} className="flex items-center gap-1">
-                                    <Send size={13} /> Enviar Recordatorios Masivos
+                                <Button variant="primary" size="sm" onClick={triggerBulkEmail} className="flex items-center gap-1 flex-1 md:flex-none justify-center">
+                                    <Send size={13} /> Enviar Recordatorios
                                 </Button>
                             </div>
                         </div>
@@ -1253,42 +1302,93 @@ export default function ClientsPage() {
                                                     </LocalBadge>
                                                 </TableCell>
                                                 <TableCell className="text-right">
-                                                    <div className="flex justify-end gap-1.5">
-                                                        <button 
-                                                            title="Ver Estado de Cuenta"
-                                                            onClick={() => openAccountView(c)}
-                                                            className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-850 transition-colors"
-                                                        >
-                                                            <Landmark size={13} className="text-emerald-455" />
-                                                        </button>
-                                                        <button 
-                                                            title="Descargar Reporte PDF"
-                                                            onClick={() => printClientAccount(c, 'comercial')}
-                                                            className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-850 transition-colors"
-                                                        >
-                                                            <Printer size={13} className="text-slate-400" />
-                                                        </button>
-                                                        <button 
-                                                            title="Exportar CSV"
-                                                            onClick={() => downloadExcelClient(c)}
-                                                            className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-855 transition-colors"
-                                                        >
-                                                            <Download size={13} className="text-slate-400" />
-                                                        </button>
-                                                        <button 
-                                                            title="Enviar por Email"
-                                                            onClick={() => openEmail(c)}
-                                                            className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-850 transition-colors"
-                                                        >
-                                                            <Mail size={13} className="text-slate-400" />
-                                                        </button>
-                                                        <button 
-                                                            title="Notificar por WhatsApp"
-                                                            onClick={() => openWhatsapp(c)}
-                                                            className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-850 transition-colors"
-                                                        >
-                                                            <MessageSquare size={13} className="text-emerald-455" />
-                                                        </button>
+                                                    <div className="relative flex justify-end">
+                                                        {/* Desktop buttons (visible on xl screens and up) */}
+                                                        <div className="hidden xl:flex justify-end gap-1">
+                                                            <button 
+                                                                title="Ver Estado de Cuenta"
+                                                                onClick={() => openAccountView(c)}
+                                                                className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-850 transition-colors"
+                                                            >
+                                                                <Landmark size={13} className="text-emerald-455" />
+                                                            </button>
+                                                            <button 
+                                                                title="Descargar Reporte PDF"
+                                                                onClick={() => printClientAccount(c, 'comercial')}
+                                                                className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-850 transition-colors"
+                                                            >
+                                                                <Printer size={13} className="text-slate-400" />
+                                                            </button>
+                                                            <button 
+                                                                title="Exportar CSV"
+                                                                onClick={() => downloadExcelClient(c)}
+                                                                className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-855 transition-colors"
+                                                            >
+                                                                <Download size={13} className="text-slate-400" />
+                                                            </button>
+                                                            <button 
+                                                                title="Enviar por Email"
+                                                                onClick={() => openEmail(c)}
+                                                                className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-850 transition-colors"
+                                                            >
+                                                                <Mail size={13} className="text-slate-400" />
+                                                            </button>
+                                                            <button 
+                                                                title="Notificar por WhatsApp"
+                                                                onClick={() => openWhatsapp(c)}
+                                                                className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-850 transition-colors"
+                                                            >
+                                                                <MessageSquare size={13} className="text-emerald-455" />
+                                                            </button>
+                                                        </div>
+
+                                                        {/* Mobile/Tablet actions dropdown */}
+                                                        <div className="xl:hidden relative">
+                                                            <button
+                                                                onClick={() => setActiveAccMenuId(activeAccMenuId === c.id ? null : c.id)}
+                                                                className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg text-slate-400 hover:bg-slate-850 transition-colors"
+                                                                title="Acciones"
+                                                            >
+                                                                <MoreVertical size={14} />
+                                                            </button>
+                                                            {activeAccMenuId === c.id && (
+                                                                <>
+                                                                    <div className="fixed inset-0 z-10" onClick={() => setActiveAccMenuId(null)}></div>
+                                                                    <div className="absolute right-0 mt-1 w-44 bg-slate-950 border border-slate-850 rounded-xl shadow-2xl z-20 p-1 flex flex-col text-xs text-left animate-fade-in">
+                                                                        <button
+                                                                            onClick={() => { openAccountView(c); setActiveAccMenuId(null); }}
+                                                                            className="w-full px-3 py-2 hover:bg-slate-900 rounded-lg flex items-center gap-2 text-emerald-455"
+                                                                        >
+                                                                            <Landmark size={13} /> Consultar Cta. Cte.
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => { printClientAccount(c, 'comercial'); setActiveAccMenuId(null); }}
+                                                                            className="w-full px-3 py-2 hover:bg-slate-900 rounded-lg flex items-center gap-2 text-slate-300"
+                                                                        >
+                                                                            <Printer size={13} /> Descargar PDF
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => { downloadExcelClient(c); setActiveAccMenuId(null); }}
+                                                                            className="w-full px-3 py-2 hover:bg-slate-900 rounded-lg flex items-center gap-2 text-slate-350"
+                                                                        >
+                                                                            <Download size={13} /> Exportar CSV
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => { openEmail(c); setActiveAccMenuId(null); }}
+                                                                            className="w-full px-3 py-2 hover:bg-slate-900 rounded-lg flex items-center gap-2 text-slate-300"
+                                                                        >
+                                                                            <Mail size={13} /> Enviar por Email
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => { openWhatsapp(c); setActiveAccMenuId(null); }}
+                                                                            className="w-full px-3 py-2 hover:bg-slate-900 rounded-lg flex items-center gap-2 text-emerald-450"
+                                                                        >
+                                                                            <MessageSquare size={13} /> Enviar WhatsApp
+                                                                        </button>
+                                                                    </div>
+                                                                </>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </TableCell>
                                             </TableRow>
@@ -1565,7 +1665,7 @@ export default function ClientsPage() {
                 onClose={() => setIsDetailOpen(false)}
                 title="Ficha del Cliente"
                 footer={
-                    <div className="flex justify-between w-full">
+                    <div className="flex flex-col sm:flex-row gap-2 justify-between w-full">
                         {selectedClient && (
                             <Button 
                                 variant="primary" 
@@ -1574,12 +1674,12 @@ export default function ClientsPage() {
                                     setIsDetailOpen(false);
                                     openAccountView(selectedClient);
                                 }}
-                                className="flex items-center gap-1"
+                                className="flex items-center gap-1 w-full sm:w-auto justify-center"
                             >
                                 <Landmark size={13} /> Ver Estado de Cuenta
                             </Button>
                         )}
-                        <Button variant="secondary" size="sm" onClick={() => setIsDetailOpen(false)}>
+                        <Button variant="secondary" size="sm" onClick={() => setIsDetailOpen(false)} className="w-full sm:w-auto mt-2 sm:mt-0 justify-center">
                             Cerrar Ficha
                         </Button>
                     </div>
@@ -1715,31 +1815,31 @@ export default function ClientsPage() {
                 onClose={() => setIsAccountOpen(false)}
                 title="Consola de Cuenta Corriente Individual"
                 footer={
-                    <div className="flex gap-2 justify-between items-center w-full border-t border-slate-800 pt-4 mt-2">
+                    <div className="flex flex-col sm:flex-row gap-3 justify-between items-center w-full border-t border-slate-800 pt-3 mt-1">
                         {/* Selector for double PDF versions */}
-                        <div className="flex items-center gap-2 text-xs">
-                            <span className="text-slate-400">Versión Reporte:</span>
+                        <div className="flex items-center justify-between sm:justify-start gap-2 text-xs w-full sm:w-auto">
+                            <span className="text-slate-400">Versión:</span>
                             <select
                                 value={pdfVersion}
                                 onChange={(e) => setPdfVersion(e.target.value as any)}
                                 className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-indigo-400 font-bold"
                             >
-                                <option value="comercial">Cliente (Limpia Comercial)</option>
-                                <option value="interna">Interna (Administración / Auditoría)</option>
+                                <option value="comercial">Cliente (Comercial)</option>
+                                <option value="interna">Interna (Auditoría)</option>
                             </select>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 w-full sm:w-auto justify-end">
                             {accountClient && (
                                 <>
-                                    <Button variant="secondary" size="sm" onClick={() => printClientAccount(accountClient, pdfVersion)} className="flex items-center gap-1">
-                                        <Printer size={13} /> Imprimir PDF ({pdfVersion.toUpperCase()})
+                                    <Button variant="secondary" size="sm" onClick={() => printClientAccount(accountClient, pdfVersion)} className="flex items-center gap-1 text-[11px] h-8 flex-1 sm:flex-initial justify-center">
+                                        <Printer size={13} /> PDF
                                     </Button>
-                                    <Button variant="secondary" size="sm" onClick={() => downloadExcelClient(accountClient)} className="flex items-center gap-1">
-                                        <Download size={13} /> CSV Excel
+                                    <Button variant="secondary" size="sm" onClick={() => downloadExcelClient(accountClient)} className="flex items-center gap-1 text-[11px] h-8 flex-1 sm:flex-initial justify-center">
+                                        <Download size={13} /> CSV
                                     </Button>
                                 </>
                             )}
-                            <Button variant="ghost" size="sm" onClick={() => setIsAccountOpen(false)}>
+                            <Button variant="ghost" size="sm" onClick={() => setIsAccountOpen(false)} className="h-8 flex-1 sm:flex-initial justify-center">
                                 Cerrar
                             </Button>
                         </div>
@@ -1761,12 +1861,12 @@ export default function ClientsPage() {
                         <div className="space-y-4 max-h-[72vh] overflow-y-auto pr-1 text-slate-105">
                             
                             {/* Modal Header KPI and Risk Score Card */}
-                            <div className="bg-slate-950/40 p-4 border border-slate-850 rounded-2xl flex flex-wrap gap-4 justify-between items-center">
+                            <div className="bg-slate-955/40 p-4 border border-slate-850 rounded-2xl flex flex-wrap gap-4 justify-between items-center">
                                 <div>
                                     <h4 className="text-sm font-bold text-slate-100">{accountClient.name}</h4>
                                     <span className="text-[10px] text-slate-500">CUIT: {accountClient.cuit} | Condición: {accountClient.taxCategory}</span>
                                 </div>
-                                <div className="flex gap-4 items-center">
+                                <div className="flex flex-wrap gap-4 items-center">
                                     <div className="text-right">
                                         <span className="text-[9px] uppercase font-bold text-slate-500 block font-bold">Score Cobros</span>
                                         <span className="text-sm font-extrabold text-indigo-400 font-mono">{s.score}/100</span>
@@ -1787,10 +1887,10 @@ export default function ClientsPage() {
                             </div>
 
                             {/* Modal Internal Tabs */}
-                            <div className="flex gap-2 border-b border-slate-800 pb-1">
+                            <div className="flex flex-wrap gap-1 border-b border-slate-800 pb-1">
                                 <button
                                     onClick={() => setAccountModalTab('movements')}
-                                    className={`px-3 py-1 text-xs font-semibold rounded-t-lg transition-all ${
+                                    className={`flex-1 sm:flex-none text-center justify-center px-3 py-1.5 text-xs font-semibold rounded-t-lg transition-all ${
                                         accountModalTab === 'movements' 
                                             ? 'border-b-2 border-indigo-500 text-indigo-400 font-bold' 
                                             : 'text-slate-500 hover:text-slate-400'
@@ -1800,7 +1900,7 @@ export default function ClientsPage() {
                                 </button>
                                 <button
                                     onClick={() => setAccountModalTab('history')}
-                                    className={`px-3 py-1 text-xs font-semibold rounded-t-lg transition-all flex items-center gap-1 ${
+                                    className={`flex-1 sm:flex-none text-center justify-center px-3 py-1.5 text-xs font-semibold rounded-t-lg transition-all flex items-center gap-1.5 ${
                                         accountModalTab === 'history' 
                                             ? 'border-b-2 border-indigo-500 text-indigo-400 font-bold' 
                                             : 'text-slate-500 hover:text-slate-400'
@@ -1810,7 +1910,7 @@ export default function ClientsPage() {
                                 </button>
                                 <button
                                     onClick={() => setAccountModalTab('payments')}
-                                    className={`px-3 py-1 text-xs font-semibold rounded-t-lg transition-all flex items-center gap-1 ${
+                                    className={`flex-1 sm:flex-none text-center justify-center px-3 py-1.5 text-xs font-semibold rounded-t-lg transition-all flex items-center gap-1.5 ${
                                         accountModalTab === 'payments' 
                                             ? 'border-b-2 border-indigo-500 text-indigo-400 font-bold' 
                                             : 'text-slate-500 hover:text-slate-400'
@@ -1820,7 +1920,7 @@ export default function ClientsPage() {
                                 </button>
                                 <button
                                     onClick={() => setAccountModalTab('notes')}
-                                    className={`px-3 py-1 text-xs font-semibold rounded-t-lg transition-all flex items-center gap-1 ${
+                                    className={`flex-1 sm:flex-none text-center justify-center px-3 py-1.5 text-xs font-semibold rounded-t-lg transition-all flex items-center gap-1.5 ${
                                         accountModalTab === 'notes' 
                                             ? 'border-b-2 border-indigo-500 text-indigo-400 font-bold' 
                                             : 'text-slate-500 hover:text-slate-400'
@@ -1857,22 +1957,22 @@ export default function ClientsPage() {
 
                                     {/* Action sugerida quick action block */}
                                     {s.saldo > 0 && (
-                                        <div className="bg-amber-955/15 border border-amber-900/35 p-3 rounded-xl flex items-center justify-between">
+                                        <div className="bg-amber-955/15 border border-amber-900/35 p-3 rounded-xl flex flex-col sm:flex-row gap-3 items-center justify-between">
                                             <div className="flex items-center gap-1.5 text-amber-400 font-bold text-xs">
                                                 <TrendingUp size={13} />
                                                 <span>Acción Sugerida de Cobro</span>
                                             </div>
-                                            <div className="flex gap-1.5 text-[10px]">
-                                                <Button variant="secondary" size="sm" onClick={() => handleQuickAction(accountClient, 'whatsapp')} className="h-6 px-2">
+                                            <div className="flex flex-wrap gap-1.5 justify-center sm:justify-end text-[10px] w-full sm:w-auto">
+                                                <Button variant="secondary" size="sm" onClick={() => handleQuickAction(accountClient, 'whatsapp')} className="h-6 px-2 flex-1 sm:flex-none">
                                                     WhatsApp
                                                 </Button>
-                                                <Button variant="secondary" size="sm" onClick={() => handleQuickAction(accountClient, 'email')} className="h-6 px-2">
+                                                <Button variant="secondary" size="sm" onClick={() => handleQuickAction(accountClient, 'email')} className="h-6 px-2 flex-1 sm:flex-none">
                                                     Email
                                                 </Button>
-                                                <Button variant="secondary" size="sm" onClick={() => handleQuickAction(accountClient, 'llamado')} className="h-6 px-2">
+                                                <Button variant="secondary" size="sm" onClick={() => handleQuickAction(accountClient, 'llamado')} className="h-6 px-2 flex-1 sm:flex-none">
                                                     Registrar Llamada
                                                 </Button>
-                                                <Button variant="secondary" size="sm" onClick={() => handleQuickAction(accountClient, 'promesa')} className="h-6 px-2">
+                                                <Button variant="secondary" size="sm" onClick={() => handleQuickAction(accountClient, 'promesa')} className="h-6 px-2 flex-1 sm:flex-none">
                                                     Promesa Pago
                                                 </Button>
                                             </div>
@@ -1881,10 +1981,10 @@ export default function ClientsPage() {
 
                                     {/* Filters Bar inside Modal */}
                                     <div className="flex flex-col md:flex-row gap-3 items-start md:items-center justify-between border-t border-slate-850 pt-3 text-xs">
-                                        <div className="flex flex-wrap gap-1.5 items-center">
+                                        <div className="flex flex-wrap gap-1.5 items-center w-full md:w-auto">
                                             <button
                                                 onClick={() => setAccountFilter('all')}
-                                                className={`px-2.5 py-1 rounded-lg border font-semibold ${
+                                                className={`flex-1 md:flex-none px-2.5 py-1 rounded-lg border font-semibold ${
                                                     accountFilter === 'all' ? 'bg-indigo-650 text-white font-bold' : 'bg-slate-900 border-slate-800 text-slate-400'
                                                 }`}
                                             >
@@ -1892,7 +1992,7 @@ export default function ClientsPage() {
                                             </button>
                                             <button
                                                 onClick={() => setAccountFilter('pending')}
-                                                className={`px-2.5 py-1 rounded-lg border font-semibold ${
+                                                className={`flex-1 md:flex-none px-2.5 py-1 rounded-lg border font-semibold ${
                                                     accountFilter === 'pending' ? 'bg-indigo-650 text-white font-bold' : 'bg-slate-900 border-slate-800 text-slate-400'
                                                 }`}
                                             >
@@ -1900,7 +2000,7 @@ export default function ClientsPage() {
                                             </button>
                                             <button
                                                 onClick={() => setAccountFilter('overdue')}
-                                                className={`px-2.5 py-1 rounded-lg border font-semibold ${
+                                                className={`flex-1 md:flex-none px-2.5 py-1 rounded-lg border font-semibold ${
                                                     accountFilter === 'overdue' ? 'bg-indigo-655 text-white font-bold' : 'bg-slate-900 border-slate-800 text-slate-400'
                                                 }`}
                                             >
@@ -1909,34 +2009,37 @@ export default function ClientsPage() {
                                         </div>
 
                                         {/* Monthly periods filter */}
-                                        <div className="flex gap-2 items-center text-[11px]">
+                                        <div className="flex flex-wrap gap-2 items-center text-[11px] w-full md:w-auto justify-between md:justify-end">
                                             <span className="text-slate-500 font-bold">RANGO MESES:</span>
-                                            <input
-                                                type="month"
-                                                value={filterStartMonth}
-                                                onChange={(e) => setFilterStartMonth(e.target.value)}
-                                                className="bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-xs text-slate-205 focus:outline-none"
-                                                title="Mes Inicio"
-                                            />
-                                            <span className="text-slate-650">a</span>
-                                            <input
-                                                type="month"
-                                                value={filterEndMonth}
-                                                onChange={(e) => setFilterEndMonth(e.target.value)}
-                                                className="bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-xs text-slate-205 focus:outline-none"
-                                                title="Mes Fin"
-                                            />
+                                            <div className="flex items-center gap-1">
+                                                <input
+                                                    type="month"
+                                                    value={filterStartMonth}
+                                                    onChange={(e) => setFilterStartMonth(e.target.value)}
+                                                    className="bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-xs text-slate-205 focus:outline-none"
+                                                    title="Mes Inicio"
+                                                />
+                                                <span className="text-slate-650">a</span>
+                                                <input
+                                                    type="month"
+                                                    value={filterEndMonth}
+                                                    onChange={(e) => setFilterEndMonth(e.target.value)}
+                                                    className="bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-xs text-slate-205 focus:outline-none"
+                                                    title="Mes Fin"
+                                                />
+                                            </div>
                                         </div>
                                     </div>
 
                                     {/* Ledger movements list */}
                                     <div className="border border-slate-855 rounded-xl overflow-hidden">
-                                        <table className="w-full text-left text-xs divide-y divide-slate-855">
-                                            <thead className="bg-slate-900/60 font-bold text-slate-400 uppercase tracking-wider text-[9px]">
-                                                <tr>
-                                                    <th className="px-4 py-2.5 cursor-pointer" onClick={() => toggleAccountSort('date')}>
-                                                        Fecha {accountSortKey === 'date' ? (accountSortOrder === 'asc' ? '▲' : '▼') : ''}
-                                                    </th>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left text-xs divide-y divide-slate-855 min-w-[850px]">
+                                                <thead className="bg-slate-900/60 font-bold text-slate-400 uppercase tracking-wider text-[9px]">
+                                                    <tr>
+                                                        <th className="px-4 py-2.5 cursor-pointer" onClick={() => toggleAccountSort('date')}>
+                                                            Fecha {accountSortKey === 'date' ? (accountSortOrder === 'asc' ? '▲' : '▼') : ''}
+                                                        </th>
                                                     <th className="px-4 py-2.5">Tipo</th>
                                                     <th className="px-4 py-2.5">Número</th>
                                                     <th className="px-4 py-2.5">Detalle / Concepto</th>
@@ -2017,6 +2120,7 @@ export default function ClientsPage() {
                                             )}
                                         </table>
                                     </div>
+                                </div>
                                 </div>
                             )}
 
