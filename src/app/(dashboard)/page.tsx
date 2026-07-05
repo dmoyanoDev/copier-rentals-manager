@@ -183,7 +183,7 @@ export default function DashboardPage() {
                                                         <td className="px-5 py-4 font-bold text-slate-800 dark:text-slate-200">{t.clientName}</td>
                                                         <td className="px-5 py-4 text-xs text-slate-500">{t.machineDesc} ({t.serialNumber})</td>
                                                         <td className="px-5 py-4 text-xs font-semibold">{t.category}</td>
-                                                        <td className="px-5 py-4 text-xs font-mono-tabular">{t.slaDate.split('-').reverse().join('/')}</td>
+                                                        <td className="px-5 py-4 text-xs font-mono-tabular">{t.slaDate ? t.slaDate.split('T')[0].split('-').reverse().join('/') : 'Sin definir'}</td>
                                                         <td className="px-5 py-4 text-right">
                                                             <Link href="/tecnica">
                                                                 <Button variant="primary" size="sm">Atender</Button>
