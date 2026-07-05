@@ -61,9 +61,9 @@ export default function HistoryPage() {
                                             {mach ? `${mach.brand} ${mach.model}` : 'N/A'}
                                             {mach && <span className="block text-[10px] text-slate-500">Serie: {mach.serial}</span>}
                                         </TableCell>
-                                        <TableCell className="font-mono-tabular text-xs text-slate-300">{r.initial.toLocaleString('es-AR')}</TableCell>
-                                        <TableCell className="font-mono-tabular text-xs text-slate-300">{r.final.toLocaleString('es-AR')}</TableCell>
-                                        <TableCell className="font-mono-tabular text-xs text-amber-500 font-semibold">{r.excessCount.toLocaleString('es-AR')}</TableCell>
+                                        <TableCell className="font-mono-tabular text-xs text-slate-300">{(r.initial || 0).toLocaleString('es-AR')}</TableCell>
+                                        <TableCell className="font-mono-tabular text-xs text-slate-300">{(r.final || 0).toLocaleString('es-AR')}</TableCell>
+                                        <TableCell className="font-mono-tabular text-xs text-amber-500 font-semibold">{(r.excessCount || 0).toLocaleString('es-AR')}</TableCell>
                                         <TableCell className="font-mono-tabular text-xs text-slate-300">{formatCurrency(r.netAmount)}</TableCell>
                                         <TableCell className="font-mono-tabular text-xs text-slate-400">{formatCurrency(r.ivaAmount)}</TableCell>
                                         <TableCell className="font-mono-tabular text-xs font-bold text-slate-200">{formatCurrency(r.totalAmount)}</TableCell>
