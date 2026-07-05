@@ -167,8 +167,11 @@ export default function MachinesPage() {
                         ) : (
                             filteredMachines.map(m => {
                                 const client = clients.find(c => c.id === m.clientId);
-                                const copiesSinceService = m.currentCounter - m.lastServiceCounter;
-                                const isPreventiveAlert = copiesSinceService >= m.preventiveInterval;
+                                const currentCounter = m.currentCounter || 0;
+                                const lastServiceCounter = m.lastServiceCounter || 0;
+                                const preventiveInterval = m.preventiveInterval || 15000;
+                                const copiesSinceService = currentCounter - lastServiceCounter;
+                                const isPreventiveAlert = copiesSinceService >= preventiveInterval;
 
                                 return (
                                     <TableRow key={m.id}>
@@ -183,12 +186,12 @@ export default function MachinesPage() {
                                             {client ? client.name : <span className="text-slate-500 italic">Disponible</span>}
                                         </TableCell>
                                         <TableCell className="font-mono-tabular text-xs text-slate-300">
-                                            {m.currentCounter.toLocaleString('es-AR')} copias
+                                            {currentCounter.toLocaleString('es-AR')} copias
                                         </TableCell>
                                         <TableCell className="text-xs">
                                             <div className="flex items-center gap-1.5">
                                                 <span className="font-mono-tabular text-slate-400">
-                                                    {copiesSinceService.toLocaleString('es-AR')} / {m.preventiveInterval.toLocaleString('es-AR')}
+                                                    {copiesSinceService.toLocaleString('es-AR')} / {preventiveInterval.toLocaleString('es-AR')}
                                                 </span>
                                                 {isPreventiveAlert && (
                                                     <span title="Mantenimiento preventivo requerido" className="text-amber-500 animate-pulse">
