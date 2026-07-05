@@ -20,7 +20,6 @@ import {
 export default function TechnicalPage() {
     const { tickets, setTickets, currentUser, users, setUsers, clients, machines } = useManagement();
     const isTech = currentUser?.role === 'tecnico';
-    const clientMachines = machines.filter(m => m.clientId === newClientId);
 
     // Core Navigation Tabs: 'bitacora' | 'tecnicos' | 'config' | 'historial_envios' | 'metricas'
     const [currentTab, setCurrentTab] = useState<'bitacora' | 'tecnicos' | 'config' | 'historial_envios' | 'metricas'>('bitacora');
@@ -91,6 +90,7 @@ export default function TechnicalPage() {
     const [newDescription, setNewDescription] = useState('');
     const [newAssignedTechId, setNewAssignedTechId] = useState('');
     const [shouldAutoAssignOnCreate, setShouldAutoAssignOnCreate] = useState(false);
+    const clientMachines = machines.filter(m => m.clientId === newClientId);
 
     // Technician Form modal states
     const [isTechFormOpen, setIsTechFormOpen] = useState(false);
