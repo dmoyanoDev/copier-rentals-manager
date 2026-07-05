@@ -9,3 +9,4 @@ export * from './emailLogs';
 export * from './sharedPdfs';
 export * from './notificationSettings';
 export * from './notificationHistory';
+export * from './auditLogs';
