@@ -1101,7 +1101,7 @@ export default function TechnicalPage() {
                                                     {tech ? (
                                                         <div className="flex items-center gap-1.5">
                                                             <div className="w-5 h-5 rounded-full bg-slate-800 text-[9px] font-bold text-indigo-455 flex items-center justify-center border border-slate-700">
-                                                                {tech.fullname.split(' ').map(n => n[0]).join('')}
+                                                                {(tech.fullname || '').split(' ').map(n => n[0] || '').join('')}
                                                             </div>
                                                             <span className="text-slate-350 font-semibold">{tech.fullname}</span>
                                                         </div>
@@ -1224,7 +1224,7 @@ export default function TechnicalPage() {
                                                 <TableCell className="font-bold text-slate-100">
                                                     <div className="flex items-center gap-2">
                                                         <div className="w-6 h-6 rounded-full bg-slate-800 text-[10px] font-bold text-indigo-400 flex items-center justify-center border border-slate-700">
-                                                            {tech.fullname.split(' ').map(n => n[0]).join('')}
+                                                            {(tech.fullname || '').split(' ').map(n => n[0] || '').join('')}
                                                         </div>
                                                         <div>
                                                             <span className="block">{tech.fullname}</span>
@@ -1656,7 +1656,7 @@ export default function TechnicalPage() {
                                                 <TableCell className="font-bold text-slate-100">
                                                     <div className="flex items-center gap-2">
                                                         <div className="w-5 h-5 rounded-full bg-slate-800 text-[9px] font-bold text-indigo-400 flex items-center justify-center">
-                                                            {tech.fullname.split(' ').map(n => n[0]).join('')}
+                                                            {(tech.fullname || '').split(' ').map(n => n[0] || '').join('')}
                                                         </div>
                                                         <span>{tech.fullname}</span>
                                                     </div>
