@@ -82,6 +82,7 @@ export default function PresupuestosPage() {
     const [requirementsText, setRequirementsText] = useState('');
     const [conditionsText, setConditionsText] = useState('');
     const [footerText, setFooterText] = useState('M&S Tecnología Digital - Provisión de Soluciones de Copiado e Impresión Corporativa.');
+    const [isTextDirty, setIsTextDirty] = useState(false);
 
     // Tax and discount
     const [ivaMode, setIvaMode] = useState<TaxMode>('ADD_21');
@@ -174,12 +175,19 @@ export default function PresupuestosPage() {
 
     // Handle change of budget type (auto-loads template and defaults)
     const handleTypeChange = (newType: typeof tipo) => {
+        if (isTextDirty) {
+            const confirmChange = window.confirm(
+                '¿Desea cambiar el tipo de presupuesto? Se sobrescribirán y perderán las descripciones que redactó manualmente.'
+            );
+            if (!confirmChange) return;
+        }
+
         setTipo(newType);
         
         // Find matching template
         const matched = templates.find(t => t.tipo === newType && t.activo);
         if (matched) {
-            applyTemplate(matched);
+            applyTemplate(matched, true);
         } else {
             // Fallback clear
             setIntroText('');
@@ -188,10 +196,18 @@ export default function PresupuestosPage() {
             setExcludesText('');
             setRequirementsText('');
             setIvaMode('ADD_21');
+            setIsTextDirty(false);
         }
     };
 
-    const applyTemplate = (temp: BudgetTemplate) => {
+    const applyTemplate = (temp: BudgetTemplate, force = false) => {
+        if (!force && isTextDirty) {
+            const confirmChange = window.confirm(
+                '¿Desea cambiar la plantilla de texto? Se sobrescribirán y perderán las descripciones que redactó manualmente.'
+            );
+            if (!confirmChange) return;
+        }
+
         setSelectedTemplateId(temp.id);
         setIntroText(temp.defaultIntroText);
         setConditionsText(temp.defaultConditionsText);
@@ -204,6 +220,7 @@ export default function PresupuestosPage() {
         } else {
             setRequirementsText('');
         }
+        setIsTextDirty(false);
     };
 
     // Trigger requirements toggle based on non-state client flag
@@ -460,6 +477,7 @@ export default function PresupuestosPage() {
         setIvaMode(b.ivaMode);
         setDiscountType(b.discountType);
         setDiscountValue(String(b.discountValue));
+        setIsTextDirty(false);
 
         setActiveTab('create');
     };
@@ -1203,8 +1221,24 @@ export default function PresupuestosPage() {
                                         label="Plantilla de Texto"
                                         value={selectedTemplateId}
                                         onChange={(e) => {
-                                            const t = templates.find(temp => temp.id === e.target.value);
-                                            if (t) applyTemplate(t);
+                                            if (e.target.value === '') {
+                                                if (isTextDirty) {
+                                                    const confirmChange = window.confirm(
+                                                        '¿Desea limpiar los textos? Se perderán las descripciones que redactó manualmente.'
+                                                    );
+                                                    if (!confirmChange) return;
+                                                }
+                                                setSelectedTemplateId('');
+                                                setIntroText('');
+                                                setConditionsText('');
+                                                setIncludesText('');
+                                                setExcludesText('');
+                                                setRequirementsText('');
+                                                setIsTextDirty(false);
+                                            } else {
+                                                const t = templates.find(temp => temp.id === e.target.value);
+                                                if (t) applyTemplate(t);
+                                            }
                                         }}
                                         options={[
                                             { value: '', label: 'Ninguna / Vacía' },
@@ -1378,7 +1412,7 @@ export default function PresupuestosPage() {
                                         <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Introducción / Carta Presentación</label>
                                         <textarea
                                             value={introText}
-                                            onChange={(e) => setIntroText(e.target.value)}
+                                            onChange={(e) => { setIntroText(e.target.value); setIsTextDirty(true); }}
                                             className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 h-16 resize-none"
                                         />
                                     </div>
@@ -1386,7 +1420,7 @@ export default function PresupuestosPage() {
                                         <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Servicios Incluidos</label>
                                         <textarea
                                             value={includesText}
-                                            onChange={(e) => setIncludesText(e.target.value)}
+                                            onChange={(e) => { setIncludesText(e.target.value); setIsTextDirty(true); }}
                                             className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 h-16 resize-none"
                                         />
                                     </div>
@@ -1394,7 +1428,7 @@ export default function PresupuestosPage() {
                                         <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Cargos Excluidos</label>
                                         <textarea
                                             value={excludesText}
-                                            onChange={(e) => setExcludesText(e.target.value)}
+                                            onChange={(e) => { setExcludesText(e.target.value); setIsTextDirty(true); }}
                                             className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 h-16 resize-none"
                                         />
                                     </div>
@@ -1403,7 +1437,7 @@ export default function PresupuestosPage() {
                                             <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Requisitos de Aprobación</label>
                                             <textarea
                                                 value={requirementsText}
-                                                onChange={(e) => setRequirementsText(e.target.value)}
+                                                onChange={(e) => { setRequirementsText(e.target.value); setIsTextDirty(true); }}
                                                 className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 h-16 resize-none"
                                             />
                                         </div>
@@ -1412,7 +1446,7 @@ export default function PresupuestosPage() {
                                         <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Condiciones Comerciales de Firma</label>
                                         <textarea
                                             value={conditionsText}
-                                            onChange={(e) => setConditionsText(e.target.value)}
+                                            onChange={(e) => { setConditionsText(e.target.value); setIsTextDirty(true); }}
                                             className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 h-16 resize-none"
                                         />
                                     </div>

@@ -83,7 +83,12 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 
                 // Budgets loaded states
                 setBudgets(parsed.budgets || []);
-                setTemplates(parsed.templates || defaultBudgetTemplates);
+                
+                const loadedTemplates = parsed.templates || [];
+                const defaultIds = defaultBudgetTemplates.map(t => t.id);
+                const customTemplates = loadedTemplates.filter((t: any) => !defaultIds.includes(t.id));
+                setTemplates([...defaultBudgetTemplates, ...customTemplates]);
+
                 setMachinePresets(parsed.machinePresets || defaultMachinePresets);
 
                 // Set default admin user initially from loaded list
