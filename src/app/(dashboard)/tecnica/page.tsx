@@ -9,19 +9,21 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Modal } from '@/components/ui/modal';
 import { Ticket, User } from '@/lib/mockData';
+import { autoAssignTech } from '@/domain/ticket/assignment';
 import { 
     Plus, Edit, User as UserIcon, Calendar, Settings, AlertTriangle, 
     Search, Filter, Shield, Wrench, X, Clock, DollarSign, Activity, 
     CheckCircle, HelpCircle, Check, ArrowRight, Phone, Mail, MapPin, 
-    Users, Bell, History, CheckSquare, Eye, RefreshCw
+    Users, Bell, History, CheckSquare, Eye, RefreshCw, BarChart2, Star, Award
 } from 'lucide-react';
 
 export default function TechnicalPage() {
     const { tickets, setTickets, currentUser, users, setUsers, clients, machines } = useManagement();
     const isTech = currentUser?.role === 'tecnico';
-    
-    // Core Navigation Tabs: 'bitacora' | 'tecnicos' | 'config' | 'historial_envios'
-    const [currentTab, setCurrentTab] = useState<'bitacora' | 'tecnicos' | 'config' | 'historial_envios'>('bitacora');
+    const clientMachines = machines.filter(m => m.clientId === newClientId);
+
+    // Core Navigation Tabs: 'bitacora' | 'tecnicos' | 'config' | 'historial_envios' | 'metricas'
+    const [currentTab, setCurrentTab] = useState<'bitacora' | 'tecnicos' | 'config' | 'historial_envios' | 'metricas'>('bitacora');
     
     // Selected states
     const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
@@ -39,6 +41,9 @@ export default function TechnicalPage() {
     const [configEvents, setConfigEvents] = useState<Record<string, boolean>>({});
     const [configTemplates, setConfigTemplates] = useState<Record<string, string>>({});
     const [isSavingConfig, setIsSavingConfig] = useState(false);
+
+    // Simulation/Cron states
+    const [isSimulatingCron, setIsSimulatingCron] = useState(false);
 
     // Filter states for tickets bitacora
     const [searchQuery, setSearchQuery] = useState('');
@@ -68,6 +73,7 @@ export default function TechnicalPage() {
     const [editAssignedTechId, setEditAssignedTechId] = useState('');
     const [editTechnicalCost, setEditTechnicalCost] = useState('0');
     const [editObservations, setEditObservations] = useState('');
+    const [autoAssignExplanation, setAutoAssignExplanation] = useState<string | null>(null);
 
     // Creation Form states
     const [newClientType, setNewClientType] = useState<'existente' | 'externo'>('existente');
@@ -84,6 +90,7 @@ export default function TechnicalPage() {
     const [newPriority, setNewPriority] = useState<'baja' | 'media' | 'alta' | 'urgente'>('media');
     const [newDescription, setNewDescription] = useState('');
     const [newAssignedTechId, setNewAssignedTechId] = useState('');
+    const [shouldAutoAssignOnCreate, setShouldAutoAssignOnCreate] = useState(false);
 
     // Technician Form modal states
     const [isTechFormOpen, setIsTechFormOpen] = useState(false);
@@ -112,7 +119,7 @@ export default function TechnicalPage() {
         }
     }, [tickets]);
 
-    // Fetch notifications config and logs
+    // Fetch settings and logs
     useEffect(() => {
         fetchSettings();
         fetchLogs();
@@ -168,7 +175,107 @@ export default function TechnicalPage() {
         }
     };
 
-    // Calculate SLA dates dynamically
+    // Simulated Cron trigger
+    const handleRunSlaCron = async () => {
+        setIsSimulatingCron(true);
+        try {
+            const response = await fetch('/api/tickets/cron', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tickets, users }),
+            });
+            const data = await response.json();
+            if (data.success) {
+                setTickets(data.tickets);
+                fetchLogs();
+                if (data.logs.length > 0) {
+                    alert(`¡Cron de automatización ejecutado!\n\nAcciones realizadas:\n${data.logs.join('\n')}`);
+                } else {
+                    alert('Cron de automatización ejecutado: Todos los tickets están al día y sin novedades.');
+                }
+            }
+        } catch (e) {
+            console.error('Error running SLA cron:', e);
+            alert('Error al simular la ejecución del Cron.');
+        } finally {
+            setIsSimulatingCron(false);
+        }
+    };
+
+    // Client-side auto assign trigger inside ticket Drawer
+    const handleTriggerAutoAssign = () => {
+        if (!selectedTicket) return;
+        const activeTicketsList = tickets.filter(t => t.id !== selectedTicket.id);
+        const result = autoAssignTech(selectedTicket, users, activeTicketsList);
+        
+        if (result.techId) {
+            const tech = users.find(u => u.id === result.techId);
+            setEditAssignedTechId(result.techId);
+            setEditStatus('asignado');
+            setAutoAssignExplanation(result.reason);
+            setTimeout(() => setAutoAssignExplanation(null), 8000); // clear banner after 8s
+        } else {
+            alert(`No se pudo autoasignar: ${result.reason}`);
+        }
+    };
+
+    // Helper to calculate metrics per technician
+    const getTechMetrics = (techId: string) => {
+        const techTickets = tickets.filter(t => t.assignedTechId === techId);
+        const totalAssigned = techTickets.length;
+        const resolvedTickets = techTickets.filter(t => ['resuelto', 'cerrado'].includes(t.status));
+        const resolvedCount = resolvedTickets.length;
+
+        let slaCompliantCount = 0;
+        let totalResolutionTimeMs = 0;
+        let totalResponseTimeMs = 0;
+
+        resolvedTickets.forEach(t => {
+            // SLA Compliance check
+            if (t.resolvedAt && t.slaDate) {
+                const isCompliant = new Date(t.resolvedAt) <= new Date(t.slaDate);
+                if (isCompliant) slaCompliantCount++;
+            }
+
+            // Resolution time
+            const created = t.createdAt || (new Date(t.date + 'T' + t.time).getTime());
+            if (t.resolvedAt && !isNaN(created)) {
+                totalResolutionTimeMs += (t.resolvedAt - created);
+            }
+        });
+
+        // Response time (from created to transition out of 'nuevo' state in history logs)
+        techTickets.forEach(t => {
+            const created = t.createdAt || (new Date(t.date + 'T' + t.time).getTime());
+            if (t.history && t.history.length > 1 && !isNaN(created)) {
+                const assignedEvent = t.history.find(h => 
+                    h.action.includes('Cambio de estado') || 
+                    h.action.includes('Asignado') || 
+                    h.action.includes('Reasignado')
+                );
+                if (assignedEvent) {
+                    const assignedTime = new Date(assignedEvent.date + 'T' + assignedEvent.time).getTime();
+                    if (!isNaN(assignedTime) && assignedTime >= created) {
+                        totalResponseTimeMs += (assignedTime - created);
+                    }
+                }
+            }
+        });
+
+        const complianceRate = resolvedCount > 0 ? Math.round((slaCompliantCount / resolvedCount) * 100) : 100;
+        const avgResolutionHours = resolvedCount > 0 ? Math.round((totalResolutionTimeMs / (1000 * 60 * 60 * resolvedCount)) * 10) / 10 : 0;
+        const avgResponseMinutes = techTickets.length > 0 ? Math.round(totalResponseTimeMs / (1000 * 60 * techTickets.length)) : 0;
+
+        return {
+            totalAssigned,
+            resolvedCount,
+            complianceRate,
+            avgResolutionHours,
+            avgResponseMinutes
+        };
+    };
+
+    // Calculate dynamic SLA dates
     const calculateSlaDate = (priority: 'baja' | 'media' | 'alta' | 'urgente'): Date => {
         const now = new Date();
         if (priority === 'urgente' || priority === 'alta') {
@@ -216,7 +323,7 @@ export default function TechnicalPage() {
                 body: JSON.stringify({ event, ticket, tech }),
             });
             const data = await response.json();
-            fetchLogs(); // refresh audit history table
+            fetchLogs();
             return data.result?.logAction || `Notificación enviada por evento: ${event}`;
         } catch (e) {
             console.error('Error dispatching notify API:', e);
@@ -262,6 +369,7 @@ export default function TechnicalPage() {
         setEditAssignedTechId(t.assignedTechId || '');
         setEditTechnicalCost(String(t.technicalCost || 0));
         setEditObservations(t.observations || '');
+        setAutoAssignExplanation(null);
     };
 
     // Save ticket details inside Drawer
@@ -366,6 +474,7 @@ export default function TechnicalPage() {
         setNewPriority('media');
         setNewDescription('');
         setNewAssignedTechId('');
+        setShouldAutoAssignOnCreate(false);
         setIsCreating(true);
     };
 
@@ -412,6 +521,42 @@ export default function TechnicalPage() {
 
         const computedSla = calculateSlaDate(newPriority);
 
+        let finalTechId = newAssignedTechId || null;
+        let creationHistoryLog = 'Ticket registrado e ingresado al sistema.';
+
+        // Si se seleccionó autoasignación automática en la creación
+        if (shouldAutoAssignOnCreate) {
+            const dummyTicket: Ticket = {
+                id: 'dummy',
+                machineId: null,
+                clientId: null,
+                clientName: clientNameVal,
+                clientAddress: clientAddressVal,
+                machineDesc: machineDescVal,
+                category: newCategory,
+                priority: newPriority,
+                status: 'nuevo',
+                description: newDescription,
+                serialNumber: serialVal,
+                clientType: newClientType,
+                date: '',
+                time: '',
+                diagnostic: '',
+                actionTaken: '',
+                partsNeeded: '',
+                partsUsed: '',
+                internalNotes: '',
+                assignedTechId: null,
+                slaDate: ''
+            };
+            const result = autoAssignTech(dummyTicket, users, tickets);
+            if (result.techId) {
+                finalTechId = result.techId;
+                const tech = users.find(u => u.id === result.techId);
+                creationHistoryLog += ` Autoasignado inteligentemente a: ${tech?.fullname}. Motivo: ${result.reason}.`;
+            }
+        }
+
         const initialTicket: Ticket = {
             id: 'ticket-' + Date.now(),
             machineId: newClientType === 'existente' ? newMachineId : null,
@@ -427,7 +572,7 @@ export default function TechnicalPage() {
             date: new Date().toISOString().split('T')[0],
             time: new Date().toLocaleTimeString('es-AR').slice(0, 5),
             priority: newPriority,
-            status: newAssignedTechId ? 'asignado' : 'nuevo',
+            status: finalTechId ? 'asignado' : 'nuevo',
             category: newCategory,
             description: newDescription,
             diagnostic: '',
@@ -435,28 +580,21 @@ export default function TechnicalPage() {
             partsNeeded: '',
             partsUsed: '',
             internalNotes: '',
-            assignedTechId: newAssignedTechId || null,
+            assignedTechId: finalTechId,
             slaDate: computedSla.toISOString(),
             createdAt: Date.now(),
             history: [
                 {
                     date: new Date().toISOString().split('T')[0],
                     time: new Date().toLocaleTimeString('es-AR').slice(0, 5),
-                    action: 'Ticket registrado e ingresado al sistema.',
+                    action: creationHistoryLog,
                     user: currentUser?.fullname || 'Sistema'
                 }
             ]
         };
 
-        const assignedTech = users.find(u => u.id === newAssignedTechId);
+        const assignedTech = users.find(u => u.id === finalTechId);
         if (assignedTech) {
-            initialTicket.history?.push({
-                date: new Date().toISOString().split('T')[0],
-                time: new Date().toLocaleTimeString('es-AR').slice(0, 5),
-                action: `Asignado en creación al técnico ${assignedTech.fullname}`,
-                user: currentUser?.fullname || 'Sistema'
-            });
-
             const logText = await notifyTech('creado', initialTicket, assignedTech);
             initialTicket.history?.push({
                 date: new Date().toISOString().split('T')[0],
@@ -570,7 +708,7 @@ export default function TechnicalPage() {
         }
     };
 
-    // Dynamic stats calculations
+    // KPIs Calculations
     const totalCount = tickets.length;
     const newCount = tickets.filter(t => t.status === 'nuevo').length;
     const activeCount = tickets.filter(t => ['asignado', 'en-camino', 'en-proceso'].includes(t.status)).length;
@@ -640,6 +778,37 @@ export default function TechnicalPage() {
         return matchesQuery && matchesChannel && matchesStatus;
     });
 
+    // Global performance indicators for metrics tab
+    const resolvedGlobal = tickets.filter(t => ['resuelto', 'cerrado'].includes(t.status));
+    let globalSlaCompliant = 0;
+    let globalTotalTimeMs = 0;
+    
+    resolvedGlobal.forEach(t => {
+        if (t.resolvedAt && t.slaDate && new Date(t.resolvedAt) <= new Date(t.slaDate)) {
+            globalSlaCompliant++;
+        }
+        const created = t.createdAt || (new Date(t.date + 'T' + t.time).getTime());
+        if (t.resolvedAt && !isNaN(created)) {
+            globalTotalTimeMs += (t.resolvedAt - created);
+        }
+    });
+
+    const globalSlaRate = resolvedGlobal.length > 0 ? Math.round((globalSlaCompliant / resolvedGlobal.length) * 100) : 100;
+    const globalAvgResolutionHours = resolvedGlobal.length > 0 ? Math.round((globalTotalTimeMs / (1000 * 60 * 60 * resolvedGlobal.length)) * 10) / 10 : 0;
+
+    // Find star technician
+    const techsList = users.filter(u => u.role === 'tecnico' && u.active !== false);
+    let starTechName = 'Sin datos';
+    let bestCompliance = -1;
+
+    techsList.forEach(t => {
+        const stats = getTechMetrics(t.id);
+        if (stats.resolvedCount > 0 && stats.complianceRate > bestCompliance) {
+            bestCompliance = stats.complianceRate;
+            starTechName = t.fullname;
+        }
+    });
+
     const getTechWarningInfo = (techId: string | null) => {
         if (!techId) return null;
         const tech = users.find(u => u.id === techId);
@@ -661,7 +830,6 @@ export default function TechnicalPage() {
     };
 
     const techWarn = getTechWarningInfo(editAssignedTechId);
-    const clientMachines = machines.filter(m => m.clientId === newClientId);
 
     return (
         <div className="space-y-6 animate-fade-in relative text-slate-100">
@@ -672,10 +840,10 @@ export default function TechnicalPage() {
                     <p className="text-[10px] text-slate-400">Seguimiento de incidentes, SLAs automáticos, técnicos y notificaciones.</p>
                 </div>
                 {/* Tab Navigation header */}
-                <div className="flex bg-slate-950 p-1.5 rounded-xl border border-slate-850 gap-1.5 text-xs">
+                <div className="flex bg-slate-950 p-1.5 rounded-xl border border-slate-850 gap-1.5 text-xs overflow-x-auto max-w-full">
                     <button 
                         onClick={() => setCurrentTab('bitacora')}
-                        className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
+                        className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 shrink-0 ${
                             currentTab === 'bitacora' ? 'bg-indigo-650 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
                         }`}
                     >
@@ -683,7 +851,7 @@ export default function TechnicalPage() {
                     </button>
                     <button 
                         onClick={() => setCurrentTab('tecnicos')}
-                        className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
+                        className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 shrink-0 ${
                             currentTab === 'tecnicos' ? 'bg-indigo-650 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
                         }`}
                     >
@@ -691,19 +859,27 @@ export default function TechnicalPage() {
                     </button>
                     <button 
                         onClick={() => setCurrentTab('config')}
-                        className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
+                        className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 shrink-0 ${
                             currentTab === 'config' ? 'bg-indigo-650 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
                         }`}
                     >
-                        <Bell size={13} /> Canales y Avisos
+                        <Bell size={13} /> Canales y Plantillas
                     </button>
                     <button 
                         onClick={() => setCurrentTab('historial_envios')}
-                        className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
+                        className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 shrink-0 ${
                             currentTab === 'historial_envios' ? 'bg-indigo-650 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
                         }`}
                     >
                         <History size={13} /> Auditoría Notificaciones
+                    </button>
+                    <button 
+                        onClick={() => setCurrentTab('metricas')}
+                        className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 shrink-0 ${
+                            currentTab === 'metricas' ? 'bg-indigo-650 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                    >
+                        <Activity size={13} /> Desempeño / Métricas
                     </button>
                 </div>
             </div>
@@ -757,7 +933,7 @@ export default function TechnicalPage() {
                             }`}
                         >
                             <span className="block text-[9px] uppercase font-bold text-slate-450">Esperando Repuesto</span>
-                            <span className="block text-lg font-extrabold text-orange-450 mt-1">{partsWaitCount}</span>
+                            <span className="block text-lg font-extrabold text-orange-455 mt-1">{partsWaitCount}</span>
                         </button>
                         <button 
                             onClick={() => setActiveKpiTab('resueltos')}
@@ -767,7 +943,7 @@ export default function TechnicalPage() {
                                     : 'bg-slate-950 border-slate-850/60 hover:bg-slate-900/60'
                             }`}
                         >
-                            <span className="block text-[9px] uppercase font-bold text-slate-455">Resueltos / Cerrados</span>
+                            <span className="block text-[9px] uppercase font-bold text-slate-450">Resueltos / Cerrados</span>
                             <span className="block text-lg font-extrabold text-emerald-450 mt-1">{resolvedCount}</span>
                         </button>
                         <button 
@@ -786,14 +962,26 @@ export default function TechnicalPage() {
                     </div>
 
                     {/* Filter toolbar */}
-                    <div className="p-4 bg-slate-950 border border-slate-850/60 rounded-xl space-y-3">
+                    <div className="p-4 bg-slate-955 border border-slate-850/60 rounded-xl space-y-3">
                         <div className="flex justify-between items-center text-xs font-semibold text-slate-400">
                             <div className="flex items-center gap-2">
                                 <Filter size={14} /> Filtros de Asistencia
                             </div>
-                            <Button variant="primary" size="sm" onClick={handleOpenCreate}>
-                                <Plus size={14} className="mr-1" /> Nuevo Ticket
-                            </Button>
+                            <div className="flex gap-2">
+                                <Button 
+                                    variant="secondary" 
+                                    size="sm" 
+                                    onClick={handleRunSlaCron} 
+                                    disabled={isSimulatingCron}
+                                    className="flex items-center gap-1 bg-slate-900 border-slate-800"
+                                >
+                                    <RefreshCw size={12} className={isSimulatingCron ? 'animate-spin' : ''} /> 
+                                    🚀 Correr Cron SLA y Escalamiento
+                                </Button>
+                                <Button variant="primary" size="sm" onClick={handleOpenCreate}>
+                                    <Plus size={14} className="mr-1" /> Nuevo Ticket
+                                </Button>
+                            </div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
                             <div className="relative">
@@ -832,7 +1020,7 @@ export default function TechnicalPage() {
                             <select
                                 value={filterStatus}
                                 onChange={(e) => setFilterStatus(e.target.value)}
-                                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-350 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-355 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
                             >
                                 <option value="">Estado: Todos</option>
                                 <option value="nuevo">Nuevo</option>
@@ -846,7 +1034,7 @@ export default function TechnicalPage() {
                             <select
                                 value={filterSla}
                                 onChange={(e) => setFilterSla(e.target.value)}
-                                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-350 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-355 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
                             >
                                 <option value="">Estado SLA: Todos</option>
                                 <option value="vencido">Vencido</option>
@@ -890,7 +1078,8 @@ export default function TechnicalPage() {
                                                         TCK-{t.id.replace('ticket-', '')}
                                                     </span>
                                                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-extrabold tracking-wider ${
-                                                        t.priority === 'urgente' || t.priority === 'alta' ? 'bg-red-500/10 text-red-500' :
+                                                        t.priority === 'urgente' ? 'bg-red-650 text-white animate-pulse' :
+                                                        t.priority === 'alta' ? 'bg-red-500/10 text-red-500' :
                                                         t.priority === 'media' ? 'bg-amber-500/10 text-amber-500' :
                                                         'bg-emerald-500/10 text-emerald-500'
                                                     }`}>
@@ -911,13 +1100,13 @@ export default function TechnicalPage() {
                                                 <TableCell className="text-xs">
                                                     {tech ? (
                                                         <div className="flex items-center gap-1.5">
-                                                            <div className="w-5 h-5 rounded-full bg-slate-800 text-[9px] font-bold text-indigo-450 flex items-center justify-center border border-slate-700">
+                                                            <div className="w-5 h-5 rounded-full bg-slate-800 text-[9px] font-bold text-indigo-455 flex items-center justify-center border border-slate-700">
                                                                 {tech.fullname.split(' ').map(n => n[0]).join('')}
                                                             </div>
-                                                            <span className="text-slate-355 font-semibold">{tech.fullname}</span>
+                                                            <span className="text-slate-350 font-semibold">{tech.fullname}</span>
                                                         </div>
                                                     ) : (
-                                                        <span className="text-slate-500 italic">Sin asignar</span>
+                                                        <span className="text-slate-550 italic">Sin asignar</span>
                                                     )}
                                                 </TableCell>
                                                 <TableCell className="text-xs">
@@ -928,11 +1117,11 @@ export default function TechnicalPage() {
                                                 <TableCell className="text-xs">
                                                     <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${
                                                         t.status === 'nuevo' ? 'bg-indigo-950/60 text-indigo-400 border border-indigo-900/50' :
-                                                        t.status === 'asignado' ? 'bg-blue-950/60 text-blue-400 border border-blue-900/50' :
-                                                        t.status === 'en-camino' ? 'bg-cyan-950/60 text-cyan-400 border border-cyan-900/50' :
-                                                        t.status === 'en-proceso' ? 'bg-amber-950/60 text-amber-400 border border-amber-900/50' :
-                                                        t.status === 'esperando-repuesto' ? 'bg-orange-950/60 text-orange-400 border border-orange-900/50' :
-                                                        t.status === 'resuelto' ? 'bg-emerald-950/60 text-emerald-450 border border-emerald-900/50' :
+                                                        t.status === 'asignado' ? 'bg-blue-950/60 text-blue-405 border border-blue-900/50' :
+                                                        t.status === 'en-camino' ? 'bg-cyan-955/60 text-cyan-405 border border-cyan-900/50' :
+                                                        t.status === 'en-proceso' ? 'bg-amber-955/60 text-amber-405 border border-amber-900/50' :
+                                                        t.status === 'esperando-repuesto' ? 'bg-orange-955/60 text-orange-405 border border-orange-900/50' :
+                                                        t.status === 'resuelto' ? 'bg-emerald-955/60 text-emerald-450 border border-emerald-900/50' :
                                                         'bg-slate-900 text-slate-550 border border-slate-800'
                                                     }`}>
                                                         {t.status.replace('-', ' ')}
@@ -1039,7 +1228,7 @@ export default function TechnicalPage() {
                                                         </div>
                                                         <div>
                                                             <span className="block">{tech.fullname}</span>
-                                                            <span className="block text-[9px] text-slate-500 font-mono mt-0.5">ID: {tech.id}</span>
+                                                            <span className="block text-[9px] text-slate-505 font-mono mt-0.5">ID: {tech.id}</span>
                                                         </div>
                                                     </div>
                                                 </TableCell>
@@ -1065,7 +1254,7 @@ export default function TechnicalPage() {
                                                             {tech.active !== false ? 'Activo' : 'Inactivo'}
                                                         </span>
                                                         <span className={`block text-[9px] font-semibold text-slate-450 ${
-                                                            tech.availability === 'Disponible' ? 'text-indigo-450' : 'text-slate-500'
+                                                            tech.availability === 'Disponible' ? 'text-indigo-455' : 'text-slate-500'
                                                         }`}>
                                                             ● {tech.availability || 'Disponible'}
                                                         </span>
@@ -1090,7 +1279,7 @@ export default function TechnicalPage() {
                                                         {tech.active !== false && (
                                                             <button 
                                                                 onClick={() => handleDeleteTech(tech)}
-                                                                className="px-2 py-1 bg-red-950/20 text-red-400 border border-red-900/30 rounded-xl text-[10px] font-bold hover:bg-red-900/20 transition-all"
+                                                                className="px-2 py-1 bg-red-955/20 text-red-400 border border-red-900/30 rounded-xl text-[10px] font-bold hover:bg-red-900/20 transition-all"
                                                             >
                                                                 Baja
                                                             </button>
@@ -1112,7 +1301,7 @@ export default function TechnicalPage() {
             {/* ========================================================================= */}
             {currentTab === 'config' && (
                 <div className="space-y-6 animate-fade-in max-w-3xl">
-                    <Card className="bg-slate-955 border border-slate-850">
+                    <Card className="bg-slate-955 border border-slate-855">
                         <CardContent className="p-5 space-y-6 text-xs text-slate-350">
                             <div>
                                 <h3 className="font-bold text-slate-100 text-sm">Habilitación de Canales de Alerta</h3>
@@ -1120,7 +1309,7 @@ export default function TechnicalPage() {
                                 
                                 <div className="grid grid-cols-2 gap-4 mt-3">
                                     <label className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${
-                                        configEmailEnabled ? 'bg-slate-900 border-indigo-500 text-slate-100' : 'bg-slate-950 border-slate-850 text-slate-500'
+                                        configEmailEnabled ? 'bg-slate-900 border-indigo-500 text-slate-100' : 'bg-slate-955 border-slate-855 text-slate-500'
                                     }`}>
                                         <input 
                                             type="checkbox" 
@@ -1135,7 +1324,7 @@ export default function TechnicalPage() {
                                     </label>
 
                                     <label className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${
-                                        configWhatsappEnabled ? 'bg-slate-900 border-indigo-500 text-slate-100' : 'bg-slate-950 border-slate-850 text-slate-500'
+                                        configWhatsappEnabled ? 'bg-slate-900 border-indigo-500 text-slate-100' : 'bg-slate-955 border-slate-855 text-slate-500'
                                     }`}>
                                         <input 
                                             type="checkbox" 
@@ -1152,7 +1341,7 @@ export default function TechnicalPage() {
                             </div>
 
                             {/* Event triggers configuration checkboxes */}
-                            <div className="border-t border-slate-850 pt-4">
+                            <div className="border-t border-slate-855 pt-4">
                                 <h3 className="font-bold text-slate-100 text-sm">Eventos que Disparan Alertas</h3>
                                 <p className="text-[10px] text-slate-455">Enciende o apaga el despacho automático al técnico según el estado del ticket.</p>
                                 
@@ -1276,7 +1465,7 @@ export default function TechnicalPage() {
                             <select
                                 value={filterLogChannel}
                                 onChange={(e) => setFilterLogChannel(e.target.value)}
-                                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-350 text-xs focus:outline-none"
+                                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-355 text-xs focus:outline-none"
                             >
                                 <option value="">Canal: Todos</option>
                                 <option value="email">Email</option>
@@ -1285,7 +1474,7 @@ export default function TechnicalPage() {
                             <select
                                 value={filterLogStatus}
                                 onChange={(e) => setFilterLogStatus(e.target.value)}
-                                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-350 text-xs focus:outline-none"
+                                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-355 text-xs focus:outline-none"
                             >
                                 <option value="">Estado Envío: Todos</option>
                                 <option value="enviado">Enviado</option>
@@ -1385,6 +1574,131 @@ export default function TechnicalPage() {
             )}
 
             {/* ========================================================================= */}
+            {/* TABS 5: METRICAS Y DESEMPEÑO */}
+            {/* ========================================================================= */}
+            {currentTab === 'metricas' && (
+                <div className="space-y-6 animate-fade-in">
+                    {/* Performance Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <Card className="bg-slate-950 border border-slate-850 p-4 space-y-1">
+                            <span className="text-[10px] text-slate-450 uppercase font-extrabold tracking-wider block">Cumplimiento SLA General</span>
+                            <div className="flex items-baseline gap-2 mt-1">
+                                <span className="text-2xl font-extrabold text-slate-100">{globalSlaRate}%</span>
+                                <span className="text-[10px] text-emerald-450 font-bold">✓ Objetivo: 90%</span>
+                            </div>
+                            <div className="w-full bg-slate-900 rounded-full h-1.5 mt-2">
+                                <div className="bg-indigo-550 h-1.5 rounded-full" style={{ width: `${globalSlaRate}%` }} />
+                            </div>
+                        </Card>
+
+                        <Card className="bg-slate-950 border border-slate-850 p-4 space-y-1">
+                            <span className="text-[10px] text-slate-450 uppercase font-extrabold tracking-wider block">Tiempo Medio de Resolución</span>
+                            <div className="flex items-baseline gap-2 mt-1">
+                                <span className="text-2xl font-extrabold text-slate-100">{globalAvgResolutionHours} hs</span>
+                                <span className="text-[10px] text-slate-500 font-medium">Promedio del equipo</span>
+                            </div>
+                            <p className="text-[9px] text-slate-450 mt-2">Desde la emisión del ticket hasta el cierre.</p>
+                        </Card>
+
+                        <Card className="bg-slate-950 border border-slate-850 p-4 space-y-1">
+                            <span className="text-[10px] text-slate-450 uppercase font-extrabold tracking-wider block">Técnico Destacado</span>
+                            <div className="flex items-center gap-2 mt-2">
+                                <Award size={18} className="text-amber-500" />
+                                <div>
+                                    <span className="block font-bold text-slate-205">{starTechName}</span>
+                                    <span className="block text-[9px] text-emerald-400 font-bold">{bestCompliance > -1 ? `${bestCompliance}% cumplimiento SLA` : 'Desempeño óptimo'}</span>
+                                </div>
+                            </div>
+                        </Card>
+
+                        <Card className="bg-slate-950 border border-slate-850 p-4 space-y-1">
+                            <span className="text-[10px] text-slate-455 uppercase font-extrabold tracking-wider block">Tickets Cerrados en el Mes</span>
+                            <div className="flex items-baseline gap-2 mt-1">
+                                <span className="text-2xl font-extrabold text-slate-100">{resolvedGlobal.length}</span>
+                                <span className="text-[10px] text-slate-500">Correctivos y repuestos</span>
+                            </div>
+                            <p className="text-[9px] text-slate-450 mt-2">Equipos operativos al 100%.</p>
+                        </Card>
+                    </div>
+
+                    {/* Detailed metrics table */}
+                    <TableContainer>
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHeaderCell>Técnico Responsable</TableHeaderCell>
+                                    <TableHeaderCell>Tickets Asignados</TableHeaderCell>
+                                    <TableHeaderCell>Resueltos con Éxito</TableHeaderCell>
+                                    <TableHeaderCell>Tasa Cumplimiento SLA</TableHeaderCell>
+                                    <TableHeaderCell>Tiempo Medio de Respuesta</TableHeaderCell>
+                                    <TableHeaderCell>Tiempo Medio de Resolución</TableHeaderCell>
+                                    <TableHeaderCell>Desempeño / Calificación</TableHeaderCell>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {techsList.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={7} className="text-center py-12 text-slate-500 italic">
+                                            No hay personal técnico activo para calcular métricas.
+                                        </TableCell>
+                                    </TableRow>
+                                ) : (
+                                    techsList.map(tech => {
+                                        const stats = getTechMetrics(tech.id);
+                                        const rating = 
+                                            stats.complianceRate >= 95 ? 'Excelente (Platino)' :
+                                            stats.complianceRate >= 85 ? 'Muy Bueno (Oro)' :
+                                            stats.complianceRate >= 70 ? 'Satisfactorio (Plata)' :
+                                            'Requiere Atención (Crítico)';
+
+                                        return (
+                                            <TableRow key={tech.id} className="hover:bg-slate-900/40">
+                                                <TableCell className="font-bold text-slate-100">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-5 h-5 rounded-full bg-slate-800 text-[9px] font-bold text-indigo-400 flex items-center justify-center">
+                                                            {tech.fullname.split(' ').map(n => n[0]).join('')}
+                                                        </div>
+                                                        <span>{tech.fullname}</span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="font-semibold text-slate-300">{stats.totalAssigned}</TableCell>
+                                                <TableCell className="font-semibold text-slate-300">{stats.resolvedCount}</TableCell>
+                                                <TableCell>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`font-bold ${
+                                                            stats.complianceRate >= 90 ? 'text-emerald-450' : 
+                                                            stats.complianceRate >= 75 ? 'text-amber-500' : 'text-red-500'
+                                                        }`}>{stats.complianceRate}%</span>
+                                                        <div className="w-16 bg-slate-900 rounded-full h-1 shrink-0">
+                                                            <div className={`h-1 rounded-full ${
+                                                                stats.complianceRate >= 90 ? 'bg-emerald-500' : 
+                                                                stats.complianceRate >= 75 ? 'bg-amber-500' : 'bg-red-500'
+                                                            }`} style={{ width: `${stats.complianceRate}%` }} />
+                                                        </div>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="font-mono text-slate-350">{stats.avgResponseMinutes} minutos</TableCell>
+                                                <TableCell className="font-mono text-slate-350">{stats.avgResolutionHours} horas</TableCell>
+                                                <TableCell>
+                                                    <span className={`inline-flex px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${
+                                                        stats.complianceRate >= 90 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-900/20' :
+                                                        stats.complianceRate >= 75 ? 'bg-amber-500/10 text-amber-400 border border-amber-900/20' :
+                                                        'bg-red-500/10 text-red-450 border border-red-900/20'
+                                                    }`}>
+                                                        {rating}
+                                                    </span>
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })
+                                )}
+                            </TableBody>
+                        </Table>
+                    </TableContainer>
+                </div>
+            )}
+
+            {/* ========================================================================= */}
             {/* TICKET DETAILS DRAWER */}
             {/* ========================================================================= */}
             {selectedTicket && (
@@ -1404,6 +1718,12 @@ export default function TechnicalPage() {
 
                         {/* Drawer Content */}
                         <div className="flex-1 overflow-y-auto p-5 space-y-6 text-xs text-slate-300">
+                            {autoAssignExplanation && (
+                                <div className="p-3 bg-indigo-950/70 border border-indigo-900 text-indigo-350 text-[10px] rounded-xl font-semibold leading-relaxed animate-fade-in">
+                                    ⚡ {autoAssignExplanation}
+                                </div>
+                            )}
+
                             {techWarn && (
                                 <div className={`p-3 rounded-xl border text-[10px] font-semibold leading-relaxed ${
                                     techWarn.type === 'critical' ? 'bg-red-500/10 border-red-500/20 text-red-400' :
@@ -1433,9 +1753,10 @@ export default function TechnicalPage() {
                             {/* Priority and Category block */}
                             <div className="grid grid-cols-2 gap-4 bg-slate-955/40 p-4 rounded-xl border border-slate-850/60">
                                 <div>
-                                    <span className="text-[9px] uppercase font-bold text-slate-500 block">Prioridad</span>
+                                    <span className="text-[9px] uppercase font-bold text-slate-505 block">Prioridad</span>
                                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-extrabold mt-1 uppercase ${
-                                        selectedTicket.priority === 'urgente' || selectedTicket.priority === 'alta' ? 'bg-red-500/10 text-red-500' :
+                                        selectedTicket.priority === 'urgente' ? 'bg-red-650 text-white animate-pulse' :
+                                        selectedTicket.priority === 'alta' ? 'bg-red-500/10 text-red-500' :
                                         selectedTicket.priority === 'media' ? 'bg-amber-500/10 text-amber-500' :
                                         'bg-emerald-500/10 text-emerald-500'
                                     }`}>
@@ -1443,7 +1764,7 @@ export default function TechnicalPage() {
                                     </span>
                                 </div>
                                 <div>
-                                    <span className="text-[9px] uppercase font-bold text-slate-500 block">Categoría</span>
+                                    <span className="text-[9px] uppercase font-bold text-slate-505 block">Categoría</span>
                                     <span className="font-bold text-slate-200 mt-1 block capitalize">{selectedTicket.category}</span>
                                 </div>
                             </div>
@@ -1496,7 +1817,7 @@ export default function TechnicalPage() {
 
                             {/* Ticket Description */}
                             <div className="space-y-2">
-                                <span className="text-[9px] uppercase font-bold text-slate-500 block">Falla Reportada / Solicitud</span>
+                                <span className="text-[9px] uppercase font-bold text-slate-505 block">Falla Reportada / Solicitud</span>
                                 <p className="p-3 bg-slate-900 border border-slate-850 rounded-xl leading-relaxed text-slate-250 font-medium">
                                     {selectedTicket.description}
                                 </p>
@@ -1504,7 +1825,15 @@ export default function TechnicalPage() {
 
                             {/* Quick Update Settings */}
                             <div className="space-y-4 pt-2 border-t border-slate-800">
-                                <h4 className="font-bold text-indigo-400 border-b border-slate-850 pb-1.5 uppercase text-[9px] tracking-wider">Formulario de Resolución y Control</h4>
+                                <div className="flex justify-between items-center border-b border-slate-850 pb-1.5">
+                                    <h4 className="font-bold text-indigo-400 uppercase text-[9px] tracking-wider">Formulario de Resolución</h4>
+                                    <button 
+                                        onClick={handleTriggerAutoAssign}
+                                        className="text-[9px] bg-indigo-650 hover:bg-indigo-600 text-white font-extrabold px-2.5 py-1 rounded-lg flex items-center gap-1 transition-all"
+                                    >
+                                        ⚡ Autoasignar
+                                    </button>
+                                </div>
                                 
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
@@ -1540,12 +1869,12 @@ export default function TechnicalPage() {
                                 </div>
 
                                 <div className="space-y-1">
-                                    <label className="text-[10px] uppercase font-bold text-slate-500 block">Diagnóstico de Falla</label>
+                                    <label className="text-[10px] uppercase font-bold text-slate-505 block">Diagnóstico de Falla</label>
                                     <textarea
                                         value={editDiagnostic}
                                         onChange={(e) => setEditDiagnostic(e.target.value)}
                                         placeholder="Detalla el problema técnico encontrado..."
-                                        className="w-full bg-slate-950 border border-slate-855 rounded-xl px-3 py-2 text-slate-200 text-xs h-16 resize-none outline-none focus:border-indigo-500/50"
+                                        className="w-full bg-slate-955 border border-slate-855 rounded-xl px-3 py-2 text-slate-200 text-xs h-16 resize-none outline-none focus:border-indigo-500/50"
                                     />
                                 </div>
 
@@ -1555,7 +1884,7 @@ export default function TechnicalPage() {
                                         value={editActionTaken}
                                         onChange={(e) => setEditActionTaken(e.target.value)}
                                         placeholder="Detalles sobre el trabajo correctivo..."
-                                        className="w-full bg-slate-950 border border-slate-855 rounded-xl px-3 py-2 text-slate-200 text-xs h-16 resize-none outline-none focus:border-indigo-500/50"
+                                        className="w-full bg-slate-955 border border-slate-855 rounded-xl px-3 py-2 text-slate-200 text-xs h-16 resize-none outline-none focus:border-indigo-500/50"
                                     />
                                 </div>
 
@@ -1666,7 +1995,7 @@ export default function TechnicalPage() {
                                     <strong>Teléfono:</strong> <span className="font-mono">{selectedTech.phone || 'No registrado'}</span>
                                 </div>
                                 <div className="flex items-center gap-1.5 text-slate-200">
-                                    <Phone size={14} className="text-emerald-500" /> 
+                                    <Phone size={14} className="text-emerald-505" /> 
                                     <strong>WhatsApp:</strong> <span className="font-mono text-emerald-455">{selectedTech.whatsapp || 'No registrado'}</span>
                                 </div>
                                 <div className="flex items-center gap-1.5 text-slate-200">
@@ -1682,18 +2011,18 @@ export default function TechnicalPage() {
                             {/* Zone and Brands Specialty */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="p-3 bg-slate-955/20 border border-slate-850/30 rounded-xl space-y-1">
-                                    <span className="text-[9px] uppercase font-bold text-slate-500 block">Zona de Cobertura</span>
+                                    <span className="text-[9px] uppercase font-bold text-slate-505 block">Zona de Cobertura</span>
                                     <span className="font-bold text-slate-250 block">{selectedTech.zone || 'General'}</span>
                                 </div>
                                 <div className="p-3 bg-slate-955/20 border border-slate-850/30 rounded-xl space-y-1">
-                                    <span className="text-[9px] uppercase font-bold text-slate-500 block">Especialidad / Marcas</span>
+                                    <span className="text-[9px] uppercase font-bold text-slate-505 block">Especialidad / Marcas</span>
                                     <span className="font-bold text-slate-250 block">{selectedTech.specialty || 'General / Multimarca'}</span>
                                 </div>
                             </div>
 
                             {/* Internal notes */}
                             <div className="space-y-1.5">
-                                <span className="text-[9px] uppercase font-bold text-slate-500 block">Observaciones y Notas Internas</span>
+                                <span className="text-[9px] uppercase font-bold text-slate-505 block">Observaciones y Notas Internas</span>
                                 <p className="p-3 bg-slate-900 border border-slate-850 rounded-xl leading-relaxed text-slate-400 italic">
                                     {selectedTech.internalNotes || 'Sin notas adicionales.'}
                                 </p>
@@ -1713,12 +2042,13 @@ export default function TechnicalPage() {
                                                 onClick={() => { setSelectedTech(null); handleOpenDetail(t); }}
                                             >
                                                 <div>
-                                                    <span className="block font-mono text-[9px] text-slate-500">TCK-{t.id.replace('ticket-', '')}</span>
+                                                    <span className="block font-mono text-[9px] text-slate-505">TCK-{t.id.replace('ticket-', '')}</span>
                                                     <span className="block font-bold text-slate-200 mt-0.5">{t.clientName}</span>
                                                     <span className="block text-[10px] text-slate-450 mt-0.5">{t.machineDesc}</span>
                                                 </div>
                                                 <span className={`px-2 py-0.5 rounded text-[8px] font-extrabold uppercase ${
-                                                    t.priority === 'urgente' || t.priority === 'alta' ? 'bg-red-500/10 text-red-500' : 'bg-slate-800 text-slate-400'
+                                                    t.priority === 'urgente' ? 'bg-red-650 text-white font-extrabold animate-pulse' :
+                                                    t.priority === 'alta' ? 'bg-red-500/10 text-red-500' : 'bg-slate-800 text-slate-400'
                                                 }`}>
                                                     {t.status.replace('-', ' ')}
                                                 </span>
@@ -1949,8 +2279,8 @@ export default function TechnicalPage() {
                             )}
                         </>
                     ) : (
-                        <div className="space-y-3 animate-fade-in border border-slate-850 p-3 rounded-xl bg-slate-950/20">
-                            <span className="text-[10px] text-slate-500 block uppercase font-bold mb-1">Datos de Contacto del Cliente Técnico</span>
+                        <div className="space-y-3 animate-fade-in border border-slate-855 p-3 rounded-xl bg-slate-950/20">
+                            <span className="text-[10px] text-slate-550 block uppercase font-bold mb-1">Datos de Contacto del Cliente Técnico</span>
                             <Input
                                 label="Nombre / Razón Social del Cliente *"
                                 value={newClientName}
@@ -1982,7 +2312,7 @@ export default function TechnicalPage() {
                                     onChange={(e) => setNewClientEmail(e.target.value)}
                                 />
                             </div>
-                            <div className="grid grid-cols-2 gap-3 border-t border-slate-850 pt-3 mt-1">
+                            <div className="grid grid-cols-2 gap-3 border-t border-slate-855 pt-3 mt-1">
                                 <Input
                                     label="Modelo del Equipo *"
                                     value={newMachineDesc}
@@ -2030,15 +2360,32 @@ export default function TechnicalPage() {
                         placeholder="Ej: El papel se traba en el fusor / Código de error SC340..."
                     />
 
-                    <Select
-                        label="Asignar Técnico Responsable"
-                        value={newAssignedTechId}
-                        onChange={(e) => setNewAssignedTechId(e.target.value)}
-                        options={[
-                            { value: '', label: 'Sin Asignar (Pendiente Triage)' },
-                            ...users.filter(u => u.role === 'tecnico' && u.active !== false).map(t => ({ value: t.id, label: t.fullname }))
-                        ]}
-                    />
+                    <div className="grid grid-cols-2 gap-4 pt-1.5">
+                        <Select
+                            label="Asignar Técnico Responsable"
+                            disabled={shouldAutoAssignOnCreate}
+                            value={newAssignedTechId}
+                            onChange={(e) => setNewAssignedTechId(e.target.value)}
+                            options={[
+                                { value: '', label: 'Sin Asignar (Pendiente Triage)' },
+                                ...users.filter(u => u.role === 'tecnico' && u.active !== false).map(t => ({ value: t.id, label: t.fullname }))
+                            ]}
+                        />
+                        <div className="flex flex-col justify-end pb-2">
+                            <label className="flex items-center gap-2 p-2 bg-slate-900 border border-slate-850 rounded-xl cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    checked={shouldAutoAssignOnCreate} 
+                                    onChange={(e) => {
+                                        setShouldAutoAssignOnCreate(e.target.checked);
+                                        if (e.target.checked) setNewAssignedTechId('');
+                                    }}
+                                    className="w-3.5 h-3.5 accent-indigo-500 rounded"
+                                />
+                                <span className="text-[10px] font-bold text-slate-205">Autoasignar por algoritmo</span>
+                            </label>
+                        </div>
+                    </div>
 
                     <p className="text-[10px] text-slate-500 italic">
                         * El Límite de Resolución (SLA) se calculará automáticamente en función de la prioridad elegida al emitir el ticket.
