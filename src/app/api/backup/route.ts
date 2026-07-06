@@ -144,6 +144,7 @@ export async function POST(request: Request) {
             email: u.email || `${u.username || 'user'}@example.com`,
             passwordHash: u.passwordHash || '',
             role: u.role || 'administrativo',
+            isMaster: u.isMaster ?? (u.role === 'master' || u.id === 'user-admin' ? 1 : 0),
             phone: u.phone || null,
             whatsapp: u.whatsapp || null,
             zone: u.zone || null,
