@@ -101,11 +101,18 @@ export async function getSession(requestOrCookieValue?: Request | string): Promi
 
   // 1. Desencriptar cookie
   const session = await decryptSession(token);
-  if (!session) return null;
+  if (!session) {
+    try {
+      await deleteSession();
+    } catch (e) {}
+    return null;
+  }
 
   // 2. Validar expiración del payload
   if (Date.now() > session.expiresAt) {
-    if (!isCustomToken) await deleteSession();
+    try {
+      await deleteSession();
+    } catch (e) {}
     return null;
   }
 
@@ -129,7 +136,9 @@ export async function getSession(requestOrCookieValue?: Request | string): Promi
 
     const match = results[0];
     if (!match) {
-      if (!isCustomToken) await deleteSession();
+      try {
+        await deleteSession();
+      } catch (e) {}
       return null;
     }
 
