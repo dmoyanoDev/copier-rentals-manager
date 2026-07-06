@@ -1,14 +1,44 @@
 'use client';
 
-import React, { useActionState } from 'react';
-import { loginAction } from '@/app/actions/auth';
+import React, { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Printer } from 'lucide-react';
 
 export default function LoginPage() {
-  const [state, formAction, isPending] = useActionState(loginAction, null);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, setIsPending] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setIsPending(true);
+
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Usuario o contraseña incorrectos.');
+      }
+
+      // Redirigir al dashboard tras persistir la cookie exitosamente en el navegador
+      window.location.href = '/';
+    } catch (err: any) {
+      setError(err.message || 'Error de conexión con el servidor.');
+    } finally {
+      setIsPending(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-950 p-4">
@@ -25,11 +55,13 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={formAction} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <Input
-              label="Nombre de Usuario"
+              label="Nombre de Usuario o Email"
               name="username"
               id="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               placeholder="e.g. dmoyano"
               required
               autoFocus
@@ -39,13 +71,15 @@ export default function LoginPage() {
               name="password"
               id="password"
               type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               required
             />
 
-            {state?.error && (
+            {error && (
               <div className="p-3 bg-red-950/60 border border-red-800 text-red-300 text-xs font-semibold rounded-lg">
-                ⚠️ {state.error}
+                ⚠️ {error}
               </div>
             )}
 
