@@ -34,11 +34,78 @@ async function logServerAudit(module: string, action: string, details: string, u
   }
 }
 
+let isDbSchemaSynced = false;
+
+async function ensureSchemaSynced(db: any) {
+  if (isDbSchemaSynced) return;
+  try {
+    // 1. Ensure rentals table exists
+    await db.run(sql`
+      CREATE TABLE IF NOT EXISTS rentals (
+        id TEXT PRIMARY KEY NOT NULL,
+        client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+        machine_id TEXT NOT NULL REFERENCES machines(id) ON DELETE CASCADE,
+        abono_id TEXT NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+        startDate TEXT NOT NULL,
+        endDate TEXT,
+        status TEXT DEFAULT 'activo' NOT NULL,
+        observations TEXT,
+        history TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
+    // 2. Ensure missing columns in users exist
+    const usersColumns = [
+      { name: 'is_master', type: 'INTEGER NOT NULL DEFAULT 0' },
+      { name: 'phone', type: 'TEXT' },
+      { name: 'whatsapp', type: 'TEXT' },
+      { name: 'zone', type: 'TEXT' },
+      { name: 'specialty', type: 'TEXT' },
+      { name: 'availability', type: "TEXT NOT NULL DEFAULT 'Disponible'" },
+      { name: 'active', type: 'INTEGER NOT NULL DEFAULT 1' },
+      { name: 'work_hours', type: 'TEXT' },
+      { name: 'internal_notes', type: 'TEXT' },
+      { name: 'last_login_at', type: 'INTEGER' },
+      { name: 'failed_login_attempts', type: 'INTEGER NOT NULL DEFAULT 0' },
+      { name: 'locked_until', type: 'INTEGER' }
+    ];
+    for (const col of usersColumns) {
+      try {
+        await db.run(sql.raw(`ALTER TABLE users ADD COLUMN ${col.name} ${col.type}`));
+      } catch (e) {}
+    }
+
+    // 3. Ensure missing columns in tickets exist
+    const ticketsColumns = [
+      { name: 'client_address', type: 'TEXT' },
+      { name: 'client_phone', type: 'TEXT' },
+      { name: 'client_email', type: 'TEXT' },
+      { name: 'client_contact', type: 'TEXT' },
+      { name: 'technical_cost', type: 'INTEGER' },
+      { name: 'observations', type: 'TEXT' },
+      { name: 'resolved_at', type: 'INTEGER' }
+    ];
+    for (const col of ticketsColumns) {
+      try {
+        await db.run(sql.raw(`ALTER TABLE tickets ADD COLUMN ${col.name} ${col.type}`));
+      } catch (e) {}
+    }
+
+    isDbSchemaSynced = true;
+    console.log("Database schema auto-sync completed successfully.");
+  } catch (err) {
+    console.error("Error auto-syncing database schema:", err);
+  }
+}
+
 /**
  * GET: Exporta un snapshot completo de la base de datos Turso como JSON.
  */
 export async function GET(request: Request) {
   try {
+    await ensureSchemaSynced(db);
     const { searchParams } = new URL(request.url);
     const user = searchParams.get('user') || 'dmoyano';
 
@@ -117,6 +184,7 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
+    await ensureSchemaSynced(db);
     const { searchParams } = new URL(request.url);
     const user = searchParams.get('user') || 'dmoyano';
     const payload = await request.json();
