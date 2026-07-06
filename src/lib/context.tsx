@@ -144,6 +144,102 @@ interface ManagementContextType {
     syncFromDatabase: () => Promise<void>;
 }
 
+const trackDeletions = (newState: any) => {
+    if (typeof window === 'undefined') return;
+    try {
+        const rawLocal = localStorage.getItem('ms_data');
+        if (!rawLocal) return;
+        const oldState = JSON.parse(rawLocal);
+        
+        const tables = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets'];
+        let deletedIds: string[] = [];
+        try {
+            deletedIds = JSON.parse(localStorage.getItem('ms_deleted_ids') || '[]');
+        } catch (e) {
+            deletedIds = [];
+        }
+        
+        let changed = false;
+        for (const table of tables) {
+            const oldList = oldState[table] || [];
+            const newList = newState[table] || [];
+            
+            const newIds = new Set(newList.map((item: any) => item.id));
+            for (const oldItem of oldList) {
+                if (oldItem.id && !newIds.has(oldItem.id)) {
+                    if (!deletedIds.includes(oldItem.id)) {
+                        deletedIds.push(oldItem.id);
+                        changed = true;
+                    }
+                }
+            }
+        }
+        
+        if (changed) {
+            localStorage.setItem('ms_deleted_ids', JSON.stringify(deletedIds));
+        }
+    } catch (e) {
+        console.error("Error tracking deletions:", e);
+    }
+};
+
+const mergeData = (local: any, server: any) => {
+    const merged = { ...local };
+    const tables = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets'];
+    
+    let deletedIds: string[] = [];
+    if (typeof window !== 'undefined') {
+        try {
+            deletedIds = JSON.parse(localStorage.getItem('ms_deleted_ids') || '[]');
+        } catch (e) {
+            deletedIds = [];
+        }
+    }
+    const deletedSet = new Set(deletedIds);
+    
+    for (const table of tables) {
+        const localList = local[table] || [];
+        let serverList = server[table] || [];
+        if (table === 'abonos' && !server.abonos && server.plans) {
+            serverList = server.plans;
+        }
+        
+        const localMap = new Map<string, any>(localList.map((item: any) => [item.id, item]));
+        const serverMap = new Map<string, any>(serverList.map((item: any) => [item.id, item]));
+        
+        const mergedList = [];
+        
+        // 1. Process all local items
+        for (const localItem of localList) {
+            const serverItem: any = serverMap.get(localItem.id);
+            if (!serverItem) {
+                mergedList.push(localItem);
+            } else {
+                const localTime = new Date(localItem.updatedAt || localItem.createdAt || 0).getTime();
+                const serverTime = new Date(serverItem.updatedAt || serverItem.createdAt || 0).getTime();
+                if (localTime >= serverTime) {
+                    mergedList.push(localItem);
+                } else {
+                    mergedList.push(serverItem);
+                }
+            }
+        }
+        
+        // 2. Process server items
+        for (const serverItem of serverList) {
+            if (!localMap.has(serverItem.id)) {
+                if (!deletedSet.has(serverItem.id)) {
+                    mergedList.push(serverItem);
+                }
+            }
+        }
+        
+        merged[table] = mergedList;
+    }
+    
+    return merged;
+};
+
 const ManagementContext = createContext<ManagementContextType | undefined>(undefined);
 
 export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -202,14 +298,47 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     (parsed.machines && parsed.machines.length > 0);
                     
                 if (hasServerData) {
-                    setClients(parsed.clients || []);
-                    setMachines(parsed.machines || []);
-                    setReadings(parsed.readings || []);
-                    setTickets(parsed.tickets || []);
-                    setAbonos(parsed.plans || parsed.abonos || []);
-                    setUsers(parsed.users || []);
-                    if (parsed.rentals) setRentals(parsed.rentals);
-                    setBudgets(parsed.budgets || []);
+                    let currentLocalState: any = {
+                        clients: [],
+                        machines: [],
+                        readings: [],
+                        tickets: [],
+                        abonos: [],
+                        users: [],
+                        rentals: [],
+                        budgets: []
+                    };
+                    if (typeof window !== 'undefined') {
+                        try {
+                            const raw = localStorage.getItem('ms_data');
+                            if (raw) {
+                                const parsedLocal = JSON.parse(raw);
+                                currentLocalState = {
+                                    clients: parsedLocal.clients || [],
+                                    machines: parsedLocal.machines || [],
+                                    readings: parsedLocal.readings || [],
+                                    tickets: parsedLocal.tickets || [],
+                                    abonos: parsedLocal.abonos || parsedLocal.plans || [],
+                                    users: parsedLocal.users || [],
+                                    rentals: parsedLocal.rentals || [],
+                                    budgets: parsedLocal.budgets || []
+                                };
+                            }
+                        } catch (e) {
+                            console.error("Error reading localStorage in syncFromDatabase:", e);
+                        }
+                    }
+
+                    const merged = mergeData(currentLocalState, parsed);
+
+                    setClients(merged.clients || []);
+                    setMachines(merged.machines || []);
+                    setReadings(merged.readings || []);
+                    setTickets(merged.tickets || []);
+                    setAbonos(merged.abonos || []);
+                    setUsers(merged.users || []);
+                    if (merged.rentals) setRentals(merged.rentals);
+                    setBudgets(merged.budgets || []);
                     
                     const loadedTemplates = parsed.templates || [];
                     const defaultIds = defaultBudgetTemplates.map(t => t.id);
@@ -229,22 +358,50 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     setLastSyncTime(new Date());
                     setSyncError(null);
 
-                    // Sync localStorage immediately to match
                     const stateToSave = {
-                        clients: parsed.clients || [],
-                        machines: parsed.machines || [],
-                        readings: parsed.readings || [],
-                        tickets: parsed.tickets || [],
-                        abonos: parsed.plans || parsed.abonos || [],
-                        users: parsed.users || [],
-                        rentals: parsed.rentals || [],
-                        budgets: parsed.budgets || [],
+                        clients: merged.clients || [],
+                        machines: merged.machines || [],
+                        readings: merged.readings || [],
+                        tickets: merged.tickets || [],
+                        abonos: merged.abonos || [],
+                        users: merged.users || [],
+                        rentals: merged.rentals || [],
+                        budgets: merged.budgets || [],
                         templates: parsed.templates || [],
                         machinePresets: parsed.machinePresets || [],
                         gestiones: parsed.gestiones || [],
                         cobranzaConfig: parsed.cobranzaConfig || defaultCobranzaConfig
                     };
                     localStorage.setItem('ms_data', JSON.stringify(stateToSave));
+
+                    // Compare only key business tables to decide if a server sync is needed
+                    const tablesToCompare = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets'];
+                    let localChangesExist = false;
+                    for (const table of tablesToCompare) {
+                        const serverList = parsed[table] || (table === 'abonos' ? parsed.plans || [] : []);
+                        const mergedList = merged[table] || [];
+                        if (JSON.stringify(serverList) !== JSON.stringify(mergedList)) {
+                            localChangesExist = true;
+                            break;
+                        }
+                    }
+
+                    if (localChangesExist) {
+                        const mergedRaw = JSON.stringify(stateToSave);
+                        fetch('/api/backup?user=autosave', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: mergedRaw
+                        }).then((res) => {
+                            if (res.ok) {
+                                localStorage.removeItem('ms_deleted_ids');
+                            }
+                        }).catch((err) => {
+                            console.error("Error al persistir fusión en el servidor:", err);
+                        });
+                    }
                 }
             } else {
                 if (response.status === 401) {
@@ -430,6 +587,9 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             cobranzaConfig
         };
 
+        // Track deletions first by comparing with the existing localStorage state
+        trackDeletions(stateToSave);
+
         // Sync local storage write
         localStorage.setItem('ms_data', JSON.stringify(stateToSave));
 
@@ -457,6 +617,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 }
                 setLastSyncTime(new Date());
                 setSyncError(null);
+                localStorage.removeItem('ms_deleted_ids');
             } catch (err: any) {
                 console.error("Error auto-guardando en la nube:", err);
                 if (err.message?.includes("HTTP error 401")) {

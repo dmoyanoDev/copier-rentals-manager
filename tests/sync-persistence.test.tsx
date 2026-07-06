@@ -74,6 +74,30 @@ describe('Sync Persistence and Lockouts', () => {
   });
 
   it('loads cache from localStorage on mount and does NOT trigger immediate autosave', async () => {
+    // Override server sync mock to return the same client
+    fetchSpy.mockImplementation((url: any) => {
+      if (url.includes('/api/auth/me')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            authenticated: true,
+            user: { id: 'user-admin', role: 'master' }
+          })
+        } as any);
+      }
+      if (url.includes('/api/backup?user=system')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            clients: [{ id: 'c-cached', name: 'Cached Client' }],
+            machines: [],
+            budgets: []
+          })
+        } as any);
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as any);
+    });
+
     // Populate local storage with cache
     const initialCache = {
       clients: [{ id: 'c-cached', name: 'Cached Client' }],
@@ -226,5 +250,118 @@ describe('Sync Persistence and Lockouts', () => {
 
     // Expect sync-error state to be DB_ERROR
     expect(screen.getByTestId('sync-error').textContent).toBe('DB_ERROR');
+  });
+
+  it('reconciles data on sync using LWW timestamp conflict resolution', async () => {
+    // 1. Setup local cache with client X (updatedAt = 2026-07-06T10:00:00Z)
+    const initialCache = {
+      clients: [{ id: 'c-x', name: 'Local Client X (newer)', updatedAt: '2026-07-06T10:00:00Z' }],
+      machines: []
+    };
+    localStorage.setItem('ms_data', JSON.stringify(initialCache));
+
+    // 2. Mock server response to return client X (updatedAt = 2026-07-06T09:00:00Z - older) and new client Y
+    fetchSpy.mockImplementation((url: any) => {
+      if (url.includes('/api/auth/me')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            authenticated: true,
+            user: { id: 'user-admin', role: 'master' }
+          })
+        } as any);
+      }
+      if (url.includes('/api/backup?user=system')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            clients: [
+              { id: 'c-x', name: 'Server Client X (older)', updatedAt: '2026-07-06T09:00:00Z' },
+              { id: 'c-y', name: 'Client Y', updatedAt: '2026-07-06T09:30:00Z' }
+            ]
+          })
+        } as any);
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as any);
+    });
+
+    render(
+      <ManagementProvider>
+        <TestConsumer />
+      </ManagementProvider>
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1600);
+    });
+
+    // Flush microtasks
+    for (let i = 0; i < 5; i++) {
+      await act(async () => {
+        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(50);
+      });
+    }
+
+    // Verify localStorage has BOTH c-x (retaining the newer local name) and c-y (downloaded from server)
+    const mergedCache = JSON.parse(localStorage.getItem('ms_data') || '{}');
+    expect(mergedCache.clients.length).toBe(2);
+    
+    const clientX = mergedCache.clients.find((c: any) => c.id === 'c-x');
+    expect(clientX.name).toBe('Local Client X (newer)');
+  });
+
+  it('filters out server records that were locally deleted', async () => {
+    // 1. Setup local cache and ms_deleted_ids indicating c-x was deleted
+    const initialCache = {
+      clients: [], // c-x is deleted locally
+      machines: []
+    };
+    localStorage.setItem('ms_data', JSON.stringify(initialCache));
+    localStorage.setItem('ms_deleted_ids', JSON.stringify(['c-x']));
+
+    // 2. Mock server response to return c-x
+    fetchSpy.mockImplementation((url: any) => {
+      if (url.includes('/api/auth/me')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            authenticated: true,
+            user: { id: 'user-admin', role: 'master' }
+          })
+        } as any);
+      }
+      if (url.includes('/api/backup?user=system')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            clients: [{ id: 'c-x', name: 'Server Client X' }]
+          })
+        } as any);
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as any);
+    });
+
+    render(
+      <ManagementProvider>
+        <TestConsumer />
+      </ManagementProvider>
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1600);
+    });
+
+    // Flush microtasks
+    for (let i = 0; i < 5; i++) {
+      await act(async () => {
+        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(50);
+      });
+    }
+
+    // Verify client c-x was NOT restored because it was locally deleted
+    const mergedCache = JSON.parse(localStorage.getItem('ms_data') || '{}');
+    expect(mergedCache.clients.length).toBe(0);
   });
 });
