@@ -17,11 +17,12 @@ export async function POST(request: Request) {
     const ip = request.headers.get('x-forwarded-for') || '127.0.0.1';
     const userAgent = request.headers.get('user-agent') || 'Unknown';
 
-    // 1. Buscar usuario por username o email
+    // 1. Buscar usuario por username o email (normalizado a minúsculas)
+    const normalizedUsername = username.trim().toLowerCase();
     const results = await db
       .select()
       .from(users)
-      .where(or(eq(users.username, username), eq(users.email, username)))
+      .where(or(eq(users.username, normalizedUsername), eq(users.email, normalizedUsername)))
       .limit(1);
 
     const user = results[0];

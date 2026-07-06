@@ -18,7 +18,7 @@ export interface ActionResponse {
  * para facilitar el primer acceso.
  */
 export async function loginAction(prevState: any, formData: FormData): Promise<ActionResponse> {
-  const username = (formData.get('username') as string)?.trim();
+  const username = (formData.get('username') as string)?.trim()?.toLowerCase();
   const password = formData.get('password') as string;
 
   if (!username || !password) {
