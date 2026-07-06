@@ -28,4 +28,5 @@ export const readings = sqliteTable('readings', {
   invoiceFile: text('invoice_file'), // Base64 or local URL
   history: text('history', { mode: 'json' }).$defaultFn(() => []).notNull(), // Log trace timeline
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
 });

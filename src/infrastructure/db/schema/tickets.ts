@@ -33,4 +33,5 @@ export const tickets = sqliteTable('tickets', {
   closedAt: integer('closed_at', { mode: 'timestamp' }),
   history: text('history', { mode: 'json' }).$defaultFn(() => []).notNull(),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
 });

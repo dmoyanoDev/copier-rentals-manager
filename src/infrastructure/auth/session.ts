@@ -22,7 +22,7 @@ export async function createSession(
   userAgent: string = ''
 ) {
   const sessionId = generateSessionId();
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 1 día
+  const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 1 año en base de datos
 
   // 1. Persistir en la base de datos Turso
   await db.insert(sessions).values({
@@ -63,7 +63,6 @@ export async function createSession(
     secure: isSecure,
     sameSite: 'lax',
     path: '/',
-    expires: expiresAt,
   });
 
   return sessionId;

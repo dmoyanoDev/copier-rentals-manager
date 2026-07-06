@@ -85,13 +85,24 @@ async function ensureSchemaSynced(db: any) {
       { name: 'client_contact', type: 'TEXT' },
       { name: 'technical_cost', type: 'INTEGER' },
       { name: 'observations', type: 'TEXT' },
-      { name: 'resolved_at', type: 'INTEGER' }
+      { name: 'resolved_at', type: 'INTEGER' },
+      { name: 'updated_at', type: 'INTEGER NOT NULL DEFAULT 0' }
     ];
     for (const col of ticketsColumns) {
       try {
         await db.run(sql.raw(`ALTER TABLE tickets ADD COLUMN ${col.name} ${col.type}`));
       } catch (e) {}
     }
+
+    // 4. Ensure missing columns in plans exist
+    try {
+      await db.run(sql`ALTER TABLE plans ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0`);
+    } catch (e) {}
+
+    // 5. Ensure missing columns in readings exist
+    try {
+      await db.run(sql`ALTER TABLE readings ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0`);
+    } catch (e) {}
 
     isDbSchemaSynced = true;
     console.log("Database schema auto-sync completed successfully.");
@@ -264,7 +275,8 @@ export async function POST(request: Request) {
             price: Number(p.price) || 0,
             excessPrice: Number(p.excessPrice) || 0,
             ivaRate: Number(p.ivaRate) || 21,
-            createdAt: p.createdAt ? new Date(p.createdAt) : new Date()
+            createdAt: p.createdAt ? new Date(p.createdAt) : new Date(),
+            updatedAt: p.updatedAt ? new Date(p.updatedAt) : (p.createdAt ? new Date(p.createdAt) : new Date())
           });
         }
       }
@@ -321,7 +333,8 @@ export async function POST(request: Request) {
             debitNoteReason: r.debitNoteReason || null,
             invoiceFile: r.invoiceFile || null,
             history: typeof r.history === 'string' ? JSON.parse(r.history) : (r.history || []),
-            createdAt: r.createdAt ? new Date(r.createdAt) : new Date()
+            createdAt: r.createdAt ? new Date(r.createdAt) : new Date(),
+            updatedAt: r.updatedAt ? new Date(r.updatedAt) : (r.createdAt ? new Date(r.createdAt) : new Date())
           });
         }
       }
@@ -357,7 +370,8 @@ export async function POST(request: Request) {
             resolvedAt: t.resolvedAt ? new Date(t.resolvedAt) : null,
             closedAt: t.closedAt ? new Date(t.closedAt) : null,
             history: typeof t.history === 'string' ? JSON.parse(t.history) : (t.history || []),
-            createdAt: t.createdAt ? new Date(t.createdAt) : new Date()
+            createdAt: t.createdAt ? new Date(t.createdAt) : new Date(),
+            updatedAt: t.updatedAt ? new Date(t.updatedAt) : (t.createdAt ? new Date(t.createdAt) : new Date())
           });
         }
       }
