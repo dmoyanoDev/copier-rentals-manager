@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 
-const SESSION_COOKIE_NAME = 'copyrent_session';
+const SESSION_COOKIE_NAME = 'ms_session';
 const SECRET_KEY = process.env.SESSION_SECRET || 'secret-key-that-must-be-32-chars-long-!!';
 
 export interface UserSession {

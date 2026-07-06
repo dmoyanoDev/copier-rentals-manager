@@ -15,7 +15,8 @@ import {
     Plus, Trash2, Edit, Eye, X, Printer, Download, Mail, Send, Copy, 
     FileText, User, Wrench, Shield, Check, Smartphone, CheckSquare, Settings
 } from 'lucide-react';
-import { Budget, BudgetClientSnapshot, BudgetItem, BudgetMachineConfig, BudgetTemplate, MachinePreset, TaxMode, DiscountType } from '@/domain/budget/types';
+import { Budget, BudgetClientSnapshot, BudgetItem, BudgetItemCategory, BudgetMachineConfig, BudgetTemplate, MachinePreset, TaxMode, DiscountType } from '@/domain/budget/types';
+import { BRANDING } from '@/config/branding';
 
 export default function PresupuestosPage() {
     const { 
@@ -45,7 +46,7 @@ export default function PresupuestosPage() {
     const [formBudgetId, setFormBudgetId] = useState<string | null>(null);
     const [numero, setNumero] = useState('');
     const [fecha, setFecha] = useState('');
-    const [tipo, setTipo] = useState<'alquiler' | 'insumo' | 'repuesto' | 'servicio_tecnico' | 'mixto'>('alquiler');
+    const [tipo, setTipo] = useState<'alquiler' | 'insumo' | 'repuesto' | 'servicio_tecnico' | 'mixto' | 'venta'>('alquiler');
     const [selectedTemplateId, setSelectedTemplateId] = useState('');
     const [clientId, setClientId] = useState('');
     const [isNewClient, setIsNewClient] = useState(false);
@@ -111,7 +112,7 @@ export default function PresupuestosPage() {
     const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
     const [editingTemplate, setEditingTemplate] = useState<BudgetTemplate | null>(null);
     const [tempNombre, setTempNombre] = useState('');
-    const [tempTipo, setTempTipo] = useState<'alquiler' | 'insumo' | 'repuesto' | 'servicio_tecnico' | 'mixto'>('alquiler');
+    const [tempTipo, setTempTipo] = useState<'alquiler' | 'insumo' | 'repuesto' | 'servicio_tecnico' | 'mixto' | 'venta'>('alquiler');
     const [tempIntro, setTempIntro] = useState('');
     const [tempConditions, setTempConditions] = useState('');
     const [tempIncludes, setTempIncludes] = useState('');
@@ -331,14 +332,28 @@ export default function PresupuestosPage() {
     };
 
     // Add simple item line
-    const handleAddSimpleItem = () => {
+    const handleAddSimpleItem = (customCategory?: BudgetItemCategory) => {
+        let initialCat: BudgetItemCategory = 'OTROS';
+        if (customCategory) {
+            initialCat = customCategory;
+        } else {
+            if (tipo === 'repuesto') initialCat = 'REPUESTO';
+            else if (tipo === 'servicio_tecnico') initialCat = 'SERVICIO';
+            else if (tipo === 'insumo') initialCat = 'INSUMO';
+            else if (tipo === 'venta') initialCat = 'VENTA';
+            else if (tipo === 'alquiler') initialCat = 'ALQUILER';
+        }
+
         const newItem: BudgetItem = {
             id: 'item-' + Date.now() + Math.random(),
-            categoria: tipo === 'repuesto' ? 'REPUESTO' : (tipo === 'servicio_tecnico' ? 'SERVICIO' : 'INSUMO'),
+            categoria: initialCat,
             descripcion: '',
             cantidad: 1,
             precioUnitario: 0,
-            subtotal: 0
+            subtotal: 0,
+            descuento: 0,
+            origen: 'manual',
+            metadata: ''
         };
         setItems(prev => [...prev, newItem]);
     };
@@ -346,12 +361,23 @@ export default function PresupuestosPage() {
     const handleUpdateSimpleItem = (id: string, key: keyof BudgetItem, value: any) => {
         setItems(prev => prev.map(item => {
             if (item.id === id) {
-                const updated = { ...item, [key]: value };
-                if (key === 'precioUnitario' || key === 'cantidad') {
-                    const price = key === 'precioUnitario' ? parseFloat(value) || 0 : item.precioUnitario;
-                    const qty = key === 'cantidad' ? parseInt(value) || 0 : item.cantidad;
-                    updated.subtotal = price * qty;
+                let cleanVal = value;
+                if (key === 'cantidad') {
+                    cleanVal = Math.max(0, parseInt(value) || 0);
+                } else if (key === 'precioUnitario') {
+                    cleanVal = Math.max(0, parseFloat(value) || 0);
+                } else if (key === 'descuento') {
+                    cleanVal = Math.max(0, parseFloat(value) || 0);
                 }
+
+                const updated = { ...item, [key]: cleanVal };
+                
+                // Recalcular subtotal
+                const price = updated.precioUnitario || 0;
+                const qty = updated.cantidad || 0;
+                const disc = updated.descuento || 0;
+                updated.subtotal = Math.max(0, (price * qty) - disc);
+
                 return updated;
             }
             return item;
@@ -383,8 +409,8 @@ export default function PresupuestosPage() {
             return;
         }
 
-        if (tipo !== 'alquiler' && items.length === 0) {
-            alert('Por favor, agrega al menos un ítem al presupuesto.');
+        if (tipo !== 'alquiler' && items.length === 0 && formMachines.length === 0) {
+            alert('Por favor, agrega al menos un ítem o equipo al presupuesto.');
             return;
         }
 
@@ -1007,9 +1033,9 @@ export default function PresupuestosPage() {
                                     )}
 
                                     {/* Rental Machines Block */}
-                                    {selectedBudget.tipo === 'alquiler' && selectedBudget.machines.length > 0 && (
+                                    {selectedBudget.machines && selectedBudget.machines.length > 0 && (
                                         <div className="space-y-4">
-                                            <h4 className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Equipos y Abonos Propuestos</h4>
+                                            <h4 className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Equipos y Abonos Propuestos (Alquiler)</h4>
                                             {selectedBudget.machines.map((m, i) => (
                                                 <div key={i} className="p-4 bg-slate-900/50 border border-slate-800 rounded-xl space-y-3">
                                                     <div className="flex justify-between border-b border-slate-800 pb-2">
@@ -1040,29 +1066,52 @@ export default function PresupuestosPage() {
                                     )}
 
                                     {/* Simple items table */}
-                                    {selectedBudget.tipo !== 'alquiler' && selectedBudget.items.length > 0 && (
-                                        <TableContainer>
-                                            <Table>
-                                                <TableHeader>
-                                                    <TableRow>
-                                                        <TableHeaderCell>Descripción / Detalle</TableHeaderCell>
-                                                        <TableHeaderCell>Cantidad</TableHeaderCell>
-                                                        <TableHeaderCell>Precio Unitario</TableHeaderCell>
-                                                        <TableHeaderCell className="text-right">Subtotal</TableHeaderCell>
-                                                    </TableRow>
-                                                </TableHeader>
-                                                <TableBody>
-                                                    {selectedBudget.items.map((item, i) => (
-                                                        <TableRow key={i}>
-                                                            <TableCell className="font-bold text-slate-200">{item.descripcion}</TableCell>
-                                                            <TableCell className="font-mono-tabular text-slate-300">{item.cantidad}</TableCell>
-                                                            <TableCell className="font-mono-tabular text-slate-300">{formatCurrency(item.precioUnitario)}</TableCell>
-                                                            <TableCell className="font-mono-tabular text-right text-slate-200">{formatCurrency(item.subtotal)}</TableCell>
+                                    {selectedBudget.items && selectedBudget.items.length > 0 && (
+                                        <div className="space-y-4">
+                                            <h4 className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Conceptos Detallados (Venta, Insumos, Repuestos y Servicios)</h4>
+                                            <TableContainer>
+                                                <Table>
+                                                    <TableHeader>
+                                                        <TableRow>
+                                                            <TableHeaderCell>Descripción / Detalle</TableHeaderCell>
+                                                            <TableHeaderCell>Categoría</TableHeaderCell>
+                                                            <TableHeaderCell>Cant.</TableHeaderCell>
+                                                            <TableHeaderCell>Precio Unit.</TableHeaderCell>
+                                                            <TableHeaderCell className="text-right">Subtotal</TableHeaderCell>
                                                         </TableRow>
-                                                    ))}
-                                                </TableBody>
-                                            </Table>
-                                        </TableContainer>
+                                                    </TableHeader>
+                                                    <TableBody>
+                                                        {selectedBudget.items.map((item, i) => (
+                                                            <TableRow key={i}>
+                                                                <TableCell className="font-bold text-slate-200">
+                                                                    <div>
+                                                                        <span>{item.descripcion}</span>
+                                                                        {item.metadata && (() => {
+                                                                            try {
+                                                                                const m = JSON.parse(item.metadata);
+                                                                                if (m.observaciones) {
+                                                                                    return <span className="block text-[9px] text-slate-500 font-normal mt-0.5">Obs: {m.observaciones}</span>;
+                                                                                }
+                                                                            } catch(e) {}
+                                                                            return null;
+                                                                        })()}
+                                                                    </div>
+                                                                </TableCell>
+                                                                <TableCell className="text-slate-400 uppercase text-[10px]">{item.categoria}</TableCell>
+                                                                <TableCell className="font-mono-tabular text-slate-300">{item.cantidad}</TableCell>
+                                                                <TableCell className="font-mono-tabular text-slate-300">{formatCurrency(item.precioUnitario)}</TableCell>
+                                                                <TableCell className="font-mono-tabular text-right text-slate-205">
+                                                                    {formatCurrency(item.subtotal)}
+                                                                    {(item.descuento || 0) > 0 && (
+                                                                        <span className="block text-[9px] text-red-400 font-bold">(-{formatCurrency(item.descuento || 0)})</span>
+                                                                    )}
+                                                                </TableCell>
+                                                            </TableRow>
+                                                        ))}
+                                                    </TableBody>
+                                                </Table>
+                                            </TableContainer>
+                                        </div>
                                     )}
 
                                     {/* Financial Breakdown */}
@@ -1236,6 +1285,7 @@ export default function PresupuestosPage() {
                                         onChange={(e) => handleTypeChange(e.target.value as any)}
                                         options={[
                                             { value: 'alquiler', label: 'Alquiler de Copiadoras' },
+                                            { value: 'venta', label: 'Venta de Equipos' },
                                             { value: 'insumo', label: 'Insumos / Consumibles' },
                                             { value: 'repuesto', label: 'Venta de Repuestos' },
                                             { value: 'servicio_tecnico', label: 'Servicio Técnico Especializado' },
@@ -1286,33 +1336,35 @@ export default function PresupuestosPage() {
                             </div>
 
                             {/* Section 3: Equipment and items selection */}
-                            <div className="space-y-4">
+                            <div className="space-y-6">
                                 <h4 className="font-bold text-indigo-400 border-b border-slate-850 pb-1.5 uppercase text-[9px] tracking-wider">3. Configuración de Equipos / Ítems</h4>
                                 
-                                {tipo === 'alquiler' ? (
+                                {/* 3.1 BLOQUE DE EQUIPOS EN ALQUILER (Disponible para Alquiler y Mixto) */}
+                                {(tipo === 'alquiler' || tipo === 'mixto') && (
                                     <div className="space-y-4">
-                                        <div className="flex flex-col gap-3 bg-slate-900 p-4 rounded-xl space-y-1">
+                                        <div className="flex flex-col gap-3 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+                                            <span className="font-bold text-xs text-indigo-400">Paso 3.1: Configuración de Equipos en Alquiler</span>
                                             <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
-                                                <span className="font-semibold text-slate-200">Agregar Preset Comercial:</span>
+                                                <span className="text-[11px] font-semibold text-slate-300">Cargar Preset Comercial:</span>
                                                 <div className="flex gap-1.5 flex-wrap">
                                                     {machinePresets.map(p => (
-                                                        <Button key={p.id} type="button" variant="secondary" size="sm" onClick={() => handleAddMachinePreset(p.id)}>
+                                                        <Button key={p.id} type="button" variant="secondary" size="sm" onClick={() => handleAddMachinePreset(p.id)} className="h-7 text-[10.5px]">
                                                             + {p.modelo}
                                                         </Button>
                                                     ))}
                                                 </div>
                                             </div>
-                                            <div className="border-t border-slate-800 pt-2 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-                                                <span className="font-semibold text-slate-200">O Asignar Equipo Físico de Inventario:</span>
+                                            <div className="border-t border-slate-800/80 pt-2 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+                                                <span className="text-[11px] font-semibold text-slate-300">Asignar Equipo Físico de Inventario:</span>
                                                 <div className="w-full sm:max-w-[240px]">
                                                     <select
                                                         onChange={(e) => {
                                                             if (e.target.value) {
                                                                 handleAddPhysicalMachine(e.target.value);
-                                                                e.target.value = ''; // Reset select value
+                                                                e.target.value = '';
                                                             }
                                                         }}
-                                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2 py-1.5 text-slate-300 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-300 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
                                                     >
                                                         <option value="">-- Seleccionar Equipo Físico --</option>
                                                         {machines.map(m => (
@@ -1326,11 +1378,11 @@ export default function PresupuestosPage() {
                                         </div>
 
                                         {formMachines.length === 0 ? (
-                                            <p className="text-[10px] text-slate-500 italic text-center py-4 bg-slate-950 border border-slate-900 border-dashed rounded-xl">No has agregado equipos. Usa los botones superiores para precargar presets comerciales.</p>
+                                            <p className="text-[10px] text-slate-500 italic text-center py-4 bg-slate-950 border border-slate-900 border-dashed rounded-xl">No has agregado equipos en alquiler. Usa los controles superiores.</p>
                                         ) : (
                                             <div className="space-y-4">
                                                 {formMachines.map((m, idx) => (
-                                                    <div key={idx} className="p-4 border border-slate-800 bg-slate-950 rounded-xl space-y-3 relative">
+                                                    <div key={idx} className="p-4 border border-slate-800 bg-slate-955/50 rounded-xl space-y-3 relative animate-fade-in">
                                                         <button 
                                                             type="button"
                                                             className="absolute top-3 right-3 text-red-400 hover:text-red-300"
@@ -1339,7 +1391,7 @@ export default function PresupuestosPage() {
                                                             <X size={16} />
                                                         </button>
                                                         
-                                                        <div className="grid grid-cols-2 gap-3 pr-6">
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pr-6">
                                                             <Input
                                                                 label="Nombre Comercial"
                                                                 value={m.machineName}
@@ -1363,12 +1415,12 @@ export default function PresupuestosPage() {
                                                                 value={String(m.copiaExcedente)}
                                                                 onChange={(e) => handleUpdateMachineSpec(idx, 'copiaExcedente', e.target.value)}
                                                             />
-                                                            <div className="col-span-2">
+                                                            <div className="sm:col-span-2">
                                                                 <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Especificaciones Técnicas (Editable)</label>
                                                                 <textarea
                                                                     value={m.editableSpecsText}
                                                                     onChange={(e) => handleUpdateMachineSpec(idx, 'editableSpecsText', e.target.value)}
-                                                                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 h-20 resize-none"
+                                                                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 h-20 resize-none text-[11px]"
                                                                 />
                                                             </div>
                                                         </div>
@@ -1377,56 +1429,252 @@ export default function PresupuestosPage() {
                                             </div>
                                         )}
                                     </div>
-                                ) : (
-                                    <div className="space-y-4">
-                                        <div className="flex justify-between items-center bg-slate-900 p-3 rounded-xl">
-                                            <span className="font-semibold text-slate-200">Detalle de Repuestos / Servicios</span>
-                                            <Button variant="secondary" size="sm" onClick={handleAddSimpleItem}>
-                                                + Agregar Línea
+                                )}
+
+                                {/* 3.2 DETALLE DE CONCEPTOS ADICIONALES (Ventas, Repuestos, Servicios, Insumos) */}
+                                <div className="space-y-4">
+                                    <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+                                        <div className="flex flex-col">
+                                            <span className="font-bold text-xs text-indigo-400">
+                                                {tipo === 'alquiler' || tipo === 'mixto' ? 'Paso 3.2: Cargos Adicionales e Ítems' : 'Detalle de Ítems Presupuestados'}
+                                            </span>
+                                            <span className="text-[10px] text-slate-500 mt-0.5">Agregue repuestos, servicios, insumos o abonos</span>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            {/* Selector rápido de Abonos del catálogo */}
+                                            <select
+                                                onChange={(e) => {
+                                                    if (e.target.value) {
+                                                        const ab = abonos.find(a => a.id === e.target.value);
+                                                        if (ab) {
+                                                            const newItem: BudgetItem = {
+                                                                id: 'item-' + Date.now() + Math.random(),
+                                                                categoria: 'ABONO',
+                                                                descripcion: `Plan Abono Mensual: ${ab.name} (Incluye ${ab.limit.toLocaleString('es-AR')} copias libres. Excedente $${ab.excessPrice}/copia).`,
+                                                                cantidad: 1,
+                                                                precioUnitario: ab.price,
+                                                                subtotal: ab.price,
+                                                                descuento: 0,
+                                                                origen: 'abono',
+                                                                origenId: ab.id,
+                                                                metadata: JSON.stringify({
+                                                                    limit: ab.limit,
+                                                                    excessPrice: ab.excessPrice
+                                                                })
+                                                            };
+                                                            setItems(prev => [...prev, newItem]);
+                                                        }
+                                                        e.target.value = '';
+                                                    }
+                                                }}
+                                                className="bg-slate-955 border border-slate-800 rounded-xl px-2 py-1 text-slate-300 text-[10.5px] focus:outline-none max-w-[130px]"
+                                            >
+                                                <option value="">+ Cargar Abono</option>
+                                                {abonos.map(a => (
+                                                    <option key={a.id} value={a.id}>{a.name} (${a.price.toLocaleString('es-AR')})</option>
+                                                ))}
+                                            </select>
+
+                                            {/* Selector rápido de Máquinas para Venta */}
+                                            <select
+                                                onChange={(e) => {
+                                                    if (e.target.value) {
+                                                        const m = machines.find(mac => mac.id === e.target.value);
+                                                        if (m) {
+                                                            const newItem: BudgetItem = {
+                                                                id: 'item-' + Date.now() + Math.random(),
+                                                                categoria: 'VENTA',
+                                                                descripcion: `Venta de Fotocopiadora Multifunción ${m.brand} ${m.model} (S/N: ${m.serial})`,
+                                                                cantidad: 1,
+                                                                precioUnitario: 0,
+                                                                subtotal: 0,
+                                                                descuento: 0,
+                                                                origen: 'maquina',
+                                                                origenId: m.id,
+                                                                metadata: JSON.stringify({
+                                                                    brand: m.brand,
+                                                                    model: m.model,
+                                                                    serial: m.serial,
+                                                                    estado: 'Reacondicionado',
+                                                                    garantia: '6 Meses',
+                                                                    observaciones: `Contador actual: ${m.currentCounter.toLocaleString('es-AR')} copias.`
+                                                                })
+                                                            };
+                                                            setItems(prev => [...prev, newItem]);
+                                                        }
+                                                        e.target.value = '';
+                                                    }
+                                                }}
+                                                className="bg-slate-955 border border-slate-800 rounded-xl px-2 py-1 text-slate-300 text-[10.5px] focus:outline-none max-w-[140px]"
+                                            >
+                                                <option value="">+ Cargar Máquina</option>
+                                                {machines.map(m => (
+                                                    <option key={m.id} value={m.id}>{m.brand} {m.model} ({m.serial})</option>
+                                                ))}
+                                            </select>
+
+                                            {/* Botón para agregar manual */}
+                                            <Button variant="secondary" size="sm" onClick={() => handleAddSimpleItem()} className="h-7 text-[10.5px] font-bold">
+                                                + Línea Manual
                                             </Button>
                                         </div>
+                                    </div>
 
-                                        {items.length === 0 ? (
-                                            <p className="text-[10px] text-slate-500 italic text-center py-4 bg-slate-950 border border-slate-900 border-dashed rounded-xl">No has agregado ítems. Haz clic en "Agregar Línea".</p>
-                                        ) : (
-                                            <div className="space-y-3">
-                                                {items.map((item, idx) => (
-                                                    <div key={item.id} className="grid grid-cols-6 gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800 items-end">
-                                                        <div className="col-span-3">
-                                                            <Input
-                                                                label="Descripción"
-                                                                value={item.descripcion}
-                                                                onChange={(e) => handleUpdateSimpleItem(item.id, 'descripcion', e.target.value)}
-                                                                placeholder="Ej: Tóner TN-3449 Ricoh"
-                                                            />
+                                    {items.length === 0 ? (
+                                        <p className="text-[10px] text-slate-500 italic text-center py-4 bg-slate-950 border border-slate-900 border-dashed rounded-xl">No hay conceptos adicionales presupuestados.</p>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            {items.map((item, idx) => {
+                                                let metadataObj: any = {};
+                                                try {
+                                                    if (item.metadata) metadataObj = JSON.parse(item.metadata);
+                                                } catch(e) {}
+
+                                                return (
+                                                    <div key={item.id} className="p-4 bg-slate-955/40 border border-slate-800/80 rounded-xl space-y-3 relative animate-fade-in text-xs">
+                                                        <button 
+                                                            type="button"
+                                                            className="absolute top-3 right-3 text-red-400 hover:text-red-300"
+                                                            onClick={() => handleRemoveSimpleItem(item.id)}
+                                                        >
+                                                            <Trash2 size={15} />
+                                                        </button>
+                                                        
+                                                        <div className="grid grid-cols-1 sm:grid-cols-6 gap-3 pr-6">
+                                                            <div className="sm:col-span-2">
+                                                                <Select
+                                                                    label="Categoría"
+                                                                    value={item.categoria}
+                                                                    onChange={(e) => handleUpdateSimpleItem(item.id, 'categoria', e.target.value as any)}
+                                                                    options={[
+                                                                        { value: 'ABONO', label: 'Plan / Abono' },
+                                                                        { value: 'VENTA', label: 'Venta de Máquina' },
+                                                                        { value: 'SERVICIO', label: 'Servicio Técnico' },
+                                                                        { value: 'INSUMO', label: 'Insumo / Tóner' },
+                                                                        { value: 'REPUESTO', label: 'Repuesto' },
+                                                                        { value: 'ALQUILER', label: 'Alquiler / Equipo' },
+                                                                        { value: 'OTROS', label: 'Otros' }
+                                                                    ]}
+                                                                />
+                                                            </div>
+                                                            <div className="sm:col-span-4">
+                                                                <Input
+                                                                    label="Descripción del Ítem"
+                                                                    value={item.descripcion}
+                                                                    onChange={(e) => handleUpdateSimpleItem(item.id, 'descripcion', e.target.value)}
+                                                                    placeholder="Ej: Tóner TN-311 Ricoh"
+                                                                />
+                                                            </div>
+
+                                                            <div className="sm:col-span-1">
+                                                                <Input
+                                                                    label="Cantidad"
+                                                                    type="number"
+                                                                    value={String(item.cantidad)}
+                                                                    onChange={(e) => handleUpdateSimpleItem(item.id, 'cantidad', e.target.value)}
+                                                                />
+                                                            </div>
+                                                            <div className="sm:col-span-2">
+                                                                <Input
+                                                                    label="Unitario ($)"
+                                                                    type="number"
+                                                                    value={String(item.precioUnitario)}
+                                                                    onChange={(e) => handleUpdateSimpleItem(item.id, 'precioUnitario', e.target.value)}
+                                                                />
+                                                            </div>
+                                                            <div className="sm:col-span-1">
+                                                                <Input
+                                                                    label="Descuento ($)"
+                                                                    type="number"
+                                                                    value={String(item.descuento || 0)}
+                                                                    onChange={(e) => handleUpdateSimpleItem(item.id, 'descuento', e.target.value)}
+                                                                />
+                                                            </div>
+                                                            <div className="sm:col-span-2 flex flex-col justify-end">
+                                                                <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Subtotal Neto</label>
+                                                                <div className="bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 font-mono text-slate-205 text-[11px] h-9 flex items-center justify-between">
+                                                                    <span>$</span>
+                                                                    <span className="font-bold">{(Math.max(0, (item.cantidad * item.precioUnitario) - (item.descuento || 0))).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                        <div className="col-span-1">
-                                                            <Input
-                                                                label="Cantidad"
-                                                                type="number"
-                                                                value={String(item.cantidad)}
-                                                                onChange={(e) => handleUpdateSimpleItem(item.id, 'cantidad', e.target.value)}
-                                                            />
-                                                        </div>
-                                                        <div className="col-span-1">
-                                                            <Input
-                                                                label="Unitario ($)"
-                                                                type="number"
-                                                                value={String(item.precioUnitario)}
-                                                                onChange={(e) => handleUpdateSimpleItem(item.id, 'precioUnitario', e.target.value)}
-                                                            />
-                                                        </div>
-                                                        <div className="col-span-1 flex justify-end pb-1.5">
-                                                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleRemoveSimpleItem(item.id)}>
-                                                                <Trash2 size={15} className="text-red-400" />
-                                                            </Button>
+
+                                                        {/* Sub-formulario condicional de metadatos de categoría */}
+                                                        <div className="border-t border-slate-900/60 pt-2 grid grid-cols-1 sm:grid-cols-2 gap-3 text-[10px] text-slate-400">
+                                                            {item.categoria === 'VENTA' && (
+                                                                <>
+                                                                    <div className="space-y-1">
+                                                                        <label className="text-[9px] uppercase font-bold text-slate-500 block">Estado del Equipo</label>
+                                                                        <select
+                                                                            value={metadataObj.estado || 'Reacondicionado'}
+                                                                            onChange={(e) => {
+                                                                                const updatedMeta = { ...metadataObj, estado: e.target.value };
+                                                                                handleUpdateSimpleItem(item.id, 'metadata', JSON.stringify(updatedMeta));
+                                                                            }}
+                                                                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-slate-200 text-[11px]"
+                                                                        >
+                                                                            <option value="Nuevo">Nuevo</option>
+                                                                            <option value="Usado">Usado</option>
+                                                                            <option value="Reacondicionado">Reacondicionado</option>
+                                                                        </select>
+                                                                    </div>
+                                                                    <div className="space-y-1">
+                                                                        <Input
+                                                                            label="Garantía de Venta"
+                                                                            value={metadataObj.garantia || '6 Meses'}
+                                                                            onChange={(e) => {
+                                                                                const updatedMeta = { ...metadataObj, garantia: e.target.value };
+                                                                                handleUpdateSimpleItem(item.id, 'metadata', JSON.stringify(updatedMeta));
+                                                                            }}
+                                                                        />
+                                                                    </div>
+                                                                </>
+                                                            )}
+
+                                                            {item.categoria === 'SERVICIO' && (
+                                                                <>
+                                                                    <div className="space-y-1">
+                                                                        <Input
+                                                                            label="Diagnóstico / Visita"
+                                                                            value={metadataObj.diagnostico || ''}
+                                                                            onChange={(e) => {
+                                                                                const updatedMeta = { ...metadataObj, diagnostico: e.target.value };
+                                                                                handleUpdateSimpleItem(item.id, 'metadata', JSON.stringify(updatedMeta));
+                                                                            }}
+                                                                            placeholder="Falla, visita técnica..."
+                                                                        />
+                                                                    </div>
+                                                                    <div className="space-y-1">
+                                                                        <Input
+                                                                            label="Plazo / Estimado de Entrega"
+                                                                            value={metadataObj.plazo || '48 Horas'}
+                                                                            onChange={(e) => {
+                                                                                const updatedMeta = { ...metadataObj, plazo: e.target.value };
+                                                                                handleUpdateSimpleItem(item.id, 'metadata', JSON.stringify(updatedMeta));
+                                                                            }}
+                                                                        />
+                                                                    </div>
+                                                                </>
+                                                            )}
+
+                                                            <div className="sm:col-span-2">
+                                                                <Input
+                                                                    label="Observaciones de la línea (Visibles al Cliente)"
+                                                                    value={metadataObj.observaciones || ''}
+                                                                    onChange={(e) => {
+                                                                        const updatedMeta = { ...metadataObj, observaciones: e.target.value };
+                                                                        handleUpdateSimpleItem(item.id, 'metadata', JSON.stringify(updatedMeta));
+                                                                    }}
+                                                                    placeholder="Notas adicionales..."
+                                                                />
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                             {/* Section 4: Text Blocks overrides */}
@@ -1544,8 +1792,8 @@ export default function PresupuestosPage() {
                             <CardContent className="p-8 space-y-6 text-xs text-slate-300">
                                 <div className="flex justify-between border-b border-slate-850 pb-4">
                                     <div>
-                                        <h1 className="text-sm font-extrabold text-indigo-400 uppercase">M&S Tecnología Digital</h1>
-                                        <p className="text-[9px] text-slate-500">CopyRent - Soluciones de Impresión</p>
+                                        <h1 className="text-sm font-extrabold text-indigo-400 uppercase">{BRANDING.commercialName}</h1>
+                                        <p className="text-[9px] text-slate-500">{BRANDING.tagline}</p>
                                     </div>
                                     <div className="text-right">
                                         <h2 className="font-bold text-slate-200">PROPUESTA DE SERVICIO</h2>
@@ -1571,7 +1819,7 @@ export default function PresupuestosPage() {
                                 )}
 
                                 {/* Rental machines block */}
-                                {tipo === 'alquiler' && formMachines.length > 0 && (
+                                {formMachines.length > 0 && (
                                     <div className="space-y-4">
                                         <h4 className="text-[9px] font-extrabold uppercase text-slate-400 tracking-wider">Equipos y Abonos Propuestos</h4>
                                         {formMachines.map((m, i) => (
@@ -1603,24 +1851,44 @@ export default function PresupuestosPage() {
                                 )}
 
                                 {/* Simple items table */}
-                                {tipo !== 'alquiler' && items.length > 0 && (
+                                {items.length > 0 && (
                                     <TableContainer>
                                         <Table>
                                             <TableHeader>
                                                 <TableRow>
                                                     <TableHeaderCell>Descripción / Detalle</TableHeaderCell>
-                                                    <TableHeaderCell>Cantidad</TableHeaderCell>
-                                                    <TableHeaderCell>Precio Unitario</TableHeaderCell>
+                                                    <TableHeaderCell>Categoría</TableHeaderCell>
+                                                    <TableHeaderCell>Cant.</TableHeaderCell>
+                                                    <TableHeaderCell>Precio Unit.</TableHeaderCell>
                                                     <TableHeaderCell className="text-right">Subtotal</TableHeaderCell>
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
                                                 {items.map((item, i) => (
                                                     <TableRow key={i}>
-                                                        <TableCell className="font-bold text-slate-200">{item.descripcion || <span className="text-slate-500 italic">[Descripción]</span>}</TableCell>
+                                                        <TableCell className="font-bold text-slate-200">
+                                                            <div>
+                                                                <span>{item.descripcion || <span className="text-slate-500 italic">[Descripción]</span>}</span>
+                                                                {item.metadata && (() => {
+                                                                    try {
+                                                                        const m = JSON.parse(item.metadata);
+                                                                        if (m.observaciones) {
+                                                                            return <span className="block text-[9px] text-slate-500 font-normal mt-0.5">Obs: {m.observaciones}</span>;
+                                                                        }
+                                                                    } catch(e) {}
+                                                                    return null;
+                                                                })()}
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell className="text-slate-400 uppercase text-[10px]">{item.categoria}</TableCell>
                                                         <TableCell className="font-mono-tabular text-slate-300">{item.cantidad}</TableCell>
                                                         <TableCell className="font-mono-tabular text-slate-300">{formatCurrency(item.precioUnitario)}</TableCell>
-                                                        <TableCell className="font-mono-tabular text-right text-slate-200">{formatCurrency(item.subtotal)}</TableCell>
+                                                        <TableCell className="font-mono-tabular text-right text-slate-200">
+                                                            {formatCurrency(item.subtotal)}
+                                                            {(item.descuento || 0) > 0 && (
+                                                                <span className="block text-[9px] text-red-400 font-bold">(-{formatCurrency(item.descuento || 0)})</span>
+                                                            )}
+                                                        </TableCell>
                                                     </TableRow>
                                                 ))}
                                             </TableBody>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 import { Budget } from '@/domain/budget/types';
+import { BRANDING } from '@/config/branding';
 
 // Helper to format currency
 const formatCurrency = (val: number) => {
@@ -163,8 +164,9 @@ export const PresupuestoPDF = ({ budget }: { budget: Budget }) => {
               style={styles.logo} 
             />
             <View style={styles.titleContainer}>
-              <Text style={styles.companyName}>M&S Tecnología Digital</Text>
-              <Text style={styles.companySubtitle}>Servicios de Impresión Corporativa y Alquileres</Text>
+              <Text style={styles.companyName}>{BRANDING.commercialName}</Text>
+              <Text style={styles.companySubtitle}>{BRANDING.tagline}</Text>
+              <Text style={{ fontSize: 7, color: '#64748b', marginTop: 1 }}>CUIT: {BRANDING.cuit} | CP: {BRANDING.postalCode}</Text>
             </View>
           </View>
           <View style={styles.headerRight}>
@@ -195,13 +197,10 @@ export const PresupuestoPDF = ({ budget }: { budget: Budget }) => {
           <Text style={styles.introText}>{budget.introText}</Text>
         )}
 
-        {/* Items/Equipments Table */}
-        <Text style={styles.sectionTitle}>
-          {budget.tipo === 'alquiler' ? 'Equipos y Abonos Propuestos' : 'Ítems y Conceptos Detallados'}
-        </Text>
-
-        {budget.tipo === 'alquiler' ? (
+        {/* Rental Machines Block */}
+        {budget.machines && budget.machines.length > 0 && (
           <View style={{ marginBottom: 12 }}>
+            <Text style={styles.sectionTitle}>Equipos y Abonos Propuestos (Alquiler)</Text>
             {budget.machines.map((m, index) => (
               <View key={index} style={{ border: '1px solid #e2e8f0', borderRadius: 6, padding: 6, marginBottom: 6 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', borderBottom: '1px solid #e2e8f0', paddingBottom: 3, marginBottom: 3 }}>
@@ -222,22 +221,41 @@ export const PresupuestoPDF = ({ budget }: { budget: Budget }) => {
               </View>
             ))}
           </View>
-        ) : (
-          <View style={styles.table}>
-            <View style={styles.tableHeader}>
-              <Text style={[styles.th, { width: '55%' }]}>Descripción / Detalle</Text>
-              <Text style={[styles.th, { width: '15%', textAlign: 'center' }]}>Cant.</Text>
-              <Text style={[styles.th, { width: '15%', textAlign: 'right' }]}>Precio Unit.</Text>
-              <Text style={[styles.th, { width: '15%', textAlign: 'right' }]}>Subtotal</Text>
-            </View>
-            {budget.items.map((item, index) => (
-              <View key={index} style={styles.tableRow}>
-                <Text style={[styles.td, { width: '55%' }]}>{item.descripcion}</Text>
-                <Text style={[styles.td, { width: '15%', textAlign: 'center' }]}>{item.cantidad}</Text>
-                <Text style={[styles.td, { width: '15%', textAlign: 'right' }]}>{formatCurrency(item.precioUnitario)}</Text>
-                <Text style={[styles.td, { width: '15%', textAlign: 'right' }]}>{formatCurrency(item.subtotal)}</Text>
+        )}
+
+        {/* General Items Block */}
+        {budget.items && budget.items.length > 0 && (
+          <View style={{ marginBottom: 12 }}>
+            <Text style={styles.sectionTitle}>Conceptos Detallados (Venta, Insumos, Repuestos y Servicios)</Text>
+            <View style={styles.table}>
+              <View style={styles.tableHeader}>
+                <Text style={[styles.th, { width: '45%' }]}>Descripción / Detalle</Text>
+                <Text style={[styles.th, { width: '15%', textAlign: 'center' }]}>Categoría</Text>
+                <Text style={[styles.th, { width: '10%', textAlign: 'center' }]}>Cant.</Text>
+                <Text style={[styles.th, { width: '15%', textAlign: 'right' }]}>Precio Unit.</Text>
+                <Text style={[styles.th, { width: '15%', textAlign: 'right' }]}>Subtotal</Text>
               </View>
-            ))}
+              {budget.items.map((item, index) => (
+                <View key={index} style={styles.tableRow}>
+                  <View style={{ width: '45%' }}>
+                    <Text style={[styles.td, { fontWeight: 'bold' }]}>{item.descripcion}</Text>
+                    {item.metadata && (() => {
+                      try {
+                        const meta = JSON.parse(item.metadata);
+                        if (meta.observaciones) {
+                          return <Text style={{ fontSize: 6.5, color: '#64748b', marginTop: 1 }}>Obs: {meta.observaciones}</Text>;
+                        }
+                      } catch(e) {}
+                      return null;
+                    })()}
+                  </View>
+                  <Text style={[styles.td, { width: '15%', textAlign: 'center' }]}>{item.categoria}</Text>
+                  <Text style={[styles.td, { width: '10%', textAlign: 'center' }]}>{item.cantidad}</Text>
+                  <Text style={[styles.td, { width: '15%', textAlign: 'right' }]}>{formatCurrency(item.precioUnitario)}</Text>
+                  <Text style={[styles.td, { width: '15%', textAlign: 'right' }]}>{formatCurrency(item.subtotal)}</Text>
+                </View>
+              ))}
+            </View>
           </View>
         )}
 
@@ -302,13 +320,13 @@ export const PresupuestoPDF = ({ budget }: { budget: Budget }) => {
 
         {/* Signatures */}
         <View style={styles.signatures}>
-          <Text style={styles.signatureLine}>Firma y Aclaración M&S</Text>
+          <Text style={styles.signatureLine}>Firma y Aclaración {BRANDING.commercialName}</Text>
           <Text style={styles.signatureLine}>Firma y Aclaración Cliente</Text>
         </View>
 
         {/* Footer info */}
         <View style={{ position: 'absolute', bottom: 15, left: 30, right: 30, borderTopWidth: 0.5, borderTopColor: '#e2e8f0', paddingTop: 4, alignItems: 'center' }}>
-          <Text style={{ fontSize: 7, color: '#94a3b8' }}>{budget.footerText || 'M&S Tecnología Digital — Copiadoras e Impresión'}</Text>
+          <Text style={{ fontSize: 7, color: '#94a3b8' }}>{budget.footerText || `${BRANDING.legalName} — ${BRANDING.address}, CP ${BRANDING.postalCode}, ${BRANDING.city} — Tel: ${BRANDING.phones}`}</Text>
         </View>
       </Page>
     </Document>

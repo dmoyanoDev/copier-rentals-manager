@@ -18,6 +18,7 @@ import {
     mockRentals
 } from './mockData';
 import { Budget, BudgetTemplate, MachinePreset } from '@/domain/budget/types';
+import { BRANDING } from '@/config/branding';
 import { defaultMachinePresets, defaultBudgetTemplates } from '@/domain/budget/presets';
 
 // Extend Client interface locally
@@ -62,16 +63,16 @@ const defaultCobranzaConfig: CobranzaConfig = {
     diasAvisoVencimiento: 3,
     montoMinimoAlerta: 50000,
     diasMoraCritica: 15,
-    plantillaEmail: 'Estimado cliente,\n\nLe recordamos que posee un saldo pendiente de {monto_saldo} de los cuales {monto_vencido} se encuentran vencidos.\n\nPor favor regularice su cuenta.\n\nCopyRent',
-    plantillaWhatsapp: 'Hola! Te compartimos el aviso de cuenta corriente CopyRent. Tu saldo pendiente es {monto_saldo}. Comprobantes impagos: {cant_impagos}.',
+    plantillaEmail: `Estimado cliente,\n\nLe recordamos que posee un saldo pendiente de {monto_saldo} de los cuales {monto_vencido} se encuentran vencidos.\n\nPor favor regularice su cuenta.\n\n${BRANDING.commercialName}`,
+    plantillaWhatsapp: `Hola! Te compartimos el aviso de cuenta corriente de ${BRANDING.commercialName}. Tu saldo pendiente es {monto_saldo}. Comprobantes impagos: {cant_impagos}.`,
     
-    plantillaPreventivoEmail: 'Estimado cliente,\n\nLe recordamos preventivamente que posee facturas próximas a vencer por un total de {monto_saldo}.\n\nAtentamente,\nCopyRent',
-    plantillaPreventivoWhatsapp: 'Hola! Te recordamos preventivamente que tu factura CopyRent por {monto_saldo} está próxima a vencer. ¡Que tengas un buen día!',
-    plantillaDeudaVencidaEmail: 'Estimado cliente,\n\nLe informamos que registra comprobantes vencidos impagos por un total de {monto_vencido}. Solicitamos regularizar su situación a la brevedad.\n\nAtentamente,\nCopyRent',
+    plantillaPreventivoEmail: `Estimado cliente,\n\nLe recordamos preventivamente que posee facturas próximas a vencer por un total de {monto_saldo}.\n\nAtentamente,\n${BRANDING.commercialName}`,
+    plantillaPreventivoWhatsapp: `Hola! Te recordamos preventivamente que tu factura de ${BRANDING.commercialName} por {monto_saldo} está próxima a vencer. ¡Que tengas un buen día!`,
+    plantillaDeudaVencidaEmail: `Estimado cliente,\n\nLe informamos que registra comprobantes vencidos impagos por un total de {monto_vencido}. Solicitamos regularizar su situación a la brevedad.\n\nAtentamente,\n${BRANDING.commercialName}`,
     plantillaDeudaVencidaWhatsapp: 'Hola! Tu cuenta presenta un saldo vencido de {monto_vencido}. Agradecemos coordinar el pago a la brevedad para evitar recargos.',
-    plantillaSegundoAvisoEmail: 'IMPORTANTE: SEGUNDO AVISO DE DEUDA\n\nEstimado cliente,\n\nReiteramos aviso por saldo impago de {monto_vencido} con mora acumulada. Por favor, comuníquese con administración.\n\nAtentamente,\nCopyRent',
+    plantillaSegundoAvisoEmail: `IMPORTANTE: SEGUNDO AVISO DE DEUDA\n\nEstimado cliente,\n\nReiteramos aviso por saldo impago de {monto_vencido} con mora acumulada. Por favor, comuníquese con administración.\n\nAtentamente,\n${BRANDING.commercialName}`,
     plantillaSegundoAvisoWhatsapp: '⚠️ SEGUNDO AVISO: Aún no registramos el pago de tu saldo de {monto_vencido}. Por favor, envíanos el comprobante si ya transferiste.',
-    plantillaPagoRecibidoEmail: 'Estimado cliente,\n\nConfirmamos la recepción del pago por un importe de {monto_pago}. Agradecemos su puntualidad.\n\nAtentamente,\nCopyRent',
+    plantillaPagoRecibidoEmail: `Estimado cliente,\n\nConfirmamos la recepción del pago por un importe de {monto_pago}. Agradecemos su puntualidad.\n\nAtentamente,\n${BRANDING.commercialName}`,
     plantillaPagoRecibidoWhatsapp: '✅ Pago recibido! Confirmamos la acreditación de tu pago por {monto_pago}. Muchas gracias por tu confianza.',
 
     sonidosActivos: true,
@@ -165,7 +166,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const mm = String(now.getMonth() + 1).padStart(2, '0');
         setCurrentMonth(`${yyyy}-${mm}`);
 
-        const localData = localStorage.getItem('copyrent_data');
+        const localData = localStorage.getItem('ms_data');
         if (localData) {
             try {
                 const parsed = JSON.parse(localData);
@@ -237,7 +238,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 gestiones,
                 cobranzaConfig
             };
-            localStorage.setItem('copyrent_data', JSON.stringify(stateToSave));
+            localStorage.setItem('ms_data', JSON.stringify(stateToSave));
         }
     }, [clients, machines, readings, tickets, abonos, users, rentals, budgets, templates, machinePresets, gestiones, cobranzaConfig]);
 

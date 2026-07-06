@@ -4,7 +4,7 @@ export type TaxMode = 'INCLUDED' | 'ADD_21' | 'PLUS_IVA' | 'EXEMPT';
 
 export type BudgetStatus = 'borrador' | 'emitido' | 'enviado' | 'anulado';
 
-export type BudgetType = 'alquiler' | 'insumo' | 'repuesto' | 'servicio_tecnico' | 'mixto';
+export type BudgetType = 'alquiler' | 'insumo' | 'repuesto' | 'servicio_tecnico' | 'mixto' | 'venta';
 
 export interface BudgetClientSnapshot {
     nombreRazonSocial: string;
@@ -18,7 +18,7 @@ export interface BudgetClientSnapshot {
     contacto?: string;
 }
 
-export type BudgetItemCategory = 'ALQUILER' | 'INSUMO' | 'REPUESTO' | 'SERVICIO';
+export type BudgetItemCategory = 'ALQUILER' | 'INSUMO' | 'REPUESTO' | 'SERVICIO' | 'VENTA' | 'OTROS' | 'ABONO';
 
 export interface BudgetItem {
     id: string;
@@ -27,6 +27,10 @@ export interface BudgetItem {
     cantidad: number;
     precioUnitario: number;
     subtotal: number;
+    descuento?: number; // Descuento por línea
+    origen?: 'manual' | 'abono' | 'maquina' | 'servicio';
+    origenId?: string;
+    nombre?: string;
     metadata?: string; // JSON string
 }
 

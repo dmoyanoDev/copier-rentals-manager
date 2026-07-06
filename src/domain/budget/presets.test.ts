@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { defaultBudgetTemplates } from './presets';
 
 describe('Budget Templates', () => {
-    it('should have exactly 5 templates', () => {
-        expect(defaultBudgetTemplates.length).toBe(5);
+    it('should have exactly 6 templates', () => {
+        expect(defaultBudgetTemplates.length).toBe(6);
     });
 
     it('should contain the correct template IDs and types', () => {
@@ -12,7 +12,8 @@ describe('Budget Templates', () => {
             { id: 'temp-insumos', type: 'insumo' },
             { id: 'temp-repuesto', type: 'repuesto' },
             { id: 'temp-servicio', type: 'servicio_tecnico' },
-            { id: 'temp-mixto', type: 'mixto' }
+            { id: 'temp-mixto', type: 'mixto' },
+            { id: 'temp-venta', type: 'venta' }
         ];
 
         expectedTemplates.forEach(({ id, type }) => {

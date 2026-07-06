@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { Client } from '@/lib/mockData';
 import { LocalClient } from '@/lib/context';
+import { BRANDING } from '@/config/branding';
 
 // Custom Badge component local to this file to prevent variant typing conflicts
 const LocalBadge = ({ variant, children, className = '' }: { variant: 'success' | 'warning' | 'danger' | 'info' | 'secondary', children: React.ReactNode, className?: string }) => {
@@ -448,9 +449,9 @@ export default function ClientsPage() {
                     <!-- Commercial Identity Header -->
                     <div class="header-box">
                         <div>
-                            <h2 style="margin: 0; color: #4f46e5; font-size: 22px;">COPYRENT ARGENTINA S.A.</h2>
-                            <span style="font-size: 11px; color: #64748b;">CUIT: 30-71569482-3 | Dirección: Av. Corrientes 1540, CABA</span><br/>
-                            <span style="font-size: 11px; color: #64748b;">Contacto: administracion@copyrent.com.ar | Tel: (011) 5236-8900</span>
+                            <h2 style="margin: 0; color: #4f46e5; font-size: 22px;">${BRANDING.legalName}</h2>
+                            <span style="font-size: 11px; color: #64748b;">CUIT: ${BRANDING.cuit} | Dirección: ${BRANDING.address}, ${BRANDING.city}</span><br/>
+                            <span style="font-size: 11px; color: #64748b;">Contacto: ${BRANDING.email} | Tel: ${BRANDING.phones}</span>
                         </div>
                         <div style="text-align: right;">
                             <h3 style="margin: 0; font-size: 14px; text-transform: uppercase;">Estado de Cuenta ${version === 'interna' ? 'Interno' : 'Comercial'}</h3>
@@ -548,7 +549,7 @@ export default function ClientsPage() {
                     <!-- Commercial Signature Footer -->
                     <div class="footer-signature">
                         <div>
-                            <span>Generado por: CopyRent S.A. - Administración</span><br/>
+                            <span>Generado por: ${BRANDING.commercialName} - Administración</span><br/>
                             <span>Usuario Emisor: Administrador</span>
                         </div>
                         <div style="text-align: right; margin-top: 20px;">
@@ -653,7 +654,7 @@ export default function ClientsPage() {
                 <body>
                     <div class="header-box">
                         <div>
-                            <h2 style="margin: 0; color: #4f46e5; font-size: 22px;">COPYRENT ARGENTINA S.A.</h2>
+                            <h2 style="margin: 0; color: #4f46e5; font-size: 22px;">${BRANDING.legalName}</h2>
                             <span style="font-size: 11px; color: #64748b;">Reporte Gerencial de Deudores Consolidado</span>
                         </div>
                         <div style="text-align: right;">

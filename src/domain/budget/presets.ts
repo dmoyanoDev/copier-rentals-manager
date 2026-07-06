@@ -123,5 +123,17 @@ export const defaultBudgetTemplates: BudgetTemplate[] = [
         defaultConditionsText: 'Plazo de contrato integral: 12 meses renovables. Ajuste de abonos: Trimestral según el IPC. Pago de adicionales: Del 1 al 10 de cada mes vencido. Validez de la oferta: 10 días hábiles.',
         defaultTaxMode: 'ADD_21',
         activo: true
+    },
+    {
+        id: 'temp-venta',
+        nombre: 'Venta de Equipos de Copiado',
+        tipo: 'venta',
+        defaultIntroText: 'Tenemos el agrado de acercarles nuestra propuesta económica para la adquisición de equipos de copiado y multifuncionales M&S Tecnología Digital.',
+        defaultIncludesText: '• Entrega, instalación y puesta en marcha del equipamiento en su domicilio sin cargo.\n• Capacitación inicial al personal designado.\n• Garantía oficial de funcionamiento por el período establecido.',
+        defaultExcludesText: '• Suministro posterior de insumos y repuestos (se facturan por separado o mediante abono).\n• Estabilizador de tensión eléctrica (obligatorio para la garantía de placa lógica).',
+        defaultRequirementsText: '• Pago anticipado del porcentaje acordado al confirmar el pedido.\n• Instalación eléctrica con toma a tierra certificada y estabilizador adecuado.',
+        defaultConditionsText: 'Forma de pago: Contado contra entrega o financiación según acuerdo. Garantía comercial: 12 meses o cantidad límite de copias/impresiones. Validez de Oferta: 10 días.',
+        defaultTaxMode: 'ADD_21',
+        activo: true
     }
 ];

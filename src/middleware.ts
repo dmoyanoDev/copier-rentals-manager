@@ -16,7 +16,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // 1. Obtener cookie de sesión
-  const sessionCookie = request.cookies.get('copyrent_session');
+  const sessionCookie = request.cookies.get('ms_session');
   
   // 2. Resolver sesión
   const session = sessionCookie ? await getSession(sessionCookie.value) : null;

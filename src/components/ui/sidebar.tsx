@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useManagement } from '@/lib/context';
 import { cn } from '@/lib/utils';
+import { BRANDING } from '@/config/branding';
 
 export const Sidebar: React.FC = () => {
     const pathname = usePathname();
@@ -134,8 +135,8 @@ export const Sidebar: React.FC = () => {
                         M&S
                     </div>
                     <div className="hidden xl:block overflow-hidden transition-all duration-300">
-                        <span className="font-bold text-white tracking-wide block text-xs truncate">M&S Tecnología Digital</span>
-                        <span className="text-[9px] text-slate-500 font-medium block truncate">CopyRent Manager</span>
+                        <span className="font-bold text-white tracking-wide block text-xs truncate">{BRANDING.commercialName}</span>
+                        <span className="text-[9px] text-slate-500 font-medium block truncate">{BRANDING.tagline}</span>
                     </div>
                 </div>
 
