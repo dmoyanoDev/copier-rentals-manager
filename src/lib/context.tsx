@@ -593,6 +593,76 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                             console.error("Error al persistir fusión en el servidor:", err);
                         });
                     }
+                } else {
+                    // The server database is clean/empty (hasServerData is false).
+                    // If this client has local cache, automatically enqueue everything as 'create' to seed the remote DB.
+                    const hasLocalCache = typeof window !== 'undefined' && localStorage.getItem('ms_data') !== null;
+                    if (hasLocalCache) {
+                        let currentLocalState: any = {
+                            clients: [],
+                            machines: [],
+                            readings: [],
+                            tickets: [],
+                            abonos: [],
+                            users: [],
+                            rentals: [],
+                            budgets: []
+                        };
+                        try {
+                            const raw = localStorage.getItem('ms_data');
+                            if (raw) {
+                                const parsedLocal = JSON.parse(raw);
+                                currentLocalState = {
+                                    clients: parsedLocal.clients || [],
+                                    machines: parsedLocal.machines || [],
+                                    readings: parsedLocal.readings || [],
+                                    tickets: parsedLocal.tickets || [],
+                                    abonos: parsedLocal.abonos || parsedLocal.plans || [],
+                                    users: parsedLocal.users || [],
+                                    rentals: parsedLocal.rentals || [],
+                                    budgets: parsedLocal.budgets || []
+                                };
+                            }
+                        } catch (e) {}
+
+                        if (currentLocalState.clients.length > 0 || currentLocalState.machines.length > 0 || currentLocalState.abonos.length > 0) {
+                            const initialQueue: any[] = [];
+                            const nowStr = new Date().toISOString();
+                            const tables = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets'] as const;
+
+                            for (const table of tables) {
+                                const list = currentLocalState[table] || [];
+                                for (const item of list) {
+                                    if (table === 'users' && (item.id.startsWith('mock-') || item.id === 'user-admin' || item.username === 'dmoyano')) {
+                                        continue;
+                                    }
+                                    initialQueue.push({
+                                        id: crypto.randomUUID ? crypto.randomUUID() : 'q-seed-' + Math.random().toString(36).substring(2, 9) + '-' + Date.now(),
+                                        entityId: item.id,
+                                        entityType: table,
+                                        operation: 'create',
+                                        payload: item,
+                                        updatedAt: item.updatedAt || nowStr,
+                                        status: 'pending',
+                                        retryCount: 0
+                                    });
+                                }
+                            }
+
+                            if (initialQueue.length > 0) {
+                                const currentQueue = getStoredQueue();
+                                const existingEntityIds = new Set(currentQueue.map((q: any) => q.entityId));
+                                const itemsToAdd = initialQueue.filter(q => !existingEntityIds.has(q.entityId));
+
+                                if (itemsToAdd.length > 0) {
+                                    const updatedQueue = [...currentQueue, ...itemsToAdd];
+                                    saveStoredQueue(updatedQueue);
+                                    setSyncQueue(updatedQueue);
+                                    processSyncQueue(updatedQueue);
+                                }
+                            }
+                        }
+                    }
                 }
             } else {
                 if (response.status === 401) {
