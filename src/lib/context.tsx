@@ -183,9 +183,59 @@ const trackDeletions = (newState: any) => {
     }
 };
 
-const mergeData = (local: any, server: any) => {
+const autoTimestampState = (newState: any) => {
+    if (typeof window === 'undefined') return newState;
+    try {
+        const rawLocal = localStorage.getItem('ms_data');
+        if (!rawLocal) return newState;
+        const oldState = JSON.parse(rawLocal);
+        
+        const tables = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets'];
+        const updatedState = { ...newState };
+        
+        for (const table of tables) {
+            const oldList = oldState[table] || [];
+            const newList = newState[table] || [];
+            
+            const oldMap = new Map<string, any>(oldList.map((item: any) => [item.id, item]));
+            
+            const updatedList = newList.map((newItem: any) => {
+                const oldItem = oldMap.get(newItem.id);
+                if (!oldItem) {
+                    return {
+                        ...newItem,
+                        createdAt: newItem.createdAt || new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
+                    };
+                }
+                
+                const newItemCompare = { ...newItem, updatedAt: undefined, createdAt: undefined };
+                const oldItemCompare = { ...oldItem, updatedAt: undefined, createdAt: undefined };
+                
+                if (JSON.stringify(newItemCompare) !== JSON.stringify(oldItemCompare)) {
+                    return {
+                        ...newItem,
+                        updatedAt: new Date().toISOString()
+                    };
+                }
+                
+                return newItem;
+            });
+            
+            updatedState[table] = updatedList;
+        }
+        
+        return updatedState;
+    } catch (e) {
+        console.error("Error auto-timestamping state:", e);
+        return newState;
+    }
+};
+
+const mergeData = (local: any, server: any, lastSyncTime: Date | null) => {
     const merged = { ...local };
     const tables = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets'];
+    const lastSync = lastSyncTime ? lastSyncTime.getTime() : 0;
     
     let deletedIds: string[] = [];
     if (typeof window !== 'undefined') {
@@ -213,8 +263,13 @@ const mergeData = (local: any, server: any) => {
         for (const localItem of localList) {
             const serverItem: any = serverMap.get(localItem.id);
             if (!serverItem) {
-                mergedList.push(localItem);
+                // Only exists locally. Check if it is a new offline creation or deleted on server.
+                const localTime = new Date(localItem.updatedAt || localItem.createdAt || 0).getTime();
+                if (localTime > lastSync) {
+                    mergedList.push(localItem);
+                }
             } else {
+                // Exists in both, compare timestamps
                 const localTime = new Date(localItem.updatedAt || localItem.createdAt || 0).getTime();
                 const serverTime = new Date(serverItem.updatedAt || serverItem.createdAt || 0).getTime();
                 if (localTime >= serverTime) {
@@ -329,7 +384,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         }
                     }
 
-                    const merged = mergeData(currentLocalState, parsed);
+                    const merged = mergeData(currentLocalState, parsed, lastSyncTime);
 
                     setClients(merged.clients || []);
                     setMachines(merged.machines || []);
@@ -355,7 +410,11 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         });
                     }
                     
-                    setLastSyncTime(new Date());
+                    const now = new Date();
+                    setLastSyncTime(now);
+                    if (typeof window !== 'undefined') {
+                        localStorage.setItem('ms_last_sync_time', now.toISOString());
+                    }
                     setSyncError(null);
 
                     const stateToSave = {
@@ -530,6 +589,11 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             setCobranzaConfig(defaultCobranzaConfig);
         }
 
+        const savedSyncTime = localStorage.getItem('ms_last_sync_time');
+        if (savedSyncTime) {
+            setLastSyncTime(new Date(savedSyncTime));
+        }
+
         fetchMe();
 
         // Release initial load lock after states are populated and settled
@@ -615,7 +679,11 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     }
                     throw new Error("HTTP error " + response.status);
                 }
-                setLastSyncTime(new Date());
+                const now = new Date();
+                setLastSyncTime(now);
+                if (typeof window !== 'undefined') {
+                    localStorage.setItem('ms_last_sync_time', now.toISOString());
+                }
                 setSyncError(null);
                 localStorage.removeItem('ms_deleted_ids');
             } catch (err: any) {

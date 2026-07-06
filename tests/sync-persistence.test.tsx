@@ -259,6 +259,7 @@ describe('Sync Persistence and Lockouts', () => {
       machines: []
     };
     localStorage.setItem('ms_data', JSON.stringify(initialCache));
+    localStorage.setItem('ms_last_sync_time', '2026-07-06T08:00:00Z');
 
     // 2. Mock server response to return client X (updatedAt = 2026-07-06T09:00:00Z - older) and new client Y
     fetchSpy.mockImplementation((url: any) => {
