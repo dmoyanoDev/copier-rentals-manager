@@ -13,7 +13,15 @@ const PageHeaderActions: React.FC = () => {
             <button
                 onClick={() => syncFromDatabase()}
                 disabled={isSyncing}
-                title={syncError ? syncError : lastSyncTime ? `Sincronizado: ${lastSyncTime.toLocaleTimeString('es-AR')}` : 'Sincronizar ahora'}
+                title={
+                    isSyncing 
+                        ? 'Sincronizando base de datos Turso...' 
+                        : syncError 
+                        ? `${syncError}${lastSyncTime ? `. Última sincronización exitosa: ${lastSyncTime.toLocaleTimeString('es-AR')}` : ''}` 
+                        : lastSyncTime 
+                        ? `Última sincronización: ${lastSyncTime.toLocaleDateString('es-AR')} ${lastSyncTime.toLocaleTimeString('es-AR')}` 
+                        : 'Sincronizar ahora con la nube'
+                }
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-850 bg-slate-900/10 hover:bg-slate-900/20 dark:bg-slate-950 dark:hover:bg-slate-900/60 transition-all text-[11px] font-semibold text-slate-400 select-none cursor-pointer"
             >
                 {isSyncing ? (
@@ -24,12 +32,19 @@ const PageHeaderActions: React.FC = () => {
                 ) : syncError ? (
                     <>
                         <CloudOff size={12} className="text-amber-500 animate-pulse" />
-                        <span className="text-amber-500">Sin Conexión</span>
+                        <span className="text-amber-500">
+                            {lastSyncTime ? 'Sin conexión' : 'Error de sincronización'}
+                        </span>
+                    </>
+                ) : lastSyncTime ? (
+                    <>
+                        <Cloud size={12} className="text-emerald-500" />
+                        <span className="text-emerald-400">Sincronizado con la nube</span>
                     </>
                 ) : (
                     <>
-                        <Cloud size={12} className="text-emerald-500" />
-                        <span className="text-slate-300">Sincronizado</span>
+                        <CloudOff size={12} className="text-slate-500" />
+                        <span className="text-slate-400">Mostrando copia local</span>
                     </>
                 )}
             </button>

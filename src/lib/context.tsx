@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
     Client,
     Machine,
@@ -171,9 +171,13 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const [syncError, setSyncError] = useState<string | null>(null);
     const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
 
+    const isSyncingRef = useRef(false);
+    const isInitialLoadRef = useRef(true);
+
     // Fetch snapshot from backend database
-    const syncFromDatabase = async () => {
-        if (!currentUser) {
+    const syncFromDatabase = async (forceUser?: User | null) => {
+        const activeUser = forceUser !== undefined ? forceUser : currentUser;
+        if (!activeUser) {
             return;
         }
 
@@ -184,6 +188,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             }
         }
 
+        isSyncingRef.current = true;
         setIsSyncing(true);
         try {
             const response = await fetch('/api/backup?user=system');
@@ -249,6 +254,10 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             setSyncError("Error de sincronización (Modo Offline)");
         } finally {
             setIsSyncing(false);
+            // Allow state updates to settle before resetting sync ref
+            setTimeout(() => {
+                isSyncingRef.current = false;
+            }, 1000);
         }
     };
 
@@ -266,15 +275,16 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 if (res.ok) {
                     const parsed = await res.json();
                     if (parsed.authenticated && parsed.user) {
-                        setCurrentUser({
+                        const u = {
                             id: parsed.user.id,
                             username: parsed.user.username,
                             fullname: parsed.user.fullname,
                             email: parsed.data?.email || parsed.user.email || '',
                             role: parsed.user.role,
-                        });
-                        // Solo sincronizar si está autenticado
-                        syncFromDatabase();
+                        };
+                        setCurrentUser(u);
+                        // Solo sincronizar si está autenticado (pasando el usuario directamente para evitar delay del batch update)
+                        syncFromDatabase(u);
                     } else {
                         setCurrentUser(null);
                     }
@@ -348,6 +358,11 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
 
         fetchMe();
+
+        // Release initial load lock after states are populated and settled
+        setTimeout(() => {
+            isInitialLoadRef.current = false;
+        }, 1500);
     }, []);
 
     // Re-sync when page refocuses, tab changes or network goes online
@@ -375,8 +390,8 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     // Save changes to localStorage immediately, and debounced save to remote database
     useEffect(() => {
-        // Prevent saving if no authenticated user or empty state lists on mount
-        if (!currentUser) {
+        // Prevent saving if no authenticated user or if the app is during initial load or synchronizing from backend
+        if (!currentUser || isInitialLoadRef.current || isSyncingRef.current) {
             return;
         }
         if (clients.length === 0 && budgets.length === 0 && machines.length === 0) {
