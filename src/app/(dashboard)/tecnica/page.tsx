@@ -144,9 +144,14 @@ export default function TechnicalPage() {
         try {
             const res = await fetch('/api/tickets/history');
             const data = await res.json();
-            setNotificationLogs(data);
+            if (res.ok && Array.isArray(data)) {
+                setNotificationLogs(data);
+            } else {
+                setNotificationLogs([]);
+            }
         } catch (e) {
             console.error('Error fetching logs:', e);
+            setNotificationLogs([]);
         } finally {
             setIsLoadingLogs(false);
         }
