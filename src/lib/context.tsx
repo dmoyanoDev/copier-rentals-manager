@@ -471,6 +471,9 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 if (response.status === 401) {
                     setSyncError("UNAUTHORIZED");
                     setCurrentUser(null);
+                    if (typeof window !== 'undefined') {
+                        window.location.href = '/login';
+                    }
                     return;
                 }
                 if (response.status === 500) {
@@ -484,6 +487,9 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             if (err.message?.includes("HTTP error 401")) {
                 setSyncError("UNAUTHORIZED");
                 setCurrentUser(null);
+                if (typeof window !== 'undefined') {
+                    window.location.href = '/login';
+                }
             } else if (err.message?.includes("HTTP error 500")) {
                 setSyncError("DB_ERROR");
             } else {
@@ -524,9 +530,22 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         syncFromDatabase(u);
                     } else {
                         setCurrentUser(null);
+                        setSyncError("UNAUTHORIZED");
+                        if (typeof window !== 'undefined') {
+                            window.location.href = '/login';
+                        }
                     }
                 } else {
-                    setCurrentUser(null);
+                    if (res.status === 401) {
+                        setCurrentUser(null);
+                        setSyncError("UNAUTHORIZED");
+                        if (typeof window !== 'undefined') {
+                            window.location.href = '/login';
+                        }
+                    } else {
+                        // Error de servidor/BD temporal: mantener sesión y marcar error de base de datos
+                        setSyncError("DB_ERROR");
+                    }
                 }
             } catch (err) {
                 console.error('Error al recuperar sesión en ManagementProvider:', err);

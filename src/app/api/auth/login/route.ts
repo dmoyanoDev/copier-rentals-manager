@@ -109,7 +109,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (error: any) {
-    console.error('Error en API de login:', error);
+    console.error('Error en API de login:', error.message || error);
     return NextResponse.json({ error: 'Error del servidor al procesar la solicitud.' }, { status: 500 });
   }
 }

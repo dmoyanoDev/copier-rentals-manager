@@ -65,7 +65,7 @@ export async function loginAction(prevState: any, formData: FormData): Promise<A
       isMaster: user.isMaster === 1,
     });
   } catch (error: any) {
-    console.error('Error en Server Action de Login:', error);
+    console.error('Error en Server Action de Login:', error.message || error);
     return { error: 'Error interno del servidor. Compruebe la conexión a la base de datos.' };
   }
 
