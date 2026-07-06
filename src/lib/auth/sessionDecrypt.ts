@@ -1,4 +1,5 @@
 const SECRET_KEY = process.env.SESSION_SECRET || 'secret-key-that-must-be-32-chars-long-!!';
+const FALLBACK_KEY = 'secret-key-that-must-be-32-chars-long-!!';
 
 export interface UserSession {
   userId: string;
@@ -10,10 +11,10 @@ export interface UserSession {
   expiresAt: number;
 }
 
-// Convert SECRET_KEY to CryptoKey for Web Crypto API
-async function getCryptoKey(): Promise<CryptoKey> {
+// Convert key string to CryptoKey for Web Crypto API
+async function getCryptoKey(secret: string): Promise<CryptoKey> {
   const enc = new TextEncoder();
-  const keyMaterial = enc.encode(SECRET_KEY.padEnd(32).substring(0, 32));
+  const keyMaterial = enc.encode(secret.padEnd(32).substring(0, 32));
   return await crypto.subtle.importKey(
     'raw',
     keyMaterial,
@@ -30,8 +31,9 @@ export async function encryptSession(session: UserSession): Promise<string> {
   const text = JSON.stringify(session);
   const enc = new TextEncoder();
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await getCryptoKey();
   
+  // Encriptar con la clave configurada
+  const key = await getCryptoKey(SECRET_KEY);
   const encrypted = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv },
     key,
@@ -45,7 +47,7 @@ export async function encryptSession(session: UserSession): Promise<string> {
 }
 
 /**
- * Desencripta la sesión usando AES-GCM (compatible con Edge Runtime y Node.js sin DB).
+ * Desencripta la sesión usando AES-GCM (con fallback resiliente para Edge Runtime).
  */
 export async function decryptSession(encryptedText: string): Promise<UserSession | null> {
   try {
@@ -56,16 +58,31 @@ export async function decryptSession(encryptedText: string): Promise<UserSession
 
     const iv = new Uint8Array(ivHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
     const encrypted = new Uint8Array(encryptedHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
-    const key = await getCryptoKey();
 
-    const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv },
-      key,
-      encrypted
-    );
-
-    const dec = new TextDecoder();
-    return JSON.parse(dec.decode(decrypted));
+    // 1. Intentar desencriptar con la clave configurada
+    try {
+      const key = await getCryptoKey(SECRET_KEY);
+      const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv },
+        key,
+        encrypted
+      );
+      const dec = new TextDecoder();
+      return JSON.parse(dec.decode(decrypted));
+    } catch (e1) {
+      // 2. Fallback a la clave por defecto si falla (por desajuste Edge/Node)
+      if (SECRET_KEY !== FALLBACK_KEY) {
+        const fallbackKey = await getCryptoKey(FALLBACK_KEY);
+        const decrypted = await crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv },
+          fallbackKey,
+          encrypted
+        );
+        const dec = new TextDecoder();
+        return JSON.parse(dec.decode(decrypted));
+      }
+      throw e1;
+    }
   } catch (e) {
     return null;
   }

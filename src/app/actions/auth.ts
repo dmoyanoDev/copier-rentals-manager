@@ -36,7 +36,8 @@ export async function loginAction(prevState: any, formData: FormData): Promise<A
         fullname: 'Darío Moyano',
         email: 'dmoyano@mstecnologia.com.ar',
         passwordHash: defaultPasswordHash,
-        role: 'admin',
+        role: 'master',
+        isMaster: 1,
       };
       await db.insert(users).values(defaultAdmin);
     }

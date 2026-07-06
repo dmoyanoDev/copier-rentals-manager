@@ -1,4 +1,4 @@
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { db } from '@/infrastructure/db/client';
 import { sessions } from '@/infrastructure/db/schema/sessions';
 import { users } from '@/infrastructure/db/schema/users';
@@ -47,9 +47,20 @@ export async function createSession(
   // 2. Encriptar sesión y escribir cookie
   const encrypted = await encryptSession(sessionPayload);
   const cookieStore = await cookies();
+
+  let isSecure = false;
+  try {
+    const headersList = await headers();
+    const proto = headersList.get('x-forwarded-proto') || '';
+    const host = headersList.get('host') || '';
+    isSecure = proto === 'https' || (host.includes('localhost') === false && process.env.NODE_ENV === 'production');
+  } catch (e) {
+    isSecure = process.env.NODE_ENV === 'production';
+  }
+
   cookieStore.set(SESSION_COOKIE_NAME, encrypted, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isSecure,
     sameSite: 'lax',
     path: '/',
     expires: expiresAt,
