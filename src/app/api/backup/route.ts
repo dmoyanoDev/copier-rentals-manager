@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/infrastructure/db/client';
 import { sql } from 'drizzle-orm';
+import bcrypt from 'bcryptjs';
 
 import { users } from '@/infrastructure/db/schema/users';
 import { clients } from '@/infrastructure/db/schema/clients';
@@ -137,12 +138,17 @@ export async function POST(request: Request) {
       // 2. Insert new rows if present
       if (payload.users?.length) {
         for (const u of payload.users) {
+          const hasInvalidPassword = !u.passwordHash || u.passwordHash.length < 10;
+          const finalPasswordHash = (u.id === 'user-admin' && hasInvalidPassword)
+            ? await bcrypt.hash('Jueves2389$', 10)
+            : (u.passwordHash || '');
+
           await tx.insert(users).values({
             id: u.id,
             username: u.username || 'user-' + Math.random().toString(36).substring(2, 6),
             fullname: u.fullname || 'Usuario',
             email: u.email || `${u.username || 'user'}@example.com`,
-            passwordHash: u.passwordHash || '',
+            passwordHash: finalPasswordHash,
             role: u.role || 'administrativo',
             isMaster: u.isMaster ?? (u.role === 'master' || u.id === 'user-admin' ? 1 : 0),
             phone: u.phone || null,
