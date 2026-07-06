@@ -61,6 +61,7 @@ export async function loginAction(prevState: any, formData: FormData): Promise<A
       username: user.username,
       fullname: user.fullname,
       role: user.role,
+      isMaster: user.isMaster === 1,
     });
   } catch (error: any) {
     console.error('Error en Server Action de Login:', error);

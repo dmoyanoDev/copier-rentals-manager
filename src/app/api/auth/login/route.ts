@@ -91,6 +91,7 @@ export async function POST(request: Request) {
         username: user.username,
         fullname: user.fullname,
         role: user.role,
+        isMaster: user.isMaster === 1,
       },
       ip,
       userAgent

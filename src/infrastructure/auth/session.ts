@@ -17,7 +17,7 @@ function generateSessionId(): string {
  * Crea una sesión en base de datos y genera una cookie encriptada.
  */
 export async function createSession(
-  user: { id: string; username: string; fullname: string; role: string },
+  user: { id: string; username: string; fullname: string; role: string; isMaster?: boolean },
   ip: string = '',
   userAgent: string = ''
 ) {
@@ -39,6 +39,7 @@ export async function createSession(
     username: user.username,
     fullname: user.fullname,
     role: user.role,
+    isMaster: user.isMaster || user.role === 'master' || user.id === 'user-admin',
     sessionId,
     expiresAt: expiresAt.getTime(),
   };

@@ -7,6 +7,7 @@ export const users = sqliteTable('users', {
   email: text('email').unique().notNull(),
   passwordHash: text('password_hash').notNull(),
   role: text('role').default('administrativo').notNull(), // 'admin', 'tecnico', 'administrativo'
+  isMaster: integer('is_master').default(0).notNull(), // 0 = false, 1 = true
   phone: text('phone'),
   whatsapp: text('whatsapp'),
   zone: text('zone'),

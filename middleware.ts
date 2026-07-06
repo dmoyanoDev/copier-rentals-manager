@@ -23,9 +23,15 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/forgot-password') ||
     pathname.startsWith('/reset-password');
 
-  // Si no está autenticado y no está en una ruta de auth, redirigir a /login
+  // Si no está autenticado y no está en una ruta de auth
   if (!session) {
     if (!isAuthRoute) {
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json({
+          ok: false,
+          error: { code: 'UNAUTHORIZED', message: 'Sesión no válida.' }
+        }, { status: 401 });
+      }
       const loginUrl = new URL('/login', request.url);
       return NextResponse.redirect(loginUrl);
     }
@@ -38,15 +44,18 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(dashboardUrl);
   }
 
-  // Protección exclusiva para el usuario Maestro ("dmoyano")
+  // Protección exclusiva para el usuario Maestro
   const isMasterRoute = pathname.startsWith('/usuarios') || pathname.startsWith('/respaldo');
-  const isMasterApiRoute = pathname.startsWith('/api/users');
+  const isMasterApiRoute = pathname.startsWith('/api/users') || pathname.startsWith('/api/backup') || pathname.startsWith('/api/export') || pathname.startsWith('/api/import');
 
   if (isMasterRoute || isMasterApiRoute) {
-    const isMaster = session.username === 'dmoyano' && session.role === 'master';
+    const isMaster = session.isMaster === true || session.role === 'master' || session.userId === 'user-admin';
     if (!isMaster) {
-      if (isMasterApiRoute) {
-        return NextResponse.json({ error: 'Acceso denegado.' }, { status: 403 });
+      if (isMasterApiRoute || pathname.startsWith('/api/')) {
+        return NextResponse.json({
+          ok: false,
+          error: { code: 'FORBIDDEN', message: 'No tenés permisos para acceder a este recurso.' }
+        }, { status: 403 });
       }
       // Redirigir al dashboard si intenta entrar a /usuarios o /respaldo
       const dashboardUrl = new URL('/', request.url);

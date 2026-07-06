@@ -36,12 +36,13 @@ export async function verifyRole(allowedRoles: string[]): Promise<{ userId: stri
 /**
  * Valida específicamente que el usuario autenticado sea el máster "dmoyano" con rol "master".
  */
-export async function verifyMaster(): Promise<{ userId: string; username: string; fullname: string; role: string }> {
+export async function verifyMaster(): Promise<{ userId: string; username: string; fullname: string; role: string; isMaster?: boolean }> {
   const session = await getSession();
   if (!session) {
     throw new AuthError('UNAUTHORIZED', 'Usuario no autenticado.');
   }
-  if (session.username !== 'dmoyano' || session.role !== 'master') {
+  const isMaster = session.isMaster === true || session.role === 'master' || session.userId === 'user-admin';
+  if (!isMaster) {
     throw new AuthError('FORBIDDEN', 'Acceso denegado: Se requiere el usuario Maestro.');
   }
   return session;
@@ -60,14 +61,15 @@ export async function requireAuthPage() {
 
 /**
  * Guard para páginas protegidas de Next.js (Server Components).
- * Redirige al inicio si el usuario no es el maestro "dmoyano".
+ * Redirige al inicio si el usuario no es el maestro.
  */
 export async function requireMasterPage() {
   const session = await getSession();
   if (!session) {
     redirect('/login');
   }
-  if (session.username !== 'dmoyano' || session.role !== 'master') {
+  const isMaster = session.isMaster === true || session.role === 'master' || session.userId === 'user-admin';
+  if (!isMaster) {
     redirect('/');
   }
   return session;

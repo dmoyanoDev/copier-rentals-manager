@@ -5,6 +5,7 @@ export interface UserSession {
   username: string;
   fullname: string;
   role: string;
+  isMaster?: boolean;
   sessionId: string;
   expiresAt: number;
 }
