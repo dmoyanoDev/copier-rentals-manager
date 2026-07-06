@@ -173,6 +173,13 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     // Fetch snapshot from backend database
     const syncFromDatabase = async () => {
+        if (typeof window !== 'undefined') {
+            const path = window.location.pathname;
+            if (path.startsWith('/login') || path.startsWith('/forgot-password') || path.startsWith('/reset-password')) {
+                return;
+            }
+        }
+
         setIsSyncing(true);
         try {
             const response = await fetch('/api/backup?user=system');
@@ -210,9 +217,6 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         });
                     }
                     
-                    const uList = parsed.users || mockUsers;
-                    setCurrentUser(uList[0]);
-                    
                     setLastSyncTime(new Date());
                     setSyncError(null);
 
@@ -245,6 +249,33 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
 
     useEffect(() => {
+        async function fetchMe() {
+            try {
+                const res = await fetch('/api/auth/me');
+                if (res.ok) {
+                    const parsed = await res.json();
+                    if (parsed.authenticated && parsed.user) {
+                        setCurrentUser({
+                            id: parsed.user.id,
+                            username: parsed.user.username,
+                            fullname: parsed.user.fullname,
+                            email: parsed.data?.email || parsed.user.email || '',
+                            role: parsed.user.role,
+                        });
+                        // Solo sincronizar si está autenticado
+                        syncFromDatabase();
+                    } else {
+                        setCurrentUser(null);
+                    }
+                } else {
+                    setCurrentUser(null);
+                }
+            } catch (err) {
+                console.error('Error al recuperar sesión en ManagementProvider:', err);
+                setCurrentUser(null);
+            }
+        }
+
         const now = new Date();
         const yyyy = now.getFullYear();
         const mm = String(now.getMonth() + 1).padStart(2, '0');
@@ -259,7 +290,6 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             }
         }
         
-        let loadedFromLocal = false;
         if (localData) {
             try {
                 const parsed = JSON.parse(localData);
@@ -288,16 +318,10 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 } else {
                     setCobranzaConfig(defaultCobranzaConfig);
                 }
-
-                const uList = parsed.users || mockUsers;
-                setCurrentUser(uList[0]);
-                loadedFromLocal = true;
             } catch (e) {
                 console.error(e);
             }
-        }
-        
-        if (!loadedFromLocal) {
+        } else {
             setClients(mockClients);
             setMachines(mockMachines);
             setReadings(mockReadings);
@@ -310,11 +334,9 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             setMachinePresets(defaultMachinePresets);
             setGestiones(defaultGestiones);
             setCobranzaConfig(defaultCobranzaConfig);
-            setCurrentUser(mockUsers[0]);
         }
 
-        // Trigger background sync immediately on load
-        syncFromDatabase();
+        fetchMe();
     }, []);
 
     // Re-sync when page refocuses, tab changes or network goes online
@@ -342,7 +364,10 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     // Save changes to localStorage immediately, and debounced save to remote database
     useEffect(() => {
-        // Prevent saving empty state lists on mount
+        // Prevent saving if no authenticated user or empty state lists on mount
+        if (!currentUser) {
+            return;
+        }
         if (clients.length === 0 && budgets.length === 0 && machines.length === 0) {
             return;
         }

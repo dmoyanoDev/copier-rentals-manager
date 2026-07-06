@@ -50,7 +50,7 @@ export async function createSession(
   cookieStore.set(SESSION_COOKIE_NAME, encrypted, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    sameSite: 'lax',
     path: '/',
     expires: expiresAt,
   });
