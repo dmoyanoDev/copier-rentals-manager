@@ -166,7 +166,14 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const mm = String(now.getMonth() + 1).padStart(2, '0');
         setCurrentMonth(`${yyyy}-${mm}`);
 
-        const localData = localStorage.getItem('ms_data');
+        let localData = localStorage.getItem('ms_data');
+        if (!localData) {
+            const legacyData = localStorage.getItem('copyrent_data');
+            if (legacyData) {
+                localStorage.setItem('ms_data', legacyData);
+                localData = legacyData;
+            }
+        }
         if (localData) {
             try {
                 const parsed = JSON.parse(localData);
