@@ -204,8 +204,10 @@ export const PresupuestoPDF = ({ budget }: { budget: Budget }) => {
             {budget.machines.map((m, index) => (
               <View key={index} style={{ border: '1px solid #e2e8f0', borderRadius: 6, padding: 6, marginBottom: 6 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', borderBottom: '1px solid #e2e8f0', paddingBottom: 3, marginBottom: 3 }}>
-                  <Text style={{ fontWeight: 'bold' }}>{m.machineBrand} {m.machineModel} ({m.cantidad} Unidad/es)</Text>
-                  <Text style={{ fontWeight: 'bold' }}>{formatCurrency(m.abonoBase)} / base</Text>
+                  <Text style={{ fontWeight: 'bold' }}>{m.machineName || `${m.machineBrand} ${m.machineModel}`} ({m.cantidad} Unidad/es)</Text>
+                  <Text style={{ fontWeight: 'bold' }}>
+                    {m.abonoBase > 0 ? `${formatCurrency(m.abonoBase)} / base` : 'Sin Plan Comercial'}
+                  </Text>
                 </View>
                 <Text style={{ fontSize: 7.5, color: '#64748b', marginBottom: 3 }}>{m.technicalSummary}</Text>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', fontSize: 7.5 }}>
@@ -213,9 +215,15 @@ export const PresupuestoPDF = ({ budget }: { budget: Budget }) => {
                     <Text>{m.editableSpecsText}</Text>
                   </View>
                   <View style={{ width: '40%', borderLeft: '1px solid #e2e8f0', paddingLeft: 6 }}>
-                    <Text style={{ fontWeight: 'bold', textTransform: 'uppercase', marginBottom: 2 }}>{m.planNombre}</Text>
-                    <Text>Copias libres: {m.copiasIncluidas.toLocaleString('es-AR')}</Text>
-                    <Text>Copia excedente: {formatCurrency(m.copiaExcedente)}</Text>
+                    <Text style={{ fontWeight: 'bold', textTransform: 'uppercase', marginBottom: 2 }}>{m.planNombre || 'Sin Plan'}</Text>
+                    {m.abonoBase > 0 ? (
+                      <>
+                        <Text>Copias libres: {m.copiasIncluidas.toLocaleString('es-AR')}</Text>
+                        <Text style={{ marginTop: 1 }}>Copia excedente: {formatCurrency(m.copiaExcedente)}</Text>
+                      </>
+                    ) : (
+                      <Text style={{ color: '#94a3b8', fontStyle: 'italic' }}>Sólo hardware / Sin abono asociado</Text>
+                    )}
                   </View>
                 </View>
               </View>

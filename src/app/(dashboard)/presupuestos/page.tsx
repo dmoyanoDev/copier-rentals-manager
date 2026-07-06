@@ -268,18 +268,19 @@ export default function PresupuestosPage() {
         if (!p) return;
 
         const newFormMachine: BudgetMachineConfig = {
+            id: 'config-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9),
             machinePresetId: p.id,
             machineName: p.nombreComercial,
             machineBrand: p.marca,
             machineModel: p.modelo,
             technicalSummary: p.technicalSummary,
             editableSpecsText: `Velocidad: ${p.ppm} ppm\nFunciones: ${p.funciones}\nDoble Faz: ${p.duplex ? 'Sí' : 'No'}\nADF: ${p.adf ? 'Sí' : 'No'}\nConectividad: ${p.conectividad}\nMemoria: ${p.memoria}`,
-            planNombre: 'Abono Estándar',
-            copiasIncluidas: 2000,
-            abonoBase: 45000,
-            copiaExcedente: 15.50,
+            planNombre: 'Sin Plan',
+            copiasIncluidas: 0,
+            abonoBase: 0,
+            copiaExcedente: 0,
             cantidad: 1,
-            subtotal: 45000
+            subtotal: 0
         };
 
         setFormMachines(prev => [...prev, newFormMachine]);
@@ -290,22 +291,20 @@ export default function PresupuestosPage() {
         const m = machines.find(mac => mac.id === machineId);
         if (!m) return;
 
-        // Lookup abono if assigned to machine
-        const abono = abonos.find(a => a.id === m.abonoId);
-
         const newFormMachine: BudgetMachineConfig = {
+            id: 'config-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9),
             machinePresetId: m.id,
             machineName: `${m.brand} ${m.model}`,
             machineBrand: m.brand,
             machineModel: m.model,
             technicalSummary: `Equipo físico del inventario. Nro de Serie: ${m.serial}. Tipo: ${m.type}. Contador actual: ${m.currentCounter.toLocaleString('es-AR')} copias.`,
             editableSpecsText: `Número de Serie: ${m.serial}\nTipo: ${m.type}\nContador Inicial: ${m.currentCounter} copias\nIntervalo Preventivo: ${m.preventiveInterval} copias`,
-            planNombre: abono ? abono.name : 'Abono Estándar',
-            copiasIncluidas: abono ? abono.limit : 2000,
-            abonoBase: abono ? abono.price : 45000,
-            copiaExcedente: abono ? abono.excessPrice : 15.50,
+            planNombre: 'Sin Plan',
+            copiasIncluidas: 0,
+            abonoBase: 0,
+            copiaExcedente: 0,
             cantidad: 1,
-            subtotal: abono ? abono.price : 45000
+            subtotal: 0
         };
 
         setFormMachines(prev => [...prev, newFormMachine]);
@@ -329,6 +328,34 @@ export default function PresupuestosPage() {
 
     const handleRemoveMachine = (index: number) => {
         setFormMachines(prev => prev.filter((_, idx) => idx !== index));
+    };
+
+    // Link commercial abono plan to a specific machine specification config
+    const handleLinkAbonoToMachine = (index: number, abonoId: string) => {
+        const ab = abonos.find(a => a.id === abonoId);
+        setFormMachines(prev => prev.map((m, idx) => {
+            if (idx === index) {
+                if (!ab) {
+                    return {
+                        ...m,
+                        planNombre: 'Sin Plan',
+                        abonoBase: 0,
+                        copiasIncluidas: 0,
+                        copiaExcedente: 0,
+                        subtotal: 0
+                    };
+                }
+                return {
+                    ...m,
+                    planNombre: ab.name,
+                    abonoBase: ab.price,
+                    copiasIncluidas: ab.limit,
+                    copiaExcedente: ab.excessPrice,
+                    subtotal: ab.price * m.cantidad
+                };
+            }
+            return m;
+        }));
     };
 
     // Add simple item line
@@ -1039,8 +1066,10 @@ export default function PresupuestosPage() {
                                             {selectedBudget.machines.map((m, i) => (
                                                 <div key={i} className="p-4 bg-slate-900/50 border border-slate-800 rounded-xl space-y-3">
                                                     <div className="flex justify-between border-b border-slate-800 pb-2">
-                                                        <span className="font-bold text-slate-200 text-xs">{m.machineBrand} {m.machineModel} ({m.cantidad} Unidad/es)</span>
-                                                        <span className="text-indigo-400 font-bold font-mono-tabular">{formatCurrency(m.abonoBase)} / base</span>
+                                                        <span className="font-bold text-slate-200 text-xs">{m.machineName || `${m.machineBrand} ${m.machineModel}`} ({m.cantidad} Unidad/es)</span>
+                                                        <span className="text-indigo-400 font-bold font-mono-tabular">
+                                                            {m.abonoBase > 0 ? `${formatCurrency(m.abonoBase)} / base` : 'Sin Plan Comercial'}
+                                                        </span>
                                                     </div>
                                                     <p className="text-[10px] text-slate-400">{m.technicalSummary}</p>
                                                     <div className="grid grid-cols-2 gap-4 text-[10px] pt-1">
@@ -1049,15 +1078,21 @@ export default function PresupuestosPage() {
                                                             <pre className="font-sans text-slate-350 whitespace-pre-wrap mt-0.5">{m.editableSpecsText}</pre>
                                                         </div>
                                                         <div className="border-l border-slate-800 pl-4 space-y-1">
-                                                            <span className="font-bold text-slate-500 block uppercase">Plan: {m.planNombre}</span>
-                                                            <div className="flex justify-between text-slate-400">
-                                                                <span>Copias libres:</span>
-                                                                <span className="font-bold">{m.copiasIncluidas.toLocaleString('es-AR')}</span>
-                                                            </div>
-                                                            <div className="flex justify-between text-slate-450">
-                                                                <span>Copia excedente:</span>
-                                                                <span className="font-bold font-mono-tabular">{formatCurrency(m.copiaExcedente)}</span>
-                                                            </div>
+                                                            <span className="font-bold text-slate-500 block uppercase">Plan: {m.planNombre || 'Sin Plan'}</span>
+                                                            {m.abonoBase > 0 ? (
+                                                                <>
+                                                                    <div className="flex justify-between text-slate-400">
+                                                                        <span>Copias libres:</span>
+                                                                        <span className="font-bold">{m.copiasIncluidas.toLocaleString('es-AR')}</span>
+                                                                    </div>
+                                                                    <div className="flex justify-between text-slate-450">
+                                                                        <span>Copia excedente:</span>
+                                                                        <span className="font-bold font-mono-tabular">{formatCurrency(m.copiaExcedente)}</span>
+                                                                    </div>
+                                                                </>
+                                                            ) : (
+                                                                <span className="text-slate-500 italic block mt-1">Sólo hardware / Sin abono asociado</span>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1382,7 +1417,7 @@ export default function PresupuestosPage() {
                                         ) : (
                                             <div className="space-y-4">
                                                 {formMachines.map((m, idx) => (
-                                                    <div key={idx} className="p-4 border border-slate-800 bg-slate-955/50 rounded-xl space-y-3 relative animate-fade-in">
+                                                    <div key={m.id || idx} className="p-4 border border-slate-800 bg-slate-955/50 rounded-xl space-y-3 relative animate-fade-in">
                                                         <button 
                                                             type="button"
                                                             className="absolute top-3 right-3 text-red-400 hover:text-red-300"
@@ -1392,11 +1427,28 @@ export default function PresupuestosPage() {
                                                         </button>
                                                         
                                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pr-6">
-                                                            <Input
-                                                                label="Nombre Comercial"
-                                                                value={m.machineName}
-                                                                onChange={(e) => handleUpdateMachineSpec(idx, 'machineName', e.target.value)}
-                                                            />
+                                                            <div className="sm:col-span-2">
+                                                                <Input
+                                                                    label="Nombre / Identificación del Equipo"
+                                                                    value={m.machineName}
+                                                                    onChange={(e) => handleUpdateMachineSpec(idx, 'machineName', e.target.value)}
+                                                                />
+                                                            </div>
+                                                            <div className="sm:col-span-2 bg-slate-900/30 p-3 rounded-lg border border-slate-800/40">
+                                                                <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Plan / Abono Comercial Asociado</label>
+                                                                <select
+                                                                    value={abonos.find(a => a.name === m.planNombre)?.id || ''}
+                                                                    onChange={(e) => handleLinkAbonoToMachine(idx, e.target.value)}
+                                                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                                >
+                                                                    <option value="">-- Sin Plan (Sólo Equipo) --</option>
+                                                                    {abonos.map(ab => (
+                                                                        <option key={ab.id} value={ab.id}>
+                                                                            {ab.name} (${ab.price.toLocaleString('es-AR')} - {ab.limit} copias)
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
                                                             <Input
                                                                 label="Abono Base ($)"
                                                                 type="number"
@@ -1414,6 +1466,12 @@ export default function PresupuestosPage() {
                                                                 type="number"
                                                                 value={String(m.copiaExcedente)}
                                                                 onChange={(e) => handleUpdateMachineSpec(idx, 'copiaExcedente', e.target.value)}
+                                                            />
+                                                            <Input
+                                                                label="Cantidad de Equipos"
+                                                                type="number"
+                                                                value={String(m.cantidad)}
+                                                                onChange={(e) => handleUpdateMachineSpec(idx, 'cantidad', e.target.value)}
                                                             />
                                                             <div className="sm:col-span-2">
                                                                 <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Especificaciones Técnicas (Editable)</label>
@@ -1442,38 +1500,40 @@ export default function PresupuestosPage() {
                                         </div>
                                         <div className="flex flex-wrap gap-2">
                                             {/* Selector rápido de Abonos del catálogo */}
-                                            <select
-                                                onChange={(e) => {
-                                                    if (e.target.value) {
-                                                        const ab = abonos.find(a => a.id === e.target.value);
-                                                        if (ab) {
-                                                            const newItem: BudgetItem = {
-                                                                id: 'item-' + Date.now() + Math.random(),
-                                                                categoria: 'ABONO',
-                                                                descripcion: `Plan Abono Mensual: ${ab.name} (Incluye ${ab.limit.toLocaleString('es-AR')} copias libres. Excedente $${ab.excessPrice}/copia).`,
-                                                                cantidad: 1,
-                                                                precioUnitario: ab.price,
-                                                                subtotal: ab.price,
-                                                                descuento: 0,
-                                                                origen: 'abono',
-                                                                origenId: ab.id,
-                                                                metadata: JSON.stringify({
-                                                                    limit: ab.limit,
-                                                                    excessPrice: ab.excessPrice
-                                                                })
-                                                            };
-                                                            setItems(prev => [...prev, newItem]);
+                                            {tipo !== 'alquiler' && (
+                                                <select
+                                                    onChange={(e) => {
+                                                        if (e.target.value) {
+                                                            const ab = abonos.find(a => a.id === e.target.value);
+                                                            if (ab) {
+                                                                const newItem: BudgetItem = {
+                                                                    id: 'item-' + Date.now() + Math.random(),
+                                                                    categoria: 'ABONO',
+                                                                    descripcion: `Plan Abono Mensual: ${ab.name} (Incluye ${ab.limit.toLocaleString('es-AR')} copias libres. Excedente $${ab.excessPrice}/copia).`,
+                                                                    cantidad: 1,
+                                                                    precioUnitario: ab.price,
+                                                                    subtotal: ab.price,
+                                                                    descuento: 0,
+                                                                    origen: 'abono',
+                                                                    origenId: ab.id,
+                                                                    metadata: JSON.stringify({
+                                                                        limit: ab.limit,
+                                                                        excessPrice: ab.excessPrice
+                                                                    })
+                                                                };
+                                                                setItems(prev => [...prev, newItem]);
+                                                            }
+                                                            e.target.value = '';
                                                         }
-                                                        e.target.value = '';
-                                                    }
-                                                }}
-                                                className="bg-slate-955 border border-slate-800 rounded-xl px-2 py-1 text-slate-300 text-[10.5px] focus:outline-none max-w-[130px]"
-                                            >
-                                                <option value="">+ Cargar Abono</option>
-                                                {abonos.map(a => (
-                                                    <option key={a.id} value={a.id}>{a.name} (${a.price.toLocaleString('es-AR')})</option>
-                                                ))}
-                                            </select>
+                                                    }}
+                                                    className="bg-slate-955 border border-slate-800 rounded-xl px-2 py-1 text-slate-300 text-[10.5px] focus:outline-none max-w-[130px]"
+                                                >
+                                                    <option value="">+ Cargar Abono</option>
+                                                    {abonos.map(a => (
+                                                        <option key={a.id} value={a.id}>{a.name} (${a.price.toLocaleString('es-AR')})</option>
+                                                    ))}
+                                                </select>
+                                            )}
 
                                             {/* Selector rápido de Máquinas para Venta */}
                                             <select
@@ -1825,8 +1885,10 @@ export default function PresupuestosPage() {
                                         {formMachines.map((m, i) => (
                                             <div key={i} className="p-4 bg-slate-900/40 border border-slate-800 rounded-xl space-y-2">
                                                 <div className="flex justify-between border-b border-slate-800 pb-1.5">
-                                                    <span className="font-bold text-slate-200">{m.machineBrand} {m.machineModel} ({m.cantidad} Unidad/es)</span>
-                                                    <span className="text-indigo-400 font-bold font-mono-tabular">{formatCurrency(m.abonoBase)} / base</span>
+                                                    <span className="font-bold text-slate-200">{m.machineName || `${m.machineBrand} ${m.machineModel}`} ({m.cantidad} Unidad/es)</span>
+                                                    <span className="text-indigo-400 font-bold font-mono-tabular">
+                                                        {m.abonoBase > 0 ? `${formatCurrency(m.abonoBase)} / base` : 'Sin Plan Comercial'}
+                                                    </span>
                                                 </div>
                                                 <p className="text-[10px] text-slate-400">{m.technicalSummary}</p>
                                                 <div className="grid grid-cols-2 gap-4 text-[10px] pt-1">
@@ -1834,15 +1896,21 @@ export default function PresupuestosPage() {
                                                         <pre className="font-sans text-slate-350 whitespace-pre-wrap">{m.editableSpecsText}</pre>
                                                     </div>
                                                     <div className="border-l border-slate-800 pl-4 space-y-1">
-                                                        <span className="font-bold text-slate-300 block uppercase text-[9px]">{m.planNombre}</span>
-                                                        <div className="flex justify-between text-slate-400">
-                                                            <span>Copias libres:</span>
-                                                            <span className="font-bold">{m.copiasIncluidas.toLocaleString('es-AR')}</span>
-                                                        </div>
-                                                        <div className="flex justify-between text-slate-450">
-                                                            <span>Copia excedente:</span>
-                                                            <span className="font-bold font-mono-tabular">{formatCurrency(m.copiaExcedente)}</span>
-                                                        </div>
+                                                        <span className="font-bold text-slate-300 block uppercase text-[9px]">{m.planNombre || 'Sin Plan'}</span>
+                                                        {m.abonoBase > 0 ? (
+                                                            <>
+                                                                <div className="flex justify-between text-slate-400">
+                                                                    <span>Copias libres:</span>
+                                                                    <span className="font-bold">{m.copiasIncluidas.toLocaleString('es-AR')}</span>
+                                                                </div>
+                                                                <div className="flex justify-between text-slate-450">
+                                                                    <span>Copia excedente:</span>
+                                                                    <span className="font-bold font-mono-tabular">{formatCurrency(m.copiaExcedente)}</span>
+                                                                </div>
+                                                            </>
+                                                        ) : (
+                                                            <span className="text-slate-500 italic block mt-1">Sólo hardware / Sin abono asociado</span>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
