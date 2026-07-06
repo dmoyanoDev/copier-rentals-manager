@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/infrastructure/db/client';
-import { sql } from 'drizzle-orm';
+import { sql, gt } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 
 import { users } from '@/infrastructure/db/schema/users';
@@ -119,6 +119,9 @@ export async function GET(request: Request) {
     await ensureSchemaSynced(db);
     const { searchParams } = new URL(request.url);
     const user = searchParams.get('user') || 'dmoyano';
+    const sinceParam = searchParams.get('since');
+    const sinceDate = sinceParam ? new Date(sinceParam) : null;
+    const isValidSince = sinceDate && !isNaN(sinceDate.getTime());
 
     const isSystemSync = user === 'system' || user === 'autosave';
 
@@ -137,19 +140,19 @@ export async function GET(request: Request) {
       dbAuditLogs,
       dbRentals
     ] = await Promise.all([
-      db.select().from(users),
-      db.select().from(clients),
-      db.select().from(plans),
-      db.select().from(machines),
-      db.select().from(readings),
-      db.select().from(tickets),
-      db.select().from(budgets),
-      isSystemSync ? Promise.resolve([]) : db.select().from(emailLogs),
-      isSystemSync ? Promise.resolve([]) : db.select().from(sharedPdfs),
-      db.select().from(notificationSettings),
-      isSystemSync ? Promise.resolve([]) : db.select().from(notificationHistory),
-      isSystemSync ? Promise.resolve([]) : db.select().from(auditLogs),
-      db.select().from(rentals)
+      isValidSince ? db.select().from(users).where(gt(users.updatedAt, sinceDate)) : db.select().from(users),
+      isValidSince ? db.select().from(clients).where(gt(clients.updatedAt, sinceDate)) : db.select().from(clients),
+      isValidSince ? db.select().from(plans).where(gt(plans.updatedAt, sinceDate)) : db.select().from(plans),
+      isValidSince ? db.select().from(machines).where(gt(machines.updatedAt, sinceDate)) : db.select().from(machines),
+      isValidSince ? db.select().from(readings).where(gt(readings.updatedAt, sinceDate)) : db.select().from(readings),
+      isValidSince ? db.select().from(tickets).where(gt(tickets.updatedAt, sinceDate)) : db.select().from(tickets),
+      isValidSince ? db.select().from(budgets).where(gt(budgets.updatedAt, sinceDate)) : db.select().from(budgets),
+      isSystemSync || isValidSince ? Promise.resolve([]) : db.select().from(emailLogs),
+      isSystemSync || isValidSince ? Promise.resolve([]) : db.select().from(sharedPdfs),
+      isValidSince ? Promise.resolve([]) : db.select().from(notificationSettings),
+      isSystemSync || isValidSince ? Promise.resolve([]) : db.select().from(notificationHistory),
+      isSystemSync || isValidSince ? Promise.resolve([]) : db.select().from(auditLogs),
+      isValidSince ? db.select().from(rentals).where(gt(rentals.updatedAt, sinceDate)) : db.select().from(rentals)
     ]);
 
     const backupPayload = {

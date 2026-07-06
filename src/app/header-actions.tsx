@@ -5,17 +5,22 @@ import { useManagement } from '@/lib/context';
 import { Cloud, CloudOff, RefreshCw } from 'lucide-react';
 
 const PageHeaderActions: React.FC = () => {
-    const { currentMonth, setCurrentMonth, isSyncing, syncError, lastSyncTime, syncFromDatabase } = useManagement();
+    const { currentMonth, setCurrentMonth, isSyncing, syncError, lastSyncTime, syncFromDatabase, syncQueue } = useManagement();
+
+    const pendingCount = syncQueue?.filter((i: any) => i.status === 'pending' || i.status === 'failed').length || 0;
+    const syncingCount = syncQueue?.filter((i: any) => i.status === 'syncing').length || 0;
 
     return (
         <div className="flex items-center gap-3">
             {/* Cloud Database Sync Status Indicator */}
             <button
                 onClick={() => syncFromDatabase()}
-                disabled={isSyncing}
+                disabled={isSyncing || syncingCount > 0}
                 title={
-                    isSyncing 
-                        ? 'Sincronizando base de datos Turso...' 
+                    isSyncing || syncingCount > 0
+                        ? `Sincronizando base de datos Turso... (${syncingCount} cambios en proceso)` 
+                        : pendingCount > 0
+                        ? `Tienes ${pendingCount} cambio(s) guardado(s) localmente pendientes de sincronizar con el servidor.`
                         : syncError === 'UNAUTHORIZED'
                         ? 'Tu sesión ha expirado por seguridad. Por favor, vuelve a iniciar sesión.'
                         : syncError === 'DB_ERROR'
@@ -28,10 +33,15 @@ const PageHeaderActions: React.FC = () => {
                 }
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-850 bg-slate-900/10 hover:bg-slate-900/20 dark:bg-slate-950 dark:hover:bg-slate-900/60 transition-all text-[11px] font-semibold text-slate-400 select-none cursor-pointer"
             >
-                {isSyncing ? (
+                {isSyncing || syncingCount > 0 ? (
                     <>
                         <RefreshCw size={12} className="animate-spin text-indigo-400" />
-                        <span>Sincronizando...</span>
+                        <span>Sincronizando{syncingCount > 0 ? ` (${syncingCount})` : ''}...</span>
+                    </>
+                ) : pendingCount > 0 ? (
+                    <>
+                        <CloudOff size={12} className="text-amber-500 animate-pulse" />
+                        <span className="text-amber-400">Pendiente ({pendingCount})</span>
                     </>
                 ) : syncError === 'UNAUTHORIZED' ? (
                     <>

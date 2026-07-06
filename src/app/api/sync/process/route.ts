@@ -1,0 +1,181 @@
+import { NextResponse } from 'next/server';
+import { db } from '@/infrastructure/db/client';
+import { getSession } from '@/infrastructure/auth/session';
+import { eq, sql } from 'drizzle-orm';
+import {
+  clients,
+  machines,
+  readings,
+  tickets,
+  plans,
+  users,
+  rentals,
+  budgets,
+} from '@/infrastructure/db/schema';
+import {
+  clientSyncSchema,
+  machineSyncSchema,
+  readingSyncSchema,
+  ticketSyncSchema,
+  planSyncSchema,
+  userSyncSchema,
+  rentalSyncSchema,
+  budgetSyncSchema,
+} from '@/lib/validation/syncSchemas';
+
+export async function POST(request: Request) {
+  try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({
+        error: 'Sesión no válida.',
+        code: 'UNAUTHORIZED'
+      }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { items } = body;
+
+    if (!Array.isArray(items)) {
+      return NextResponse.json({
+        error: 'La carga útil debe contener un arreglo de cambios "items".',
+        code: 'BAD_REQUEST'
+      }, { status: 400 });
+    }
+
+    const results = [];
+
+    for (const item of items) {
+      const { id, entityId, entityType, operation, payload, updatedAt } = item;
+
+      if (!id || !entityId || !entityType || !operation || !payload || !updatedAt) {
+        results.push({
+          id: id || 'unknown',
+          status: 'failed',
+          reason: 'missing_fields',
+          message: 'Faltan campos obligatorios en el registro de cambio.'
+        });
+        continue;
+      }
+
+      // 1. Asignar tabla y esquema correspondientes
+      let table: any;
+      let schema: any;
+
+      switch (entityType) {
+        case 'clients':
+          table = clients;
+          schema = clientSyncSchema;
+          break;
+        case 'machines':
+          table = machines;
+          schema = machineSyncSchema;
+          break;
+        case 'readings':
+          table = readings;
+          schema = readingSyncSchema;
+          break;
+        case 'tickets':
+          table = tickets;
+          schema = ticketSyncSchema;
+          break;
+        case 'plans':
+        case 'abonos':
+          table = plans;
+          schema = planSyncSchema;
+          break;
+        case 'users':
+          table = users;
+          schema = userSyncSchema;
+          break;
+        case 'rentals':
+          table = rentals;
+          schema = rentalSyncSchema;
+          break;
+        case 'budgets':
+          table = budgets;
+          schema = budgetSyncSchema;
+          break;
+        default:
+          results.push({
+            id,
+            status: 'failed',
+            reason: 'invalid_entity_type',
+            message: `Tipo de entidad inválido: ${entityType}`
+          });
+          continue;
+      }
+
+      // 2. Procesar operación de eliminación
+      if (operation === 'delete') {
+        try {
+          await db.delete(table).where(eq(table.id, entityId));
+          results.push({ id, status: 'synced' });
+        } catch (e: any) {
+          console.error(`Error deleting entity ${entityType} ID ${entityId}:`, e);
+          results.push({
+            id,
+            status: 'failed',
+            reason: 'db_error',
+            message: e.message
+          });
+        }
+        continue;
+      }
+
+      // 3. Validar payload con Zod para operaciones de creación/actualización
+      const parsed = schema.safeParse(payload);
+      if (!parsed.success) {
+        results.push({
+          id,
+          status: 'failed',
+          reason: 'validation_error',
+          details: parsed.error.format()
+        });
+        continue;
+      }
+
+      const cleanPayload = parsed.data;
+
+      // 4. Comparación Last-Write-Wins (LWW) contra base de datos
+      try {
+        const existing = await db.select().from(table).where(eq(table.id, entityId)).limit(1);
+        if (existing.length > 0) {
+          const dbItem: any = existing[0];
+          const dbUpdatedAt = dbItem.updatedAt ? new Date(dbItem.updatedAt).getTime() : 0;
+          const incomingUpdatedAt = new Date(cleanPayload.updatedAt || updatedAt).getTime();
+
+          if (dbUpdatedAt > incomingUpdatedAt) {
+            // El servidor tiene una versión más nueva. Omitimos escritura de forma exitosa.
+            // El cliente descartará el elemento de su cola y se rehidratará en el próximo poll.
+            results.push({ id, status: 'synced', skipped: true, reason: 'server_has_newer_version' });
+            continue;
+          }
+
+          // Actualizar registro existente
+          await db.update(table).set(cleanPayload).where(eq(table.id, entityId));
+        } else {
+          // Crear nuevo registro
+          await db.insert(table).values(cleanPayload);
+        }
+        results.push({ id, status: 'synced' });
+      } catch (e: any) {
+        console.error(`Error writing entity ${entityType} ID ${entityId}:`, e);
+        results.push({
+          id,
+          status: 'failed',
+          reason: 'db_error',
+          message: e.message
+        });
+      }
+    }
+
+    return NextResponse.json({ success: true, results });
+  } catch (error: any) {
+    console.error('Error en API de procesamiento de sincronización:', error.message || error);
+    return NextResponse.json({
+      error: 'Error del servidor al procesar la cola de sincronización.',
+      code: 'SERVER_ERROR'
+    }, { status: 500 });
+  }
+}

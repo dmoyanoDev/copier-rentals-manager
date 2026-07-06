@@ -58,10 +58,14 @@ describe('Sync Persistence and Lockouts', () => {
           })
         } as any);
       }
-      if (url.includes('/api/backup?user=autosave')) {
+      if (url.includes('/api/sync/process')) {
+        const body = JSON.parse(init.body);
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ ok: true })
+          json: () => Promise.resolve({
+            success: true,
+            results: body.items.map((item: any) => ({ id: item.id, status: 'synced' }))
+          })
         } as any);
       }
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as any);
@@ -161,9 +165,9 @@ describe('Sync Persistence and Lockouts', () => {
       await vi.advanceTimersByTimeAsync(3500);
     });
 
-    // Verify POST autosave was called
-    const autosaveCalls = fetchSpy.mock.calls.filter((call: any) => call[0].includes('/api/backup?user=autosave'));
-    expect(autosaveCalls.length).toBe(1);
+    // Verify POST sync process was called
+    const syncCalls = fetchSpy.mock.calls.filter((call: any) => call[0].includes('/api/sync/process'));
+    expect(syncCalls.length).toBe(1);
     
     // Check that it was saved to localStorage
     const savedData = JSON.parse(localStorage.getItem('ms_data') || '{}');

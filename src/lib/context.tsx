@@ -142,6 +142,8 @@ interface ManagementContextType {
     syncError: string | null;
     lastSyncTime: Date | null;
     syncFromDatabase: () => Promise<void>;
+    syncQueue: any[];
+    processSyncQueue: (passedQueue?: any[]) => Promise<void>;
 }
 
 const trackDeletions = (newState: any) => {
@@ -232,7 +234,7 @@ const autoTimestampState = (newState: any) => {
     }
 };
 
-const mergeData = (local: any, server: any, lastSyncTime: Date | null) => {
+const mergeData = (local: any, server: any, lastSyncTime: Date | null, isIncremental: boolean = false) => {
     const merged = { ...local };
     const tables = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets'];
     const lastSync = lastSyncTime ? lastSyncTime.getTime() : 0;
@@ -264,12 +266,17 @@ const mergeData = (local: any, server: any, lastSyncTime: Date | null) => {
             const serverItem: any = serverMap.get(localItem.id);
             if (!serverItem) {
                 // Only exists locally. Check if it is a new offline creation or deleted on server.
-                const localTime = localItem.updatedAt || localItem.createdAt
-                    ? new Date(localItem.updatedAt || localItem.createdAt).getTime()
-                    : new Date().getTime(); // Treat as new local creation if timestamp is missing!
-                
-                if (localTime > lastSync) {
+                if (isIncremental) {
+                    // Incremental sync: keep local item as it's just not changed on the server.
                     mergedList.push(localItem);
+                } else {
+                    const localTime = localItem.updatedAt || localItem.createdAt
+                        ? new Date(localItem.updatedAt || localItem.createdAt).getTime()
+                        : new Date().getTime(); // Treat as new local creation if timestamp is missing!
+                    
+                    if (localTime > lastSync) {
+                        mergedList.push(localItem);
+                    }
                 }
             } else {
                 // Exists in both, compare timestamps
@@ -326,9 +333,110 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncError, setSyncError] = useState<string | null>(null);
     const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+    const [syncQueue, setSyncQueue] = useState<any[]>([]);
 
     const isSyncingRef = useRef(false);
     const isInitialLoadRef = useRef(true);
+    const isProcessingQueueRef = useRef(false);
+
+    const getStoredQueue = (): any[] => {
+        if (typeof window === 'undefined') return [];
+        try {
+            const raw = localStorage.getItem('ms_sync_queue');
+            return raw ? JSON.parse(raw) : [];
+        } catch {
+            return [];
+        }
+    };
+
+    const saveStoredQueue = (queue: any[]) => {
+        if (typeof window === 'undefined') return;
+        localStorage.setItem('ms_sync_queue', JSON.stringify(queue));
+    };
+
+    const processSyncQueue = async (passedQueue?: any[]) => {
+        if (isProcessingQueueRef.current) return;
+        
+        const queueToProcess = passedQueue || getStoredQueue();
+        const pendingItems = queueToProcess.filter((item: any) => item.status === 'pending' || item.status === 'failed');
+        
+        if (pendingItems.length === 0) return;
+        
+        isProcessingQueueRef.current = true;
+        setSyncError(null);
+        
+        // Update items to 'syncing' status
+        const updatedQueue = queueToProcess.map((item: any) => {
+            if (item.status === 'pending' || item.status === 'failed') {
+                return { ...item, status: 'syncing' };
+            }
+            return item;
+        });
+        saveStoredQueue(updatedQueue);
+        setSyncQueue(updatedQueue);
+
+        try {
+            const response = await fetch('/api/sync/process', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ items: pendingItems })
+            });
+
+            if (response.status === 401) {
+                setSyncError("UNAUTHORIZED");
+                setCurrentUser(null);
+                if (typeof window !== 'undefined') {
+                    window.location.href = '/login';
+                }
+                return;
+            }
+
+            if (!response.ok) {
+                throw new Error("Sync API failed with status " + response.status);
+            }
+
+            const data = await response.json();
+            if (data.success && Array.isArray(data.results)) {
+                const resultsMap = new Map<string, any>(data.results.map((r: any) => [r.id, r]));
+                
+                const finalQueue = getStoredQueue().map((item: any) => {
+                    const result: any = resultsMap.get(item.id);
+                    if (result) {
+                        if (result.status === 'synced') {
+                            return { ...item, status: 'synced' };
+                        } else {
+                            return {
+                                ...item,
+                                status: 'failed',
+                                retryCount: item.retryCount + 1
+                            };
+                        }
+                    }
+                    return item;
+                }).filter((item: any) => item.status !== 'synced');
+                
+                saveStoredQueue(finalQueue);
+                setSyncQueue(finalQueue);
+            } else {
+                throw new Error("Invalid sync response format");
+            }
+        } catch (err: any) {
+            console.error("Error processing sync queue:", err);
+            const revertedQueue = getStoredQueue().map((item: any) => {
+                if (item.status === 'syncing') {
+                    return { ...item, status: 'failed', retryCount: item.retryCount + 1 };
+                }
+                return item;
+            });
+            saveStoredQueue(revertedQueue);
+            setSyncQueue(revertedQueue);
+            setSyncError("OFFLINE");
+        } finally {
+            isProcessingQueueRef.current = false;
+        }
+    };
 
     // Fetch snapshot from backend database
     const syncFromDatabase = async (forceUser?: User | null) => {
@@ -344,15 +452,34 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             }
         }
 
+        // 1. Process pending items first if there are any to maintain strict sequential order
+        const currentQueue = getStoredQueue();
+        const pendingItems = currentQueue.filter((item: any) => item.status === 'pending' || item.status === 'failed');
+        if (pendingItems.length > 0) {
+            await processSyncQueue(currentQueue);
+            const reReadQueue = getStoredQueue();
+            const reReadPending = reReadQueue.filter((item: any) => item.status === 'pending' || item.status === 'failed');
+            if (reReadPending.length > 0) {
+                isSyncingRef.current = false;
+                setIsSyncing(false);
+                return;
+            }
+        }
+
         isSyncingRef.current = true;
         setIsSyncing(true);
         try {
-            const response = await fetch('/api/backup?user=system');
+            const storedLastSync = lastSyncTime || (typeof window !== 'undefined' && localStorage.getItem('ms_last_sync_time') ? new Date(localStorage.getItem('ms_last_sync_time')!) : null);
+            const sinceQuery = storedLastSync ? `&since=${encodeURIComponent(storedLastSync.toISOString())}` : '';
+            const response = await fetch(`/api/backup?user=system${sinceQuery}`);
+            const isIncremental = !!sinceQuery;
+
             if (response.ok) {
                 const parsed = await response.json();
                 
-                // Only overwrite if remote database contains actual data
+                // Only overwrite if remote database contains actual data or it is an incremental sync
                 const hasServerData = 
+                    isIncremental ||
                     (parsed.clients && parsed.clients.length > 0) || 
                     (parsed.budgets && parsed.budgets.length > 0) ||
                     (parsed.machines && parsed.machines.length > 0);
@@ -389,7 +516,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         }
                     }
 
-                    const merged = mergeData(currentLocalState, parsed, lastSyncTime);
+                    const merged = mergeData(currentLocalState, parsed, lastSyncTime, isIncremental);
 
                     setClients(merged.clients || []);
                     setMachines(merged.machines || []);
@@ -618,6 +745,9 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             setLastSyncTime(new Date(savedSyncTime));
         }
 
+        const initialQueue = getStoredQueue();
+        setSyncQueue(initialQueue);
+
         fetchMe();
 
         // Release initial load lock after states are populated and settled
@@ -657,7 +787,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         };
     }, []);
 
-    // Save changes to localStorage immediately, and debounced save to remote database
+    // Save changes to localStorage immediately, and queue incremental changes for remote sync
     useEffect(() => {
         // Prevent saving if no authenticated user or if the app is during initial load or synchronizing from backend
         if (!currentUser || isInitialLoadRef.current || isSyncingRef.current) {
@@ -667,7 +797,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             return;
         }
 
-        const stateToSave = { 
+        const stateToSave: any = { 
             clients, 
             machines, 
             readings, 
@@ -683,55 +813,87 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             cobranzaConfig
         };
 
-        // Track deletions first by comparing with the existing localStorage state
-        trackDeletions(stateToSave);
-
+        const oldDataRaw = localStorage.getItem('ms_data');
+        
         // Sync local storage write
         localStorage.setItem('ms_data', JSON.stringify(stateToSave));
 
-        // Debounced remote cloud save
-        const delayDebounceFn = setTimeout(async () => {
+        if (oldDataRaw) {
             try {
-                const response = await fetch('/api/backup?user=autosave', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(stateToSave)
-                });
-                if (!response.ok) {
-                    if (response.status === 401) {
-                        setSyncError("UNAUTHORIZED");
-                        setCurrentUser(null);
-                        return;
+                const oldData = JSON.parse(oldDataRaw);
+                const tables = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets'] as const;
+                
+                const newQueueItems: any[] = [];
+                const nowStr = new Date().toISOString();
+                
+                for (const table of tables) {
+                    const oldList = oldData[table] || [];
+                    const newList = stateToSave[table] || [];
+                    const oldMap = new Map(oldList.map((item: any) => [item.id, item]));
+                    const newMap = new Map(newList.map((item: any) => [item.id, item]));
+                    
+                    // Check updates and creates
+                    for (const newItem of newList) {
+                        const oldItem = oldMap.get(newItem.id);
+                        if (!oldItem) {
+                            newQueueItems.push({
+                                id: crypto.randomUUID ? crypto.randomUUID() : 'q-' + Math.random().toString(36).substring(2, 9) + '-' + Date.now(),
+                                entityId: newItem.id,
+                                entityType: table,
+                                operation: 'create',
+                                payload: newItem,
+                                updatedAt: newItem.updatedAt || nowStr,
+                                status: 'pending',
+                                retryCount: 0
+                            });
+                        } else {
+                            const newItemCompare = { ...newItem, updatedAt: undefined, createdAt: undefined };
+                            const oldItemCompare = { ...oldItem, updatedAt: undefined, createdAt: undefined };
+                            if (JSON.stringify(newItemCompare) !== JSON.stringify(oldItemCompare)) {
+                                newQueueItems.push({
+                                    id: crypto.randomUUID ? crypto.randomUUID() : 'q-' + Math.random().toString(36).substring(2, 9) + '-' + Date.now(),
+                                    entityId: newItem.id,
+                                    entityType: table,
+                                    operation: 'update',
+                                    payload: newItem,
+                                    updatedAt: newItem.updatedAt || nowStr,
+                                    status: 'pending',
+                                    retryCount: 0
+                                });
+                            }
+                        }
                     }
-                    if (response.status === 500) {
-                        setSyncError("DB_ERROR");
-                        return;
+                    
+                    // Check deletes
+                    for (const oldItem of oldList) {
+                        if (!newMap.has(oldItem.id)) {
+                            newQueueItems.push({
+                                id: crypto.randomUUID ? crypto.randomUUID() : 'q-' + Math.random().toString(36).substring(2, 9) + '-' + Date.now(),
+                                entityId: oldItem.id,
+                                entityType: table,
+                                operation: 'delete',
+                                payload: oldItem,
+                                updatedAt: nowStr,
+                                status: 'pending',
+                                retryCount: 0
+                            });
+                        }
                     }
-                    throw new Error("HTTP error " + response.status);
                 }
-                const now = new Date();
-                setLastSyncTime(now);
-                if (typeof window !== 'undefined') {
-                    localStorage.setItem('ms_last_sync_time', now.toISOString());
+                
+                if (newQueueItems.length > 0) {
+                    const currentQueue = getStoredQueue();
+                    const updatedQueue = [...currentQueue, ...newQueueItems];
+                    saveStoredQueue(updatedQueue);
+                    setSyncQueue(updatedQueue);
+                    
+                    // Trigger asynchronous processing
+                    processSyncQueue(updatedQueue);
                 }
-                setSyncError(null);
-                localStorage.removeItem('ms_deleted_ids');
-            } catch (err: any) {
-                console.error("Error auto-guardando en la nube:", err);
-                if (err.message?.includes("HTTP error 401")) {
-                    setSyncError("UNAUTHORIZED");
-                    setCurrentUser(null);
-                } else if (err.message?.includes("HTTP error 500")) {
-                    setSyncError("DB_ERROR");
-                } else {
-                    setSyncError("OFFLINE");
-                }
+            } catch (e) {
+                console.error("Error computing sync queue increments:", e);
             }
-        }, 3000); // 3 seconds debounce
-
-        return () => clearTimeout(delayDebounceFn);
+        }
     }, [clients, machines, readings, tickets, abonos, users, rentals, budgets, templates, machinePresets, gestiones, cobranzaConfig]);
 
     return (
@@ -768,7 +930,9 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 isSyncing,
                 syncError,
                 lastSyncTime,
-                syncFromDatabase
+                syncFromDatabase,
+                syncQueue,
+                processSyncQueue
             }}
         >
             {children}
