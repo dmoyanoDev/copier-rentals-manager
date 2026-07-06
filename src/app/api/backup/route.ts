@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/infrastructure/db/client';
-import { sql, gt } from 'drizzle-orm';
+import { sql, gt, ne, eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { getSession } from '@/infrastructure/auth/session';
 
@@ -246,7 +246,7 @@ export async function POST(request: Request) {
       await tx.delete(machines);
       await tx.delete(plans);
       await tx.delete(clients);
-      await tx.delete(users);
+      await tx.delete(users).where(ne(users.id, session.userId));
       if (payload.auditLogs !== undefined) await tx.delete(auditLogs);
 
       // 2. Insert new rows if present
@@ -256,23 +256,44 @@ export async function POST(request: Request) {
           // If the user already has a valid hash, keep it. Never hardcode passwords in source.
           const finalPasswordHash = hasInvalidPassword ? '' : u.passwordHash;
 
-          await tx.insert(users).values({
-            id: u.id,
-            username: u.username || 'user-' + Math.random().toString(36).substring(2, 6),
-            fullname: u.fullname || 'Usuario',
-            email: u.email || `${u.username || 'user'}@example.com`,
-            passwordHash: finalPasswordHash,
-            role: u.role || 'administrativo',
-            isMaster: u.isMaster ?? (u.role === 'master' || u.id === 'user-admin' ? 1 : 0),
-            phone: u.phone || null,
-            whatsapp: u.whatsapp || null,
-            zone: u.zone || null,
-            specialty: u.specialty || null,
-            availability: u.availability || 'Disponible',
-            active: (u.active === false || u.active === 0) ? 0 : 1,
-            workHours: u.workHours || null,
-            internalNotes: u.internalNotes || null
-          });
+          if (u.id === session.userId) {
+            // Update current user to avoid constraint collision and preserve session reference
+            await tx.update(users).set({
+              username: u.username || 'user-' + Math.random().toString(36).substring(2, 6),
+              fullname: u.fullname || 'Usuario',
+              email: u.email || `${u.username || 'user'}@example.com`,
+              // Keep original password hash if payload does not have one
+              ...(u.passwordHash ? { passwordHash: u.passwordHash } : {}),
+              role: u.role || 'administrativo',
+              isMaster: u.isMaster ?? (u.role === 'master' || u.id === 'user-admin' ? 1 : 0),
+              phone: u.phone || null,
+              whatsapp: u.whatsapp || null,
+              zone: u.zone || null,
+              specialty: u.specialty || null,
+              availability: u.availability || 'Disponible',
+              active: (u.active === false || u.active === 0) ? 0 : 1,
+              workHours: u.workHours || null,
+              internalNotes: u.internalNotes || null
+            }).where(eq(users.id, session.userId));
+          } else {
+            await tx.insert(users).values({
+              id: u.id,
+              username: u.username || 'user-' + Math.random().toString(36).substring(2, 6),
+              fullname: u.fullname || 'Usuario',
+              email: u.email || `${u.username || 'user'}@example.com`,
+              passwordHash: finalPasswordHash,
+              role: u.role || 'administrativo',
+              isMaster: u.isMaster ?? (u.role === 'master' || u.id === 'user-admin' ? 1 : 0),
+              phone: u.phone || null,
+              whatsapp: u.whatsapp || null,
+              zone: u.zone || null,
+              specialty: u.specialty || null,
+              availability: u.availability || 'Disponible',
+              active: (u.active === false || u.active === 0) ? 0 : 1,
+              workHours: u.workHours || null,
+              internalNotes: u.internalNotes || null
+            });
+          }
         }
       }
 
