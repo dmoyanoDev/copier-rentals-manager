@@ -12,3 +12,4 @@ export * from './notificationHistory';
 export * from './auditLogs';
 export * from './sessions';
 export * from './passwordResetTokens';
+export * from './rentals';

@@ -15,6 +15,7 @@ import { sharedPdfs } from '@/infrastructure/db/schema/sharedPdfs';
 import { notificationSettings } from '@/infrastructure/db/schema/notificationSettings';
 import { notificationHistory } from '@/infrastructure/db/schema/notificationHistory';
 import { auditLogs } from '@/infrastructure/db/schema/auditLogs';
+import { rentals } from '@/infrastructure/db/schema/rentals';
 
 // Helper to write audit logs from server route handler
 async function logServerAudit(module: string, action: string, details: string, user: string) {
@@ -55,7 +56,8 @@ export async function GET(request: Request) {
       dbSharedPdfs,
       dbNotifSettings,
       dbNotifHistory,
-      dbAuditLogs
+      dbAuditLogs,
+      dbRentals
     ] = await Promise.all([
       db.select().from(users),
       db.select().from(clients),
@@ -68,7 +70,8 @@ export async function GET(request: Request) {
       isSystemSync ? Promise.resolve([]) : db.select().from(sharedPdfs),
       db.select().from(notificationSettings),
       isSystemSync ? Promise.resolve([]) : db.select().from(notificationHistory),
-      isSystemSync ? Promise.resolve([]) : db.select().from(auditLogs)
+      isSystemSync ? Promise.resolve([]) : db.select().from(auditLogs),
+      db.select().from(rentals)
     ]);
 
     const backupPayload = {
@@ -84,6 +87,7 @@ export async function GET(request: Request) {
       notificationSettings: dbNotifSettings,
       notificationHistory: dbNotifHistory,
       auditLogs: dbAuditLogs,
+      rentals: dbRentals,
       backupMeta: {
         exportDate: new Date().toISOString(),
         version: '2.0.0',
@@ -128,6 +132,7 @@ export async function POST(request: Request) {
       if (payload.notificationSettings !== undefined) await tx.delete(notificationSettings);
       if (payload.sharedPdfs !== undefined) await tx.delete(sharedPdfs);
       if (payload.emailLogs !== undefined) await tx.delete(emailLogs);
+      await tx.delete(rentals);
       await tx.delete(budgets);
       await tx.delete(tickets);
       await tx.delete(readings);
@@ -326,6 +331,24 @@ export async function POST(request: Request) {
             createdAt: b.createdAt ? new Date(b.createdAt) : new Date(),
             updatedAt: b.updatedAt ? new Date(b.updatedAt) : new Date(),
             issuedAt: b.issuedAt ? new Date(b.issuedAt) : null
+          });
+        }
+      }
+
+      if (payload.rentals?.length) {
+        for (const r of payload.rentals) {
+          await tx.insert(rentals).values({
+            id: r.id,
+            clientId: r.clientId || 'unknown',
+            machineId: r.machineId || 'unknown',
+            abonoId: r.abonoId || 'unknown',
+            startDate: r.startDate || new Date().toISOString().split('T')[0],
+            endDate: r.endDate || null,
+            status: r.status || 'activo',
+            observations: r.observations || null,
+            history: typeof r.history === 'string' ? r.history : JSON.stringify(r.history || []),
+            createdAt: r.createdAt ? new Date(r.createdAt) : new Date(),
+            updatedAt: r.updatedAt ? new Date(r.updatedAt) : new Date()
           });
         }
       }
