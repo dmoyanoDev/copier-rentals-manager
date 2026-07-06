@@ -145,4 +145,86 @@ describe('Sync Persistence and Lockouts', () => {
     const savedData = JSON.parse(localStorage.getItem('ms_data') || '{}');
     expect(savedData.clients?.length).toBe(1);
   });
+
+  it('handles 401 error during sync by deauthenticating user and setting UNAUTHORIZED status', async () => {
+    // Override fetch to return 401 for backup sync
+    fetchSpy.mockImplementation((url: any) => {
+      if (url.includes('/api/auth/me')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            authenticated: true,
+            user: { id: 'user-admin', username: 'dmoyano', fullname: 'Darío Moyano', role: 'master' }
+          })
+        } as any);
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 401,
+        json: () => Promise.resolve({ error: 'Unauthorized' })
+      } as any);
+    });
+
+    render(
+      <ManagementProvider>
+        <TestConsumer />
+      </ManagementProvider>
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1600);
+    });
+
+    // Flush microtasks
+    for (let i = 0; i < 5; i++) {
+      await act(async () => {
+        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(50);
+      });
+    }
+
+    // Expect sync-error state to be UNAUTHORIZED
+    expect(screen.getByTestId('sync-error').textContent).toBe('UNAUTHORIZED');
+  });
+
+  it('handles 500 database error during sync by setting DB_ERROR status and preserving session', async () => {
+    // Override fetch to return 500 for backup sync
+    fetchSpy.mockImplementation((url: any) => {
+      if (url.includes('/api/auth/me')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            authenticated: true,
+            user: { id: 'user-admin', username: 'dmoyano', fullname: 'Darío Moyano', role: 'master' }
+          })
+        } as any);
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve({ error: 'Database Connection Error' })
+      } as any);
+    });
+
+    render(
+      <ManagementProvider>
+        <TestConsumer />
+      </ManagementProvider>
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1600);
+    });
+
+    // Flush microtasks
+    for (let i = 0; i < 5; i++) {
+      await act(async () => {
+        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(50);
+      });
+    }
+
+    // Expect sync-error state to be DB_ERROR
+    expect(screen.getByTestId('sync-error').textContent).toBe('DB_ERROR');
+  });
 });

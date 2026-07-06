@@ -16,8 +16,12 @@ const PageHeaderActions: React.FC = () => {
                 title={
                     isSyncing 
                         ? 'Sincronizando base de datos Turso...' 
-                        : syncError 
-                        ? `${syncError}${lastSyncTime ? `. Última sincronización exitosa: ${lastSyncTime.toLocaleTimeString('es-AR')}` : ''}` 
+                        : syncError === 'UNAUTHORIZED'
+                        ? 'Tu sesión ha expirado por seguridad. Por favor, vuelve a iniciar sesión.'
+                        : syncError === 'DB_ERROR'
+                        ? 'No se pudo conectar al servidor de base de datos Turso en la nube.'
+                        : syncError === 'OFFLINE'
+                        ? `Sin conexión a Internet. Trabajando offline.${lastSyncTime ? ` Última sincronización: ${lastSyncTime.toLocaleTimeString('es-AR')}` : ''}`
                         : lastSyncTime 
                         ? `Última sincronización: ${lastSyncTime.toLocaleDateString('es-AR')} ${lastSyncTime.toLocaleTimeString('es-AR')}` 
                         : 'Sincronizar ahora con la nube'
@@ -29,12 +33,20 @@ const PageHeaderActions: React.FC = () => {
                         <RefreshCw size={12} className="animate-spin text-indigo-400" />
                         <span>Sincronizando...</span>
                     </>
-                ) : syncError ? (
+                ) : syncError === 'UNAUTHORIZED' ? (
+                    <>
+                        <CloudOff size={12} className="text-red-500 animate-pulse" />
+                        <span className="text-red-400">Sesión Expirada</span>
+                    </>
+                ) : syncError === 'DB_ERROR' ? (
+                    <>
+                        <CloudOff size={12} className="text-red-500 animate-pulse" />
+                        <span className="text-red-400">Error de Base de Datos</span>
+                    </>
+                ) : syncError === 'OFFLINE' ? (
                     <>
                         <CloudOff size={12} className="text-amber-500 animate-pulse" />
-                        <span className="text-amber-500">
-                            {lastSyncTime ? 'Sin conexión' : 'Error de sincronización'}
-                        </span>
+                        <span className="text-amber-500">Sin Conexión</span>
                     </>
                 ) : lastSyncTime ? (
                     <>

@@ -247,11 +247,27 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     localStorage.setItem('ms_data', JSON.stringify(stateToSave));
                 }
             } else {
+                if (response.status === 401) {
+                    setSyncError("UNAUTHORIZED");
+                    setCurrentUser(null);
+                    return;
+                }
+                if (response.status === 500) {
+                    setSyncError("DB_ERROR");
+                    return;
+                }
                 throw new Error("HTTP error " + response.status);
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error("Error sincronizando de la base de datos:", err);
-            setSyncError("Error de sincronización (Modo Offline)");
+            if (err.message?.includes("HTTP error 401")) {
+                setSyncError("UNAUTHORIZED");
+                setCurrentUser(null);
+            } else if (err.message?.includes("HTTP error 500")) {
+                setSyncError("DB_ERROR");
+            } else {
+                setSyncError("OFFLINE");
+            }
         } finally {
             setIsSyncing(false);
             // Allow state updates to settle before resetting sync ref
@@ -428,13 +444,29 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     body: JSON.stringify(stateToSave)
                 });
                 if (!response.ok) {
+                    if (response.status === 401) {
+                        setSyncError("UNAUTHORIZED");
+                        setCurrentUser(null);
+                        return;
+                    }
+                    if (response.status === 500) {
+                        setSyncError("DB_ERROR");
+                        return;
+                    }
                     throw new Error("HTTP error " + response.status);
                 }
                 setLastSyncTime(new Date());
                 setSyncError(null);
-            } catch (err) {
+            } catch (err: any) {
                 console.error("Error auto-guardando en la nube:", err);
-                setSyncError("Sin conexión (Trabajando en modo local)");
+                if (err.message?.includes("HTTP error 401")) {
+                    setSyncError("UNAUTHORIZED");
+                    setCurrentUser(null);
+                } else if (err.message?.includes("HTTP error 500")) {
+                    setSyncError("DB_ERROR");
+                } else {
+                    setSyncError("OFFLINE");
+                }
             }
         }, 3000); // 3 seconds debounce
 
