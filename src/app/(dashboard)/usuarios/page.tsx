@@ -6,21 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Modal } from '@/components/ui/modal';
-import { Plus, Edit, ShieldAlert, Check, X, Shield } from 'lucide-react';
-
-interface User {
-  id: string;
-  username: string;
-  fullname: string;
-  email: string;
-  role: string;
-  phone: string | null;
-  whatsapp: string | null;
-  active: number;
-}
+import { Plus, Edit, ShieldAlert, Check, X, Shield, RefreshCw } from 'lucide-react';
+import { getUsers, createUser, updateUser, ApiUser } from '@/lib/api/users';
+import { logger } from '@/lib/logger';
 
 export default function UsersPage() {
-  const [usersList, setUsersList] = useState<User[]>([]);
+  const [usersList, setUsersList] = useState<ApiUser[]>([]);
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -28,7 +19,7 @@ export default function UsersPage() {
 
   // Modal states
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editingUser, setEditingUser] = useState<ApiUser | null>(null);
 
   // Form inputs
   const [username, setUsername] = useState('');
@@ -40,42 +31,39 @@ export default function UsersPage() {
   const [isActive, setIsActive] = useState<boolean>(true);
   const [formError, setFormError] = useState<string | null>(null);
 
-  // Fetch current user and list of users
-  useEffect(() => {
-    async function checkAuthAndFetchUsers() {
-      try {
-        setIsLoading(true);
-        // 1. Verificar si es el usuario master
-        const meRes = await fetch('/api/auth/me');
-        const meData = await meRes.json();
-        
-        if (!meRes.ok || !meData.authenticated || !meData.user.permissions.isMaster) {
-          setIsAuthorized(false);
-          setIsLoading(false);
-          return;
-        }
+  async function checkAuthAndFetchUsers() {
+    try {
+      setIsLoading(true);
+      setApiError(null);
 
-        setIsAuthorized(true);
-
-        // 2. Fetch users list
-        const usersRes = await fetch('/api/users');
-        if (usersRes.ok) {
-          const data = await usersRes.json();
-          setUsersList(data);
-        } else {
-          setApiError('No se pudo cargar la lista de usuarios.');
-        }
-      } catch (err) {
-        setApiError('Error de red al intentar conectar.');
-      } finally {
+      // 1. Verificar si es el usuario master
+      const meRes = await fetch('/api/auth/me');
+      const meData = await meRes.json();
+      
+      if (!meRes.ok || !meData.authenticated || !meData.user?.permissions?.isMaster) {
+        setIsAuthorized(false);
         setIsLoading(false);
+        return;
       }
-    }
 
+      setIsAuthorized(true);
+
+      // 2. Fetch users list
+      const data = await getUsers();
+      setUsersList(data);
+    } catch (err: any) {
+      logger.error('Error al inicializar la pantalla de usuarios:', err);
+      setApiError(err.message || 'Error de red al intentar conectar.');
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
     checkAuthAndFetchUsers();
   }, []);
 
-  const handleOpenForm = (user: User | null = null) => {
+  const handleOpenForm = (user: ApiUser | null = null) => {
     setFormError(null);
     if (user) {
       setEditingUser(user);
@@ -127,34 +115,22 @@ export default function UsersPage() {
     }
 
     try {
-      const url = editingUser ? `/api/users/${editingUser.id}` : '/api/users';
-      const method = editingUser ? 'PATCH' : 'POST';
-
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Error al guardar el usuario.');
+      if (editingUser) {
+        await updateUser(editingUser.id, payload);
+      } else {
+        await createUser(payload);
       }
 
       // Refresh list
-      const usersRes = await fetch('/api/users');
-      if (usersRes.ok) {
-        const refreshedData = await usersRes.json();
-        setUsersList(refreshedData);
-      }
+      const data = await getUsers();
+      setUsersList(data);
       setIsFormOpen(false);
     } catch (err: any) {
-      setFormError(err.message);
+      setFormError(err.message || 'Error al guardar el usuario.');
     }
   };
 
-  const handleToggleActive = async (user: User) => {
+  const handleToggleActive = async (user: ApiUser) => {
     if (user.username === 'dmoyano') {
       alert('El usuario maestro dmoyano no puede ser desactivado.');
       return;
@@ -168,16 +144,7 @@ export default function UsersPage() {
     if (!confirm(confirmMsg)) return;
 
     try {
-      const res = await fetch(`/api/users/${user.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ active: nextActive }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error);
-      }
-
+      await updateUser(user.id, { active: nextActive });
       setUsersList(prev => prev.map(u => u.id === user.id ? { ...u, active: nextActive } : u));
     } catch (err: any) {
       alert('Error: ' + err.message);
@@ -208,6 +175,23 @@ export default function UsersPage() {
     );
   }
 
+  if (apiError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 px-4 text-center max-w-lg mx-auto space-y-6 animate-fade-in">
+        <div className="p-4 bg-red-950/40 border border-red-900 rounded-full text-red-500">
+          <ShieldAlert size={48} />
+        </div>
+        <h2 className="text-xl font-bold text-slate-100">Error al Cargar Usuarios</h2>
+        <p className="text-xs text-slate-400 leading-relaxed">
+          ⚠️ {apiError}
+        </p>
+        <Button variant="primary" size="sm" onClick={checkAuthAndFetchUsers} className="flex items-center gap-1.5 font-semibold">
+          <RefreshCw size={14} /> Reintentar Conexión
+        </Button>
+      </div>
+    );
+  }
+
   const filteredUsers = usersList.filter(u =>
     u.fullname.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.username.toLowerCase().includes(searchQuery.toLowerCase())
@@ -229,12 +213,6 @@ export default function UsersPage() {
           <Plus size={16} className="mr-1.5" /> Nuevo Usuario
         </Button>
       </div>
-
-      {apiError && (
-        <div className="p-3 bg-red-950/60 border border-red-800 text-red-300 text-xs font-semibold rounded-lg">
-          ⚠️ {apiError}
-        </div>
-      )}
 
       <TableContainer>
         <Table>

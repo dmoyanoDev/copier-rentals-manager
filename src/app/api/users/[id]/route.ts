@@ -7,10 +7,6 @@ import { hashPassword, validatePasswordStrength } from '@/lib/auth/passwordServi
 import { revokeAllSessionsForUser } from '@/infrastructure/auth/session';
 import { logSecurityEvent } from '@/lib/security/audit';
 
-/**
- * PATCH /api/users/[id]: Actualiza los campos de un usuario o lo desactiva.
- * Protegido exclusivamente para el usuario maestro (dmoyano).
- */
 export async function PATCH(request: Request, props: { params: Promise<{ id: string }> }) {
   const { id: targetUserId } = await props.params;
   let masterUser;
@@ -20,7 +16,12 @@ export async function PATCH(request: Request, props: { params: Promise<{ id: str
     masterUser = await verifyMaster();
   } catch (e: any) {
     await logSecurityEvent('forbidden_access', 'Unknown', `Intento no autorizado de editar usuario. IP: ${ip}`);
-    return NextResponse.json({ error: e.message || 'No autorizado.' }, { status: e.code === 'FORBIDDEN' ? 403 : 401 });
+    const code = e.code === 'FORBIDDEN' ? 'FORBIDDEN' : 'UNAUTHORIZED';
+    const status = e.code === 'FORBIDDEN' ? 403 : 401;
+    const message = e.code === 'FORBIDDEN' 
+      ? 'No tenés permisos para acceder a usuarios.' 
+      : 'Sesión no válida.';
+    return NextResponse.json({ ok: false, error: { code, message } }, { status });
   }
 
   try {
@@ -40,40 +41,44 @@ export async function PATCH(request: Request, props: { params: Promise<{ id: str
       internalNotes,
     } = body;
 
-    // 1. Obtener usuario objetivo
     const results = await db.select().from(users).where(eq(users.id, targetUserId)).limit(1);
     const targetUser = results[0];
 
     if (!targetUser) {
-      return NextResponse.json({ error: 'Usuario no encontrado.' }, { status: 404 });
+      return NextResponse.json({
+        ok: false,
+        error: { code: 'NOT_FOUND', message: 'Usuario no encontrado.' }
+      }, { status: 404 });
     }
 
     const isTargetMaster = targetUser.username === 'dmoyano';
 
-    // 2. Blindaje de dmoyano (Master User Protection)
     if (isTargetMaster) {
-      // Impedir desactivación
       if (active === false || active === 0) {
         await logSecurityEvent(
           'protected_master_modification_attempt',
           masterUser.username,
           `Intento de desactivar al usuario maestro dmoyano. IP: ${ip}`
         );
-        return NextResponse.json({ error: 'El usuario maestro dmoyano no puede ser desactivado.' }, { status: 403 });
+        return NextResponse.json({
+          ok: false,
+          error: { code: 'FORBIDDEN', message: 'El usuario maestro dmoyano no puede ser desactivado.' }
+        }, { status: 403 });
       }
 
-      // Impedir cambio de rol
       if (role && role !== 'master') {
         await logSecurityEvent(
           'protected_master_modification_attempt',
           masterUser.username,
           `Intento de cambiar el rol del usuario maestro dmoyano a ${role}. IP: ${ip}`
         );
-        return NextResponse.json({ error: 'El rol del usuario maestro dmoyano no puede ser degradado.' }, { status: 403 });
+        return NextResponse.json({
+          ok: false,
+          error: { code: 'FORBIDDEN', message: 'El rol del usuario maestro dmoyano no puede ser degradado.' }
+        }, { status: 403 });
       }
     }
 
-    // 3. Validar duplicación de email
     if (email && email.trim().toLowerCase() !== targetUser.email) {
       const emailDup = await db
         .select()
@@ -82,11 +87,13 @@ export async function PATCH(request: Request, props: { params: Promise<{ id: str
         .limit(1);
 
       if (emailDup.length > 0) {
-        return NextResponse.json({ error: 'El correo electrónico ya se encuentra registrado por otro usuario.' }, { status: 409 });
+        return NextResponse.json({
+          ok: false,
+          error: { code: 'CONFLICT', message: 'El correo electrónico ya se encuentra registrado por otro usuario.' }
+        }, { status: 409 });
       }
     }
 
-    // 4. Preparar payload de actualización
     const updateValues: any = {
       updatedAt: new Date(),
     };
@@ -101,41 +108,46 @@ export async function PATCH(request: Request, props: { params: Promise<{ id: str
     if (workHours !== undefined) updateValues.workHours = workHours || null;
     if (internalNotes !== undefined) updateValues.internalNotes = internalNotes || null;
 
-    // Solo permitir cambiar rol si no es el master
     if (role && !isTargetMaster) {
       updateValues.role = role;
     }
 
-    // Solo permitir cambiar activo si no es el master
     if (active !== undefined && !isTargetMaster) {
       const activeInt = (active === false || active === 0) ? 0 : 1;
       updateValues.active = activeInt;
 
-      // Si se desactiva, invalidar todas sus sesiones de inmediato
       if (activeInt === 0) {
         await revokeAllSessionsForUser(targetUserId);
         await logSecurityEvent('user_deactivated', masterUser.username, `Usuario desactivado: ${targetUser.username}. Sesiones revocadas. IP: ${ip}`);
       }
     }
 
-    // Si se pasa contraseña, validarla y hashearla
     if (password) {
       const strength = validatePasswordStrength(password);
       if (!strength.isValid) {
-        return NextResponse.json({ error: strength.error }, { status: 400 });
+        return NextResponse.json({
+          ok: false,
+          error: { code: 'BAD_REQUEST', message: strength.error }
+        }, { status: 400 });
       }
       updateValues.passwordHash = await hashPassword(password);
-      
-      // Forzar cierre de sesiones activas al cambiar contraseña administrativamente
       await revokeAllSessionsForUser(targetUserId);
     }
 
     await db.update(users).set(updateValues).where(eq(users.id, targetUserId));
     await logSecurityEvent('user_updated', masterUser.username, `Usuario modificado: ${targetUser.username}. IP: ${ip}`);
 
-    return NextResponse.json({ success: true, message: 'Usuario actualizado correctamente.' });
+    // Query updated user
+    const updatedUserResults = await db.select().from(users).where(eq(users.id, targetUserId)).limit(1);
+    const updatedUser = updatedUserResults[0];
+    const { passwordHash: _, ...safeUser } = updatedUser;
+
+    return NextResponse.json({ ok: true, data: { user: safeUser } });
   } catch (error: any) {
     console.error('Error en PATCH /api/users/[id]:', error);
-    return NextResponse.json({ error: 'Error del servidor al actualizar usuario: ' + error.message }, { status: 500 });
+    return NextResponse.json({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error interno.' }
+    }, { status: 500 });
   }
 }

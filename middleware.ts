@@ -6,13 +6,16 @@ const SESSION_COOKIE_NAME = 'ms_session';
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  console.log(`[Middleware] Path: ${pathname}`);
 
   // 1. Obtener la cookie de sesión
   const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME);
   const token = sessionCookie?.value;
+  console.log(`[Middleware] Token present: ${!!token}`);
 
   // Desencriptar la sesión sin consultar la base de datos (seguro para Edge Runtime)
   const session = token ? await decryptSession(token) : null;
+  console.log(`[Middleware] Session resolved:`, session);
 
   // Rutas públicas de autenticación
   const isAuthRoute =
