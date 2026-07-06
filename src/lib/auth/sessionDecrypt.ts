@@ -1,8 +1,16 @@
 let SECRET_KEY: string = process.env.SESSION_SECRET || '';
 
+const isProduction = 
+  process.env.NODE_ENV === 'production' || 
+  process.env.NETLIFY === 'true' || 
+  process.env.CONTEXT === 'production' ||
+  (typeof window === 'undefined' && 
+   process.env.NODE_ENV !== 'development' && 
+   process.env.NODE_ENV !== 'test');
+
 if (!SECRET_KEY) {
-  if (process.env.NODE_ENV === 'production' || process.env.NETLIFY) {
-    throw new Error('FATAL: La variable de entorno SESSION_SECRET no está definida en producción (Netlify). La aplicación no iniciará por razones de seguridad.');
+  if (isProduction) {
+    throw new Error('FATAL: La variable de entorno SESSION_SECRET no está definida en el entorno de servidor o middleware de producción. Por favor, asegúrate de configurar SESSION_SECRET en el panel de Netlify y que su ámbito (scope) incluya tanto "Serverless Functions" como "Edge Functions".');
   } else {
     console.warn('WARNING: SESSION_SECRET no está definida. Generando clave efímera para desarrollo/testing.');
     const array = new Uint8Array(32);
