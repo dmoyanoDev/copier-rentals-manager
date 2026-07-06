@@ -11,10 +11,13 @@ export interface UserSession {
   expiresAt: number;
 }
 
-// Convert key string to CryptoKey for Web Crypto API
+// Convert key string to CryptoKey for Web Crypto API (exactly 256 bits)
 async function getCryptoKey(secret: string): Promise<CryptoKey> {
   const enc = new TextEncoder();
-  const keyMaterial = enc.encode(secret.padEnd(32).substring(0, 32));
+  const rawBytes = enc.encode(secret);
+  const keyMaterial = new Uint8Array(32);
+  keyMaterial.set(rawBytes.slice(0, 32));
+
   return await crypto.subtle.importKey(
     'raw',
     keyMaterial,

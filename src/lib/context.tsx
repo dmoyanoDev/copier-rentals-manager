@@ -173,6 +173,10 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     // Fetch snapshot from backend database
     const syncFromDatabase = async () => {
+        if (!currentUser) {
+            return;
+        }
+
         if (typeof window !== 'undefined') {
             const path = window.location.pathname;
             if (path.startsWith('/login') || path.startsWith('/forgot-password') || path.startsWith('/reset-password')) {
