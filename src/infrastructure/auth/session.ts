@@ -85,7 +85,7 @@ export async function getSession(requestOrCookieValue?: Request | string): Promi
       .split(';')
       .find(c => c.trim().startsWith(`${SESSION_COOKIE_NAME}=`))
       ?.split('=')[1];
-    token = sessionCookieValue;
+    token = sessionCookieValue ? decodeURIComponent(sessionCookieValue) : undefined;
   } else if (typeof requestOrCookieValue === 'string') {
     token = requestOrCookieValue;
   }
