@@ -594,6 +594,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         machines: merged.machines || [],
                         readings: merged.readings || [],
                         tickets: merged.tickets || [],
+                        plans: merged.abonos || [],
                         abonos: merged.abonos || [],
                         users: merged.users || [],
                         rentals: merged.rentals || [],
