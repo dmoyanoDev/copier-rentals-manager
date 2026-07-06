@@ -136,6 +136,12 @@ interface ManagementContextType {
     setGestiones: React.Dispatch<React.SetStateAction<Gestion[]>>;
     cobranzaConfig: CobranzaConfig;
     setCobranzaConfig: React.Dispatch<React.SetStateAction<CobranzaConfig>>;
+
+    // Cloud Database Sync Additions
+    isSyncing: boolean;
+    syncError: string | null;
+    lastSyncTime: Date | null;
+    syncFromDatabase: () => Promise<void>;
 }
 
 const ManagementContext = createContext<ManagementContextType | undefined>(undefined);
@@ -160,6 +166,84 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const [gestiones, setGestiones] = useState<Gestion[]>([]);
     const [cobranzaConfig, setCobranzaConfig] = useState<CobranzaConfig>(defaultCobranzaConfig);
 
+    // Sync States
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [syncError, setSyncError] = useState<string | null>(null);
+    const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+
+    // Fetch snapshot from backend database
+    const syncFromDatabase = async () => {
+        setIsSyncing(true);
+        try {
+            const response = await fetch('/api/backup?user=system');
+            if (response.ok) {
+                const parsed = await response.json();
+                
+                // Only overwrite if remote database contains actual data
+                const hasServerData = 
+                    (parsed.clients && parsed.clients.length > 0) || 
+                    (parsed.budgets && parsed.budgets.length > 0) ||
+                    (parsed.machines && parsed.machines.length > 0);
+                    
+                if (hasServerData) {
+                    setClients(parsed.clients || []);
+                    setMachines(parsed.machines || []);
+                    setReadings(parsed.readings || []);
+                    setTickets(parsed.tickets || []);
+                    setAbonos(parsed.plans || parsed.abonos || []);
+                    setUsers(parsed.users || []);
+                    if (parsed.rentals) setRentals(parsed.rentals);
+                    setBudgets(parsed.budgets || []);
+                    
+                    const loadedTemplates = parsed.templates || [];
+                    const defaultIds = defaultBudgetTemplates.map(t => t.id);
+                    const customTemplates = loadedTemplates.filter((t: any) => !defaultIds.includes(t.id));
+                    setTemplates([...defaultBudgetTemplates, ...customTemplates]);
+                    
+                    if (parsed.machinePresets) setMachinePresets(parsed.machinePresets);
+                    if (parsed.gestiones) setGestiones(parsed.gestiones);
+                    
+                    if (parsed.cobranzaConfig) {
+                        setCobranzaConfig({
+                            ...defaultCobranzaConfig,
+                            ...parsed.cobranzaConfig
+                        });
+                    }
+                    
+                    const uList = parsed.users || mockUsers;
+                    setCurrentUser(uList[0]);
+                    
+                    setLastSyncTime(new Date());
+                    setSyncError(null);
+
+                    // Sync localStorage immediately to match
+                    const stateToSave = {
+                        clients: parsed.clients || [],
+                        machines: parsed.machines || [],
+                        readings: parsed.readings || [],
+                        tickets: parsed.tickets || [],
+                        abonos: parsed.plans || parsed.abonos || [],
+                        users: parsed.users || [],
+                        rentals: parsed.rentals || [],
+                        budgets: parsed.budgets || [],
+                        templates: parsed.templates || [],
+                        machinePresets: parsed.machinePresets || [],
+                        gestiones: parsed.gestiones || [],
+                        cobranzaConfig: parsed.cobranzaConfig || defaultCobranzaConfig
+                    };
+                    localStorage.setItem('ms_data', JSON.stringify(stateToSave));
+                }
+            } else {
+                throw new Error("HTTP error " + response.status);
+            }
+        } catch (err) {
+            console.error("Error sincronizando de la base de datos:", err);
+            setSyncError("Error de sincronización (Modo Offline)");
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
     useEffect(() => {
         const now = new Date();
         const yyyy = now.getFullYear();
@@ -174,6 +258,8 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 localData = legacyData;
             }
         }
+        
+        let loadedFromLocal = false;
         if (localData) {
             try {
                 const parsed = JSON.parse(localData);
@@ -192,11 +278,8 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 setTemplates([...defaultBudgetTemplates, ...customTemplates]);
 
                 setMachinePresets(parsed.machinePresets || defaultMachinePresets);
-
-                // Load collection states
                 setGestiones(parsed.gestiones || defaultGestiones);
                 
-                // Merge default keys for multiple templates if older settings exist
                 if (parsed.cobranzaConfig) {
                     setCobranzaConfig({
                         ...defaultCobranzaConfig,
@@ -208,45 +291,103 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
                 const uList = parsed.users || mockUsers;
                 setCurrentUser(uList[0]);
-                return;
+                loadedFromLocal = true;
             } catch (e) {
                 console.error(e);
             }
         }
-        setClients(mockClients);
-        setMachines(mockMachines);
-        setReadings(mockReadings);
-        setTickets(mockTickets);
-        setAbonos(mockAbonos);
-        setUsers(mockUsers);
-        setRentals(mockRentals);
-        setBudgets([]);
-        setTemplates(defaultBudgetTemplates);
-        setMachinePresets(defaultMachinePresets);
-        setGestiones(defaultGestiones);
-        setCobranzaConfig(defaultCobranzaConfig);
-        setCurrentUser(mockUsers[0]);
+        
+        if (!loadedFromLocal) {
+            setClients(mockClients);
+            setMachines(mockMachines);
+            setReadings(mockReadings);
+            setTickets(mockTickets);
+            setAbonos(mockAbonos);
+            setUsers(mockUsers);
+            setRentals(mockRentals);
+            setBudgets([]);
+            setTemplates(defaultBudgetTemplates);
+            setMachinePresets(defaultMachinePresets);
+            setGestiones(defaultGestiones);
+            setCobranzaConfig(defaultCobranzaConfig);
+            setCurrentUser(mockUsers[0]);
+        }
+
+        // Trigger background sync immediately on load
+        syncFromDatabase();
     }, []);
 
-    // Save to localStorage when state changes
+    // Re-sync when page refocuses, tab changes or network goes online
     useEffect(() => {
-        if (clients.length > 0) {
-            const stateToSave = { 
-                clients, 
-                machines, 
-                readings, 
-                tickets, 
-                abonos, 
-                users,
-                rentals,
-                budgets,
-                templates,
-                machinePresets,
-                gestiones,
-                cobranzaConfig
-            };
-            localStorage.setItem('ms_data', JSON.stringify(stateToSave));
+        const handleSyncTrigger = () => {
+            syncFromDatabase();
+        };
+
+        window.addEventListener('focus', handleSyncTrigger);
+        window.addEventListener('online', handleSyncTrigger);
+        
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                syncFromDatabase();
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            window.removeEventListener('focus', handleSyncTrigger);
+            window.removeEventListener('online', handleSyncTrigger);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, []);
+
+    // Save changes to localStorage immediately, and debounced save to remote database
+    useEffect(() => {
+        // Prevent saving empty state lists on mount
+        if (clients.length === 0 && budgets.length === 0 && machines.length === 0) {
+            return;
         }
+
+        const stateToSave = { 
+            clients, 
+            machines, 
+            readings, 
+            tickets, 
+            plans: abonos,
+            abonos,
+            users,
+            rentals,
+            budgets,
+            templates,
+            machinePresets,
+            gestiones,
+            cobranzaConfig
+        };
+
+        // Sync local storage write
+        localStorage.setItem('ms_data', JSON.stringify(stateToSave));
+
+        // Debounced remote cloud save
+        const delayDebounceFn = setTimeout(async () => {
+            try {
+                const response = await fetch('/api/backup?user=autosave', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(stateToSave)
+                });
+                if (!response.ok) {
+                    throw new Error("HTTP error " + response.status);
+                }
+                setLastSyncTime(new Date());
+                setSyncError(null);
+            } catch (err) {
+                console.error("Error auto-guardando en la nube:", err);
+                setSyncError("Sin conexión (Trabajando en modo local)");
+            }
+        }, 3000); // 3 seconds debounce
+
+        return () => clearTimeout(delayDebounceFn);
     }, [clients, machines, readings, tickets, abonos, users, rentals, budgets, templates, machinePresets, gestiones, cobranzaConfig]);
 
     return (
@@ -279,7 +420,11 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 gestiones,
                 setGestiones,
                 cobranzaConfig,
-                setCobranzaConfig
+                setCobranzaConfig,
+                isSyncing,
+                syncError,
+                lastSyncTime,
+                syncFromDatabase
             }}
         >
             {children}

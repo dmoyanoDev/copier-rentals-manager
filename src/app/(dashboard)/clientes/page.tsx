@@ -935,7 +935,7 @@ export default function ClientsPage() {
         alert('Gestión de cobranza registrada con éxito.');
     };
 
-    const todayStr = '2026-07-05';
+    const todayStr = new Date().toISOString().split('T')[0];
 
     return (
         <div className="space-y-6 animate-fade-in text-slate-100 pb-12">

@@ -114,8 +114,10 @@ export function playSystemSound(type: 'pago' | 'deudor' | 'vencido' | 'critico' 
 
 export function getDaysOverdue(dueDateStr: string): number {
     if (!dueDateStr) return 0;
-    const today = new Date('2026-07-05T00:00:00');
-    const due = new Date(dueDateStr + 'T00:00:00');
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const dueParts = dueDateStr.split('-');
+    const due = new Date(parseInt(dueParts[0], 10), parseInt(dueParts[1], 10) - 1, parseInt(dueParts[2], 10));
     if (isNaN(due.getTime()) || due.getTime() >= today.getTime()) return 0;
     const diffTime = today.getTime() - due.getTime();
     return Math.floor(diffTime / (1000 * 60 * 60 * 24));
@@ -311,7 +313,7 @@ export function getSystemAlerts(clients: Client[], readings: any[], machines: an
                         tipo: 'crit',
                         titulo: 'Alerta Crítica: Deuda Crítica / Mora Prolongada',
                         descripcion: `El cliente posee una deuda vencida de ${formatCurrency(sum.vencido)} con un retraso de ${sum.maxMora} días. Requiere contacto urgente.`,
-                        fecha: '2026-07-05',
+                        fecha: new Date().toISOString().split('T')[0],
                         amount: sum.vencido,
                         daysOverdue: sum.maxMora
                     });
@@ -323,7 +325,7 @@ export function getSystemAlerts(clients: Client[], readings: any[], machines: an
                         tipo: 'imp',
                         titulo: 'Alerta Importante: Deuda Vencida',
                         descripcion: `El cliente posee comprobantes vencidos sin cancelar por un total de ${formatCurrency(sum.vencido)}.`,
-                        fecha: '2026-07-05',
+                        fecha: new Date().toISOString().split('T')[0],
                         amount: sum.vencido,
                         daysOverdue: sum.maxMora
                     });
@@ -354,7 +356,7 @@ export function getSystemAlerts(clients: Client[], readings: any[], machines: an
                         tipo: 'imp',
                         titulo: 'Vence Hoy',
                         descripcion: `Comprobante de facturación vence el día de hoy para el cliente ${c.name}.`,
-                        fecha: '2026-07-05'
+                        fecha: new Date().toISOString().split('T')[0]
                     });
                 } else if (dueSoon) {
                     alerts.push({
@@ -364,14 +366,19 @@ export function getSystemAlerts(clients: Client[], readings: any[], machines: an
                         tipo: 'prev',
                         titulo: 'Próxima a Vencer',
                         descripcion: `Recordatorio preventivo: factura del cliente vence pronto (${soonDate}).`,
-                        fecha: '2026-07-05'
+                        fecha: new Date().toISOString().split('T')[0]
                     });
                 }
             }
         }
     });
     
-    const lastThreeDays = ['2026-07-05', '2026-07-04', '2026-07-03'];
+    const getPastDateStr = (daysAgo: number) => {
+        const d = new Date();
+        d.setDate(d.getDate() - daysAgo);
+        return d.toISOString().split('T')[0];
+    };
+    const lastThreeDays = [getPastDateStr(0), getPastDateStr(1), getPastDateStr(2)];
     gestiones.forEach((g, idx) => {
         const client = clients.find(c => c.id === g.clientId);
         if (client && lastThreeDays.includes(g.date)) {
@@ -403,8 +410,10 @@ export function getSystemAlerts(clients: Client[], readings: any[], machines: an
 }
 
 function getDaysToDueHelper(dueDateStr: string): number {
-    const today = new Date('2026-07-05T00:00:00');
-    const due = new Date(dueDateStr + 'T00:00:00');
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const dueParts = dueDateStr.split('-');
+    const due = new Date(parseInt(dueParts[0], 10), parseInt(dueParts[1], 10) - 1, parseInt(dueParts[2], 10));
     if (isNaN(due.getTime())) return -999;
     const diffTime = due.getTime() - today.getTime();
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
