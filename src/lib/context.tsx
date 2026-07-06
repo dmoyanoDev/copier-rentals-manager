@@ -501,13 +501,29 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         isSyncingRef.current = true;
         setIsSyncing(true);
         try {
-            const storedLastSync = stateRef.current.lastSyncTime || (typeof window !== 'undefined' && localStorage.getItem('ms_last_sync_time') ? new Date(localStorage.getItem('ms_last_sync_time')!) : null);
+            let storedLastSync = stateRef.current.lastSyncTime;
+            if (!storedLastSync && typeof window !== 'undefined') {
+                try {
+                    const raw = localStorage.getItem('ms_last_sync_time');
+                    if (raw) storedLastSync = new Date(raw);
+                } catch (e) {}
+            }
             const sinceQuery = storedLastSync ? `&since=${encodeURIComponent(storedLastSync.toISOString())}` : '';
             const response = await fetch(`/api/backup?user=system${sinceQuery}`);
             const isIncremental = !!sinceQuery;
 
             if (response.ok) {
                 const parsed = await response.json();
+                
+                // Always mark sync as successful if API returns 200
+                const now = new Date();
+                setLastSyncTime(now);
+                if (typeof window !== 'undefined') {
+                    try {
+                        localStorage.setItem('ms_last_sync_time', now.toISOString());
+                    } catch (e) {}
+                }
+                setSyncError(null);
                 
                 // Only overwrite if remote database contains actual data or it is an incremental sync
                 const hasServerData = 
@@ -574,13 +590,6 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                             ...parsed.cobranzaConfig
                         });
                     }
-                    
-                    const now = new Date();
-                    setLastSyncTime(now);
-                    if (typeof window !== 'undefined') {
-                        localStorage.setItem('ms_last_sync_time', now.toISOString());
-                    }
-                    setSyncError(null);
 
                     const stateToSave = {
                         clients: merged.clients || [],
@@ -597,7 +606,9 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         gestiones: parsed.gestiones || [],
                         cobranzaConfig: parsed.cobranzaConfig || defaultCobranzaConfig
                     };
-                    localStorage.setItem('ms_data', JSON.stringify(stateToSave));
+                    try {
+                        localStorage.setItem('ms_data', JSON.stringify(stateToSave));
+                    } catch (e) {}
 
                     // Compare only key business tables to decide if a server sync is needed
                     const tablesToCompare = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets'];
@@ -743,6 +754,9 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 const path = window.location.pathname;
                 if (path.startsWith('/login') || path.startsWith('/forgot-password') || path.startsWith('/reset-password')) {
                     setCurrentUser(null);
+                    try {
+                        localStorage.removeItem('ms_user');
+                    } catch (e) {}
                     return;
                 }
             }
@@ -761,10 +775,16 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                             role: parsed.user.role,
                         };
                         setCurrentUser(u);
+                        try {
+                            localStorage.setItem('ms_user', JSON.stringify(u));
+                        } catch (e) {}
                         // Solo sincronizar si está autenticado (pasando el usuario directamente para evitar delay del batch update)
                         syncFromDatabase(u);
                     } else {
                         setCurrentUser(null);
+                        try {
+                            localStorage.removeItem('ms_user');
+                        } catch (e) {}
                         setSyncError("UNAUTHORIZED");
                         if (typeof window !== 'undefined') {
                             window.location.href = '/login';
@@ -773,19 +793,23 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 } else {
                     if (res.status === 401) {
                         setCurrentUser(null);
+                        try {
+                            localStorage.removeItem('ms_user');
+                        } catch (e) {}
                         setSyncError("UNAUTHORIZED");
                         if (typeof window !== 'undefined') {
                             window.location.href = '/login';
                         }
                     } else {
-                        // Error de servidor/BD temporal: mantener sesión y marcar error de base de datos
+                        // Error de servidor/BD temporal: mantener sesión local y marcar error de base de datos
                         setSyncError("DB_ERROR");
                     }
                 }
             } catch (err: any) {
                 if (err.name === 'AbortError') return;
                 console.error('Error al recuperar sesión en ManagementProvider:', err);
-                setCurrentUser(null);
+                // Keep local user session fallback on network connection failure
+                setSyncError("OFFLINE");
             }
         }
 
@@ -794,14 +818,29 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const mm = String(now.getMonth() + 1).padStart(2, '0');
         setCurrentMonth(`${yyyy}-${mm}`);
 
-        let localData = localStorage.getItem('ms_data');
-        if (!localData) {
-            const legacyData = localStorage.getItem('copyrent_data');
-            if (legacyData) {
-                localStorage.setItem('ms_data', legacyData);
-                localStorage.removeItem('copyrent_data'); // Clean up legacy key after migration
-                localData = legacyData;
-            }
+        // Rehydrating currentUser from localStorage for instant mount & hydration
+        if (typeof window !== 'undefined') {
+            try {
+                const savedUser = localStorage.getItem('ms_user');
+                if (savedUser) {
+                    setCurrentUser(JSON.parse(savedUser));
+                }
+            } catch (e) {}
+        }
+
+        let localData = null;
+        if (typeof window !== 'undefined') {
+            try {
+                localData = localStorage.getItem('ms_data');
+                if (!localData) {
+                    const legacyData = localStorage.getItem('copyrent_data');
+                    if (legacyData) {
+                        localStorage.setItem('ms_data', legacyData);
+                        localStorage.removeItem('copyrent_data'); // Clean up legacy key after migration
+                        localData = legacyData;
+                    }
+                }
+            } catch (e) {}
         }
         
         if (localData) {
@@ -853,9 +892,13 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             setCobranzaConfig(defaultCobranzaConfig);
         }
 
-        const savedSyncTime = localStorage.getItem('ms_last_sync_time');
-        if (savedSyncTime) {
-            setLastSyncTime(new Date(savedSyncTime));
+        if (typeof window !== 'undefined') {
+            try {
+                const savedSyncTime = localStorage.getItem('ms_last_sync_time');
+                if (savedSyncTime) {
+                    setLastSyncTime(new Date(savedSyncTime));
+                }
+            } catch (e) {}
         }
 
         const initialQueue = getStoredQueue();
