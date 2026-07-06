@@ -250,6 +250,13 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     useEffect(() => {
         async function fetchMe() {
+            if (typeof window !== 'undefined') {
+                const path = window.location.pathname;
+                if (path.startsWith('/login') || path.startsWith('/forgot-password') || path.startsWith('/reset-password')) {
+                    setCurrentUser(null);
+                    return;
+                }
+            }
             try {
                 const res = await fetch('/api/auth/me');
                 if (res.ok) {
