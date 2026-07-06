@@ -26,6 +26,16 @@ export async function GET(
     }
 
     const record = records[0];
+    
+    // Check expiration (30 days limit)
+    const createdAt = new Date(record.createdAt);
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    if (createdAt < thirtyDaysAgo) {
+      return new NextResponse('El archivo PDF ha expirado.', { status: 404 });
+    }
+
     const pdfBuffer = Buffer.from(record.pdfBase64, 'base64');
 
     // Devolver el archivo PDF con las cabeceras HTTP correctas

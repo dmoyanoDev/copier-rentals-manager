@@ -10,8 +10,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Faltan parámetros requeridos (pdfBase64 o filename).' }, { status: 400 });
     }
 
-    // Generar un ID único (slug) para el PDF compartido
-    const id = 'pdf-' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+    // Generar un ID único (slug) para el PDF compartido usando UUID seguro
+    const id = crypto.randomUUID();
 
     // Guardar en la base de datos Turso
     await db.insert(sharedPdfs).values({

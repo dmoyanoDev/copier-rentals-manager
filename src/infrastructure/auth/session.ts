@@ -4,9 +4,12 @@ import { sessions } from '@/infrastructure/db/schema/sessions';
 import { users } from '@/infrastructure/db/schema/users';
 import { eq, and, isNull } from 'drizzle-orm';
 
-import { UserSession, decryptSession, encryptSession } from '@/lib/auth/sessionDecrypt';
+import { UserSession, decryptSession, encryptSession, isMasterUser } from '@/lib/auth/sessionDecrypt';
 
 const SESSION_COOKIE_NAME = 'ms_session';
+const SESSION_DURATION_DAYS = 14;
+const SESSION_DURATION_MS = SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000;
+const SESSION_RENEWAL_MS = 7 * 24 * 60 * 60 * 1000; // Renew if less than 7 days left
 
 function generateSessionId(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(20));
@@ -22,7 +25,7 @@ export async function createSession(
   userAgent: string = ''
 ) {
   const sessionId = generateSessionId();
-  const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 1 año en base de datos
+  const expiresAt = new Date(Date.now() + SESSION_DURATION_MS); // 14 días en base de datos
 
   // 1. Persistir en la base de datos Turso
   await db.insert(sessions).values({
@@ -39,7 +42,7 @@ export async function createSession(
     username: user.username,
     fullname: user.fullname,
     role: user.role,
-    isMaster: user.isMaster || user.role === 'master' || user.id === 'user-admin',
+    isMaster: isMasterUser(user),
     sessionId,
     expiresAt: expiresAt.getTime(),
   };
@@ -63,7 +66,7 @@ export async function createSession(
     secure: isSecure,
     sameSite: 'lax',
     path: '/',
-    maxAge: 365 * 24 * 60 * 60, // 1 year — matches the DB session TTL
+    maxAge: SESSION_DURATION_DAYS * 24 * 60 * 60, // 14 días
   });
 
   return sessionId;
@@ -71,6 +74,7 @@ export async function createSession(
 
 /**
  * Recupera, desencripta y valida la sesión contra la base de datos.
+ * Implementa renovación automática ("sliding expiration") cuando queda menos de la mitad del tiempo.
  */
 export async function getSession(requestOrCookieValue?: Request | string): Promise<UserSession | null> {
   let token: string | undefined;
@@ -129,13 +133,71 @@ export async function getSession(requestOrCookieValue?: Request | string): Promi
       return null;
     }
 
-    // Actualizar lastSeenAt de forma asíncrona
-    db.update(sessions)
-      .set({ lastSeenAt: new Date() })
-      .where(eq(sessions.id, session.sessionId))
-      .catch(err => console.error('Error al actualizar lastSeenAt:', err));
+    // 4. Sliding Expiration (Renovación automática) si queda menos de la mitad del tiempo (7 días)
+    const now = Date.now();
+    const remainingTime = session.expiresAt - now;
 
-    return session;
+    if (remainingTime < SESSION_RENEWAL_MS) {
+      const newExpiresAt = new Date(now + SESSION_DURATION_MS);
+      
+      // Actualizar en base de datos
+      db.update(sessions)
+        .set({ expiresAt: newExpiresAt, lastSeenAt: new Date() })
+        .where(eq(sessions.id, session.sessionId))
+        .catch(err => console.error('Error al renovar expiración de sesión en BD:', err));
+
+      // Re-generar cookie con nueva expiración
+      const updatedPayload: UserSession = {
+        ...session,
+        role: match.dbUser.role,
+        isMaster: isMasterUser(match.dbUser),
+        expiresAt: newExpiresAt.getTime(),
+      };
+
+      try {
+        const encrypted = await encryptSession(updatedPayload);
+        const cookieStore = await cookies();
+
+        let isSecure = false;
+        try {
+          const headersList = await headers();
+          const proto = headersList.get('x-forwarded-proto') || '';
+          const host = headersList.get('host') || '';
+          isSecure = proto === 'https' || (host.includes('localhost') === false && process.env.NODE_ENV === 'production');
+        } catch (e) {
+          isSecure = process.env.NODE_ENV === 'production';
+        }
+
+        cookieStore.set(SESSION_COOKIE_NAME, encrypted, {
+          httpOnly: true,
+          secure: isSecure,
+          sameSite: 'lax',
+          path: '/',
+          maxAge: SESSION_DURATION_DAYS * 24 * 60 * 60,
+        });
+      } catch (cookieErr) {
+        console.error('Error al renovar cookie de sesión (puede no estar en request context):', cookieErr);
+      }
+
+      return {
+        ...session,
+        role: match.dbUser.role,
+        isMaster: isMasterUser(match.dbUser),
+        expiresAt: newExpiresAt.getTime(),
+      };
+    } else {
+      // Solo actualizar lastSeenAt
+      db.update(sessions)
+        .set({ lastSeenAt: new Date() })
+        .where(eq(sessions.id, session.sessionId))
+        .catch(err => console.error('Error al actualizar lastSeenAt:', err));
+
+      return {
+        ...session,
+        role: match.dbUser.role,
+        isMaster: isMasterUser(match.dbUser),
+      };
+    }
   } catch (error) {
     console.error('Error en base de datos al validar sesión:', error);
     // Si la base de datos no está disponible, mantener offline-fallback de la cookie encriptada

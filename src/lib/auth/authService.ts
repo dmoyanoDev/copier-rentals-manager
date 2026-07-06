@@ -1,5 +1,6 @@
 import { getSession } from '@/infrastructure/auth/session';
 import { redirect } from 'next/navigation';
+import { isMasterUser } from '@/lib/auth/sessionDecrypt';
 
 export class AuthError extends Error {
   constructor(public code: 'UNAUTHORIZED' | 'FORBIDDEN', message: string) {
@@ -27,22 +28,21 @@ export async function verifyRole(allowedRoles: string[], request?: Request): Pro
   if (!session) {
     throw new AuthError('UNAUTHORIZED', 'Usuario no autenticado.');
   }
-  if (!allowedRoles.includes(session.role) && session.role !== 'master') {
+  if (!allowedRoles.includes(session.role) && !isMasterUser(session)) {
     throw new AuthError('FORBIDDEN', 'No tiene permisos suficientes para realizar esta acción.');
   }
   return session;
 }
 
 /**
- * Valida específicamente que el usuario autenticado sea el máster "dmoyano" con rol "master".
+ * Valida específicamente que el usuario autenticado sea un usuario maestro.
  */
 export async function verifyMaster(request?: Request): Promise<{ userId: string; username: string; fullname: string; role: string; isMaster?: boolean }> {
   const session = await getSession(request);
   if (!session) {
     throw new AuthError('UNAUTHORIZED', 'Usuario no autenticado.');
   }
-  const isMaster = session.isMaster === true || session.role === 'master' || session.userId === 'user-admin';
-  if (!isMaster) {
+  if (!isMasterUser(session)) {
     throw new AuthError('FORBIDDEN', 'Acceso denegado: Se requiere el usuario Maestro.');
   }
   return session;
@@ -68,8 +68,7 @@ export async function requireMasterPage() {
   if (!session) {
     redirect('/login');
   }
-  const isMaster = session.isMaster === true || session.role === 'master' || session.userId === 'user-admin';
-  if (!isMaster) {
+  if (!isMasterUser(session)) {
     redirect('/');
   }
   return session;

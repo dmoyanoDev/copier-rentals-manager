@@ -1,5 +1,15 @@
-const SECRET_KEY = process.env.SESSION_SECRET || 'secret-key-that-must-be-32-chars-long-!!';
-const FALLBACK_KEY = 'secret-key-that-must-be-32-chars-long-!!';
+let SECRET_KEY: string = process.env.SESSION_SECRET || '';
+
+if (!SECRET_KEY) {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('FATAL: La variable de entorno SESSION_SECRET no está definida en producción. La aplicación no iniciará por razones de seguridad.');
+  } else {
+    console.warn('WARNING: SESSION_SECRET no está definida. Generando clave efímera para desarrollo/testing.');
+    const array = new Uint8Array(32);
+    crypto.getRandomValues(array);
+    SECRET_KEY = Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+}
 
 export interface UserSession {
   userId: string;
@@ -9,6 +19,11 @@ export interface UserSession {
   isMaster?: boolean;
   sessionId: string;
   expiresAt: number;
+}
+
+export function isMasterUser(user?: { role: string; isMaster?: boolean | number | null } | null): boolean {
+  if (!user) return false;
+  return user.role === 'master' || user.isMaster === true || user.isMaster === 1;
 }
 
 // Convert key string to CryptoKey for Web Crypto API (exactly 256 bits)
@@ -62,30 +77,14 @@ export async function decryptSession(encryptedText: string): Promise<UserSession
     const iv = new Uint8Array(ivHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
     const encrypted = new Uint8Array(encryptedHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
 
-    // 1. Intentar desencriptar con la clave configurada
-    try {
-      const key = await getCryptoKey(SECRET_KEY);
-      const decrypted = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv },
-        key,
-        encrypted
-      );
-      const dec = new TextDecoder();
-      return JSON.parse(dec.decode(decrypted));
-    } catch (e1) {
-      // 2. Fallback a la clave por defecto si falla (por desajuste Edge/Node)
-      if (SECRET_KEY !== FALLBACK_KEY) {
-        const fallbackKey = await getCryptoKey(FALLBACK_KEY);
-        const decrypted = await crypto.subtle.decrypt(
-          { name: 'AES-GCM', iv },
-          fallbackKey,
-          encrypted
-        );
-        const dec = new TextDecoder();
-        return JSON.parse(dec.decode(decrypted));
-      }
-      throw e1;
-    }
+    const key = await getCryptoKey(SECRET_KEY);
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv },
+      key,
+      encrypted
+    );
+    const dec = new TextDecoder();
+    return JSON.parse(dec.decode(decrypted));
   } catch (e) {
     return null;
   }

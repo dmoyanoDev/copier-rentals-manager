@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/infrastructure/db/client';
 import { users } from '@/infrastructure/db/schema/users';
 import { passwordResetTokens } from '@/infrastructure/db/schema/passwordResetTokens';
-import { eq, or } from 'drizzle-orm';
+import { eq, or, and, gt } from 'drizzle-orm';
 import { webcrypto } from 'crypto';
 import nodemailer from 'nodemailer';
 import { logSecurityEvent } from '@/lib/security/audit';
@@ -29,8 +29,31 @@ export async function POST(request: Request) {
 
     const ip = request.headers.get('x-forwarded-for') || '127.0.0.1';
     const userAgent = request.headers.get('user-agent') || 'Unknown';
+    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
 
-    // 1. Buscar usuario
+    // 1. IP Rate Limiting Check
+    const recentIpTokens = await db
+      .select()
+      .from(passwordResetTokens)
+      .where(
+        and(
+          eq(passwordResetTokens.requestedIp, ip),
+          gt(passwordResetTokens.createdAt, fifteenMinutesAgo)
+        )
+      );
+
+    if (recentIpTokens.length >= 5) {
+      await logSecurityEvent(
+        'forbidden_access',
+        identity,
+        `Solicitud bloqueada por límite de tasa de IP (Rate Limit). IP: ${ip}`
+      );
+      return NextResponse.json({
+        error: 'Demasiadas solicitudes de recuperación desde esta dirección IP. Por favor, espere 15 minutos.'
+      }, { status: 429 });
+    }
+
+    // 2. Buscar usuario
     const results = await db
       .select()
       .from(users)
@@ -52,6 +75,28 @@ export async function POST(request: Request) {
         `Solicitud de recuperación para usuario inexistente. IP: ${ip}`
       );
       return NextResponse.json(genericResponse);
+    }
+
+    // 3. User Rate Limiting Check
+    const recentTokens = await db
+      .select()
+      .from(passwordResetTokens)
+      .where(
+        and(
+          eq(passwordResetTokens.userId, user.id),
+          gt(passwordResetTokens.createdAt, fifteenMinutesAgo)
+        )
+      );
+
+    if (recentTokens.length >= 3) {
+      await logSecurityEvent(
+        'forbidden_access',
+        user.username,
+        `Solicitud bloqueada por límite de tasa (Rate Limit). IP: ${ip}`
+      );
+      return NextResponse.json({
+        error: 'Demasiadas solicitudes de recuperación de contraseña. Por favor, espere 15 minutos.'
+      }, { status: 429 });
     }
 
     // 2. Generar token de recuperación seguro

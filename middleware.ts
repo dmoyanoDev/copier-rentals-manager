@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { decryptSession } from './src/lib/auth/sessionDecrypt';
+import { decryptSession, isMasterUser } from './src/lib/auth/sessionDecrypt';
 
 const SESSION_COOKIE_NAME = 'ms_session';
 
@@ -17,15 +17,17 @@ export async function middleware(request: NextRequest) {
   const session = token ? await decryptSession(token) : null;
   console.log(`[Middleware] Session resolved:`, session);
 
-  // Rutas públicas de autenticación
+  // Rutas públicas de autenticación y de visualización de PDF compartidos
   const isAuthRoute =
     pathname.startsWith('/login') ||
     pathname.startsWith('/forgot-password') ||
     pathname.startsWith('/reset-password');
 
-  // Si no está autenticado y no está en una ruta de auth
+  const isPublicPdfRoute = pathname.startsWith('/api/pdf/');
+
+  // Si no está autenticado y no está en una ruta pública
   if (!session) {
-    if (!isAuthRoute) {
+    if (!isAuthRoute && !isPublicPdfRoute) {
       if (pathname.startsWith('/api/')) {
         return NextResponse.json({
           ok: false,
@@ -44,12 +46,24 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(dashboardUrl);
   }
 
+  // Protección de roles (RBAC) para técnicos
+  if (session.role === 'tecnico') {
+    // Los técnicos solo pueden acceder a: Dashboard (/), Soporte Técnico (/tecnica) y Consulta de Máquinas (/maquinas)
+    const restrictedPaths = ['/lecturas', '/abonos', '/usuarios', '/clientes', '/historial', '/presupuestos', '/respaldo', '/alquileres'];
+    const isRestricted = restrictedPaths.some(path => pathname.startsWith(path));
+    
+    if (isRestricted) {
+      const accessDeniedUrl = new URL('/', request.url);
+      return NextResponse.redirect(accessDeniedUrl);
+    }
+  }
+
   // Protección exclusiva para el usuario Maestro
   const isMasterRoute = pathname.startsWith('/usuarios') || pathname.startsWith('/respaldo');
   const isMasterApiRoute = pathname.startsWith('/api/users') || pathname.startsWith('/api/backup') || pathname.startsWith('/api/export') || pathname.startsWith('/api/import');
 
   if (isMasterRoute || isMasterApiRoute) {
-    const isMaster = session.isMaster === true || session.role === 'master' || session.userId === 'user-admin';
+    const isMaster = isMasterUser(session);
     if (!isMaster) {
       if (isMasterApiRoute || pathname.startsWith('/api/')) {
         return NextResponse.json({
@@ -76,6 +90,6 @@ export const config = {
      * - logo.png (public logo)
      * - public assets
      */
-    '/((?!_next/static|_next/image|favicon.ico|logo.png|api/auth/login|api/auth/forgot-password|api/auth/reset-password).*)',
+    '/((?!_next/static|_next/image|favicon.ico|logo.png|api/auth/login|api/auth/forgot-password|api/auth/reset-password|api/pdf).*)',
   ],
 };
