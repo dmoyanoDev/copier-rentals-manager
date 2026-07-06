@@ -5,6 +5,68 @@ const dateSchema = z.union([z.string(), z.number(), z.date()]).transform(val => 
   return isNaN(d.getTime()) ? new Date() : d;
 });
 
+// Helper Schemas replacing z.any()
+export const historyEntrySchema = z.object({
+  date: z.string(),
+  time: z.string(),
+  action: z.string(),
+  user: z.string(),
+});
+
+export const budgetClientSnapshotSchema = z.object({
+  nombreRazonSocial: z.string(),
+  documento: z.string().optional().nullable(),
+  cuitCuil: z.string().optional().nullable(),
+  telefono: z.string().default(''),
+  email: z.string().default(''),
+  domicilio: z.string().default(''),
+  localidad: z.string().optional().nullable(),
+  provincia: z.string().optional().nullable(),
+  contacto: z.string().optional().nullable(),
+});
+
+export const budgetItemSchema = z.object({
+  id: z.string(),
+  categoria: z.enum(['ALQUILER', 'INSUMO', 'REPUESTO', 'SERVICIO', 'VENTA', 'OTROS', 'ABONO']),
+  descripcion: z.string(),
+  cantidad: z.number().default(1),
+  precioUnitario: z.number().default(0),
+  subtotal: z.number().default(0),
+  descuento: z.number().optional().nullable(),
+  origen: z.enum(['manual', 'abono', 'maquina', 'servicio']).optional().nullable(),
+  origenId: z.string().optional().nullable(),
+  nombre: z.string().optional().nullable(),
+  metadata: z.string().optional().nullable(),
+});
+
+export const budgetMachineConfigSchema = z.object({
+  id: z.string().optional().nullable(),
+  machinePresetId: z.string().optional().nullable(),
+  machineName: z.string(),
+  machineBrand: z.string(),
+  machineModel: z.string(),
+  technicalSummary: z.string().default(''),
+  editableSpecsText: z.string().default(''),
+  planNombre: z.string(),
+  copiasIncluidas: z.number().default(0),
+  abonoBase: z.number().default(0),
+  copiaExcedente: z.number().default(0),
+  cantidad: z.number().default(1),
+  subtotal: z.number().default(0),
+});
+
+export const budgetSendLogSchema = z.object({
+  id: z.string(),
+  presupuestoId: z.string(),
+  fecha: z.string(),
+  canal: z.enum(['email', 'whatsapp']),
+  destinatario: z.string(),
+  asunto: z.string().optional().nullable(),
+  mensaje: z.string(),
+  exitoso: z.boolean().default(true),
+});
+
+// Entity Sync Schemas
 export const clientSyncSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -13,6 +75,9 @@ export const clientSyncSchema = z.object({
   address: z.string().nullable().optional(),
   cuit: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
+  taxCategory: z.enum(['Responsable Inscripto', 'Monotributista', 'Exento']).default('Monotributista'),
+  debt: z.number().default(0),
+  active: z.boolean().default(true),
   createdAt: dateSchema.optional(),
   updatedAt: dateSchema.optional(),
 });
@@ -72,7 +137,7 @@ export const readingSyncSchema = z.object({
   debitNote: z.number().default(0),
   debitNoteReason: z.string().nullable().optional(),
   invoiceFile: z.string().nullable().optional(),
-  history: z.array(z.any()).default([]),
+  history: z.array(historyEntrySchema).default([]),
   createdAt: dateSchema.optional(),
   updatedAt: dateSchema.optional(),
 });
@@ -105,7 +170,7 @@ export const ticketSyncSchema = z.object({
   slaDate: dateSchema.nullable().optional(),
   resolvedAt: dateSchema.nullable().optional(),
   closedAt: dateSchema.nullable().optional(),
-  history: z.array(z.any()).default([]),
+  history: z.array(historyEntrySchema).default([]),
   createdAt: dateSchema.optional(),
   updatedAt: dateSchema.optional(),
 });
@@ -119,7 +184,7 @@ export const rentalSyncSchema = z.object({
   endDate: z.string().nullable().optional(),
   status: z.string().default('activo'),
   observations: z.string().nullable().optional(),
-  history: z.array(z.any()).default([]),
+  history: z.array(historyEntrySchema).default([]),
   createdAt: dateSchema.optional(),
   updatedAt: dateSchema.optional(),
 });
@@ -152,10 +217,10 @@ export const budgetSyncSchema = z.object({
   requirementsText: z.string().default(''),
   conditionsText: z.string().default(''),
   footerText: z.string().default(''),
-  clientSnapshot: z.any(),
-  items: z.array(z.any()).default([]),
-  machines: z.array(z.any()).default([]),
-  sendLogs: z.array(z.any()).default([]),
+  clientSnapshot: budgetClientSnapshotSchema,
+  items: z.array(budgetItemSchema).default([]),
+  machines: z.array(budgetMachineConfigSchema).default([]),
+  sendLogs: z.array(budgetSendLogSchema).default([]),
   createdAt: dateSchema.optional(),
   updatedAt: dateSchema.optional(),
   issuedAt: dateSchema.nullable().optional(),

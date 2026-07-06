@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import {
     Client,
     Machine,
@@ -20,6 +20,8 @@ import {
 import { Budget, BudgetTemplate, MachinePreset } from '@/domain/budget/types';
 import { BRANDING } from '@/config/branding';
 import { defaultMachinePresets, defaultBudgetTemplates } from '@/domain/budget/presets';
+import type { SyncQueueItem, SyncEntityType } from '@/domain/types';
+import { MAX_SYNC_QUEUE_SIZE, MAX_SYNC_RETRIES, SYNC_DEBOUNCE_MS, SYNC_POLL_INTERVAL_MS } from '@/domain/types';
 
 // Extend Client interface locally
 export interface LocalClient extends Client {
@@ -142,8 +144,8 @@ interface ManagementContextType {
     syncError: string | null;
     lastSyncTime: Date | null;
     syncFromDatabase: () => Promise<void>;
-    syncQueue: any[];
-    processSyncQueue: (passedQueue?: any[]) => Promise<void>;
+    syncQueue: SyncQueueItem[];
+    processSyncQueue: (passedQueue?: SyncQueueItem[]) => Promise<void>;
 }
 
 const trackDeletions = (newState: any) => {
@@ -272,7 +274,7 @@ const mergeData = (local: any, server: any, lastSyncTime: Date | null, isIncreme
                 } else {
                     const localTime = localItem.updatedAt || localItem.createdAt
                         ? new Date(localItem.updatedAt || localItem.createdAt).getTime()
-                        : new Date().getTime(); // Treat as new local creation if timestamp is missing!
+                        : 0; // FIX: Items without timestamps are NOT treated as new — default to 0 (oldest)
                     
                     if (localTime > lastSync) {
                         mergedList.push(localItem);
@@ -282,7 +284,7 @@ const mergeData = (local: any, server: any, lastSyncTime: Date | null, isIncreme
                 // Exists in both, compare timestamps
                 const localTime = localItem.updatedAt || localItem.createdAt
                     ? new Date(localItem.updatedAt || localItem.createdAt).getTime()
-                    : new Date().getTime(); // Treat as modified if timestamp is missing!
+                    : 0; // FIX: Items without timestamps default to 0 (oldest)
                 const serverTime = new Date(serverItem.updatedAt || serverItem.createdAt || 0).getTime();
                 if (localTime >= serverTime) {
                     mergedList.push(localItem);
@@ -333,13 +335,37 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncError, setSyncError] = useState<string | null>(null);
     const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
-    const [syncQueue, setSyncQueue] = useState<any[]>([]);
+    const [syncQueue, setSyncQueue] = useState<SyncQueueItem[]>([]);
 
     const isSyncingRef = useRef(false);
-    const isInitialLoadRef = useRef(true);
+    const isInitialLoadDoneRef = useRef(false);
     const isProcessingQueueRef = useRef(false);
+    const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const abortControllerRef = useRef<AbortController | null>(null);
 
-    const getStoredQueue = (): any[] => {
+    // Use refs to always have current state values available to callbacks without stale closures
+    const stateRef = useRef({
+        clients: [] as LocalClient[],
+        machines: [] as Machine[],
+        readings: [] as Reading[],
+        tickets: [] as Ticket[],
+        abonos: [] as Abono[],
+        users: [] as User[],
+        rentals: [] as Rental[],
+        budgets: [] as Budget[],
+        currentUser: null as User | null,
+        lastSyncTime: null as Date | null,
+    });
+
+    // Keep stateRef current
+    useEffect(() => {
+        stateRef.current = {
+            clients, machines, readings, tickets, abonos, users, rentals, budgets,
+            currentUser, lastSyncTime,
+        };
+    });
+
+    const getStoredQueue = (): SyncQueueItem[] => {
         if (typeof window === 'undefined') return [];
         try {
             const raw = localStorage.getItem('ms_sync_queue');
@@ -349,16 +375,25 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
     };
 
-    const saveStoredQueue = (queue: any[]) => {
+    const saveStoredQueue = (queue: SyncQueueItem[]) => {
         if (typeof window === 'undefined') return;
-        localStorage.setItem('ms_sync_queue', JSON.stringify(queue));
+        try {
+            localStorage.setItem('ms_sync_queue', JSON.stringify(queue));
+        } catch (e) {
+            // localStorage full — evict oldest synced items and retry
+            console.error("localStorage quota exceeded, evicting old queue items:", e);
+            const trimmed = queue.filter(item => item.status !== 'synced').slice(-MAX_SYNC_QUEUE_SIZE);
+            localStorage.setItem('ms_sync_queue', JSON.stringify(trimmed));
+        }
     };
 
-    const processSyncQueue = async (passedQueue?: any[]) => {
+    const processSyncQueue = useCallback(async (passedQueue?: SyncQueueItem[]) => {
         if (isProcessingQueueRef.current) return;
         
         const queueToProcess = passedQueue || getStoredQueue();
-        const pendingItems = queueToProcess.filter((item: any) => item.status === 'pending' || item.status === 'failed');
+        const pendingItems = queueToProcess.filter((item) => 
+            (item.status === 'pending' || item.status === 'failed') && item.retryCount < MAX_SYNC_RETRIES
+        );
         
         if (pendingItems.length === 0) return;
         
@@ -366,9 +401,9 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setSyncError(null);
         
         // Update items to 'syncing' status
-        const updatedQueue = queueToProcess.map((item: any) => {
-            if (item.status === 'pending' || item.status === 'failed') {
-                return { ...item, status: 'syncing' };
+        const updatedQueue = queueToProcess.map((item) => {
+            if ((item.status === 'pending' || item.status === 'failed') && item.retryCount < MAX_SYNC_RETRIES) {
+                return { ...item, status: 'syncing' as const };
             }
             return item;
         });
@@ -401,32 +436,35 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             if (data.success && Array.isArray(data.results)) {
                 const resultsMap = new Map<string, any>(data.results.map((r: any) => [r.id, r]));
                 
-                const finalQueue = getStoredQueue().map((item: any) => {
+                const finalQueue = getStoredQueue().map((item) => {
                     const result: any = resultsMap.get(item.id);
                     if (result) {
                         if (result.status === 'synced') {
-                            return { ...item, status: 'synced' };
+                            return { ...item, status: 'synced' as const };
                         } else {
                             return {
                                 ...item,
-                                status: 'failed',
+                                status: 'failed' as const,
                                 retryCount: item.retryCount + 1
                             };
                         }
                     }
                     return item;
-                }).filter((item: any) => item.status !== 'synced');
+                }).filter((item) => item.status !== 'synced');
+
+                // Enforce queue size limit
+                const trimmedQueue = finalQueue.slice(-MAX_SYNC_QUEUE_SIZE);
                 
-                saveStoredQueue(finalQueue);
-                setSyncQueue(finalQueue);
+                saveStoredQueue(trimmedQueue);
+                setSyncQueue(trimmedQueue);
             } else {
                 throw new Error("Invalid sync response format");
             }
         } catch (err: any) {
             console.error("Error processing sync queue:", err);
-            const revertedQueue = getStoredQueue().map((item: any) => {
+            const revertedQueue = getStoredQueue().map((item) => {
                 if (item.status === 'syncing') {
-                    return { ...item, status: 'failed', retryCount: item.retryCount + 1 };
+                    return { ...item, status: 'failed' as const, retryCount: item.retryCount + 1 };
                 }
                 return item;
             });
@@ -436,11 +474,11 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         } finally {
             isProcessingQueueRef.current = false;
         }
-    };
+    }, []);
 
-    // Fetch snapshot from backend database
-    const syncFromDatabase = async (forceUser?: User | null) => {
-        const activeUser = forceUser !== undefined ? forceUser : currentUser;
+    // Fetch snapshot from backend database — uses stateRef to avoid stale closures
+    const syncFromDatabase = useCallback(async (forceUser?: User | null) => {
+        const activeUser = forceUser !== undefined ? forceUser : stateRef.current.currentUser;
         if (!activeUser) {
             return;
         }
@@ -452,16 +490,17 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             }
         }
 
+        // Prevent concurrent syncs
+        if (isSyncingRef.current) return;
+
         // 1. Process pending items first if there are any to maintain strict sequential order
         const currentQueue = getStoredQueue();
-        const pendingItems = currentQueue.filter((item: any) => item.status === 'pending' || item.status === 'failed');
+        const pendingItems = currentQueue.filter((item) => item.status === 'pending' || item.status === 'failed');
         if (pendingItems.length > 0) {
             await processSyncQueue(currentQueue);
             const reReadQueue = getStoredQueue();
-            const reReadPending = reReadQueue.filter((item: any) => item.status === 'pending' || item.status === 'failed');
+            const reReadPending = reReadQueue.filter((item) => item.status === 'pending' || item.status === 'failed');
             if (reReadPending.length > 0) {
-                isSyncingRef.current = false;
-                setIsSyncing(false);
                 return;
             }
         }
@@ -469,7 +508,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         isSyncingRef.current = true;
         setIsSyncing(true);
         try {
-            const storedLastSync = lastSyncTime || (typeof window !== 'undefined' && localStorage.getItem('ms_last_sync_time') ? new Date(localStorage.getItem('ms_last_sync_time')!) : null);
+            const storedLastSync = stateRef.current.lastSyncTime || (typeof window !== 'undefined' && localStorage.getItem('ms_last_sync_time') ? new Date(localStorage.getItem('ms_last_sync_time')!) : null);
             const sinceQuery = storedLastSync ? `&since=${encodeURIComponent(storedLastSync.toISOString())}` : '';
             const response = await fetch(`/api/backup?user=system${sinceQuery}`);
             const isIncremental = !!sinceQuery;
@@ -485,17 +524,18 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     (parsed.machines && parsed.machines.length > 0);
                     
                 if (hasServerData) {
+                    // FIX: Use stateRef to get current state, not stale closure values
                     let currentLocalState: any = {
-                        clients: clients || [],
-                        machines: machines || [],
-                        readings: readings || [],
-                        tickets: tickets || [],
-                        abonos: abonos || [],
-                        users: users || [],
-                        rentals: rentals || [],
-                        budgets: budgets || []
+                        clients: stateRef.current.clients || [],
+                        machines: stateRef.current.machines || [],
+                        readings: stateRef.current.readings || [],
+                        tickets: stateRef.current.tickets || [],
+                        abonos: stateRef.current.abonos || [],
+                        users: stateRef.current.users || [],
+                        rentals: stateRef.current.rentals || [],
+                        budgets: stateRef.current.budgets || []
                     };
-                    if (isInitialLoadRef.current && typeof window !== 'undefined') {
+                    if (!isInitialLoadDoneRef.current && typeof window !== 'undefined') {
                         try {
                             const raw = localStorage.getItem('ms_data');
                             if (raw) {
@@ -516,7 +556,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         }
                     }
 
-                    const merged = mergeData(currentLocalState, parsed, lastSyncTime, isIncremental);
+                    const merged = mergeData(currentLocalState, parsed, stateRef.current.lastSyncTime, isIncremental);
 
                     setClients(merged.clients || []);
                     setMachines(merged.machines || []);
@@ -626,9 +666,9 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         } catch (e) {}
 
                         if (currentLocalState.clients.length > 0 || currentLocalState.machines.length > 0 || currentLocalState.abonos.length > 0) {
-                            const initialQueue: any[] = [];
+                            const initialQueue: SyncQueueItem[] = [];
                             const nowStr = new Date().toISOString();
-                            const tables = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets'] as const;
+                            const tables: SyncEntityType[] = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets'];
 
                             for (const table of tables) {
                                 const list = currentLocalState[table] || [];
@@ -650,12 +690,12 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                             }
 
                             if (initialQueue.length > 0) {
-                                const currentQueue = getStoredQueue();
-                                const existingEntityIds = new Set(currentQueue.map((q: any) => q.entityId));
+                                const currentQueueStored = getStoredQueue();
+                                const existingEntityIds = new Set(currentQueueStored.map((q) => q.entityId));
                                 const itemsToAdd = initialQueue.filter(q => !existingEntityIds.has(q.entityId));
 
                                 if (itemsToAdd.length > 0) {
-                                    const updatedQueue = [...currentQueue, ...itemsToAdd];
+                                    const updatedQueue = [...currentQueueStored, ...itemsToAdd].slice(-MAX_SYNC_QUEUE_SIZE);
                                     saveStoredQueue(updatedQueue);
                                     setSyncQueue(updatedQueue);
                                     processSyncQueue(updatedQueue);
@@ -694,14 +734,16 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             }
         } finally {
             setIsSyncing(false);
-            // Allow state updates to settle before resetting sync ref
-            setTimeout(() => {
-                isSyncingRef.current = false;
-            }, 1000);
+            // FIX: Reset immediately instead of using fragile setTimeout
+            isSyncingRef.current = false;
         }
-    };
+    }, [processSyncQueue]);
 
+    // Initial load effect
     useEffect(() => {
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
         async function fetchMe() {
             if (typeof window !== 'undefined') {
                 const path = window.location.pathname;
@@ -711,7 +753,9 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 }
             }
             try {
-                const res = await fetch('/api/auth/me');
+                const res = await fetch('/api/auth/me', { signal: controller.signal });
+                if (controller.signal.aborted) return;
+
                 if (res.ok) {
                     const parsed = await res.json();
                     if (parsed.authenticated && parsed.user) {
@@ -744,7 +788,8 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         setSyncError("DB_ERROR");
                     }
                 }
-            } catch (err) {
+            } catch (err: any) {
+                if (err.name === 'AbortError') return;
                 console.error('Error al recuperar sesión en ManagementProvider:', err);
                 setCurrentUser(null);
             }
@@ -760,6 +805,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             const legacyData = localStorage.getItem('copyrent_data');
             if (legacyData) {
                 localStorage.setItem('ms_data', legacyData);
+                localStorage.removeItem('copyrent_data'); // Clean up legacy key after migration
                 localData = legacyData;
             }
         }
@@ -767,13 +813,14 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (localData) {
             try {
                 const parsed = JSON.parse(localData);
-                setClients(parsed.clients || mockClients);
-                setMachines(parsed.machines || mockMachines);
-                setReadings(parsed.readings || mockReadings);
-                setTickets(parsed.tickets || mockTickets);
-                setAbonos(parsed.abonos || mockAbonos);
-                setUsers(parsed.users || mockUsers);
-                setRentals(parsed.rentals || mockRentals);
+                // FIX: Use empty arrays as fallback instead of mock data in production
+                setClients(parsed.clients || []);
+                setMachines(parsed.machines || []);
+                setReadings(parsed.readings || []);
+                setTickets(parsed.tickets || []);
+                setAbonos(parsed.abonos || []);
+                setUsers(parsed.users || []);
+                setRentals(parsed.rentals || []);
                 setBudgets(parsed.budgets || []);
                 
                 const loadedTemplates = parsed.templates || [];
@@ -796,17 +843,19 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 console.error(e);
             }
         } else {
-            setClients(mockClients);
-            setMachines(mockMachines);
-            setReadings(mockReadings);
-            setTickets(mockTickets);
-            setAbonos(mockAbonos);
-            setUsers(mockUsers);
-            setRentals(mockRentals);
+            // FIX: Empty state instead of mock data for new installs. 
+            // Data will be populated from the server on sync.
+            setClients([]);
+            setMachines([]);
+            setReadings([]);
+            setTickets([]);
+            setAbonos([]);
+            setUsers([]);
+            setRentals([]);
             setBudgets([]);
             setTemplates(defaultBudgetTemplates);
             setMachinePresets(defaultMachinePresets);
-            setGestiones(defaultGestiones);
+            setGestiones([]);
             setCobranzaConfig(defaultCobranzaConfig);
         }
 
@@ -820,13 +869,20 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
         fetchMe();
 
-        // Release initial load lock after states are populated and settled
-        setTimeout(() => {
-            isInitialLoadRef.current = false;
-        }, 1500);
-    }, []);
+        // FIX: Use a flag instead of setTimeout to mark initial load as complete
+        // The flag is set after the first successful sync or after localStorage is loaded
+        requestAnimationFrame(() => {
+            isInitialLoadDoneRef.current = true;
+        });
 
-    // Re-sync when page refocuses, tab changes, network goes online, or periodically in background (real-time sync)
+        return () => {
+            controller.abort();
+            abortControllerRef.current = null;
+        };
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Re-sync when page refocuses, tab changes, network goes online, or periodically in background
+    // FIX: Uses syncFromDatabase via ref/useCallback to avoid stale closure
     useEffect(() => {
         const handleSyncTrigger = () => {
             syncFromDatabase();
@@ -842,12 +898,12 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         };
         document.addEventListener('visibilitychange', handleVisibilityChange);
 
-        // Setup background polling interval (every 15 seconds) to ensure real-time updates
+        // Setup background polling interval
         const pollInterval = setInterval(() => {
             if (document.visibilityState === 'visible' && !isSyncingRef.current) {
                 syncFromDatabase();
             }
-        }, 15000);
+        }, SYNC_POLL_INTERVAL_MS);
 
         return () => {
             window.removeEventListener('focus', handleSyncTrigger);
@@ -855,78 +911,101 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             clearInterval(pollInterval);
         };
-    }, []);
+    }, [syncFromDatabase]);
 
-    // Save changes to localStorage immediately, and queue incremental changes for remote sync
+    // Save changes to localStorage with debounce, and queue incremental changes for remote sync
     useEffect(() => {
         // Prevent saving if no authenticated user or if the app is during initial load or synchronizing from backend
-        if (!currentUser || isInitialLoadRef.current || isSyncingRef.current) {
+        if (!currentUser || !isInitialLoadDoneRef.current || isSyncingRef.current) {
             return;
         }
         if (clients.length === 0 && budgets.length === 0 && machines.length === 0) {
             return;
         }
 
-        const stateToSave: any = { 
-            clients, 
-            machines, 
-            readings, 
-            tickets, 
-            plans: abonos,
-            abonos,
-            users,
-            rentals,
-            budgets,
-            templates,
-            machinePresets,
-            gestiones,
-            cobranzaConfig
-        };
+        // FIX: Debounce autosave to prevent firing on every keystroke
+        if (autosaveTimerRef.current) {
+            clearTimeout(autosaveTimerRef.current);
+        }
 
-        const oldDataRaw = localStorage.getItem('ms_data');
-        
-        // Sync local storage write
-        localStorage.setItem('ms_data', JSON.stringify(stateToSave));
+        autosaveTimerRef.current = setTimeout(() => {
+            const stateToSave: any = { 
+                clients, 
+                machines, 
+                readings, 
+                tickets, 
+                plans: abonos,
+                abonos,
+                users,
+                rentals,
+                budgets,
+                templates,
+                machinePresets,
+                gestiones,
+                cobranzaConfig
+            };
 
-        if (oldDataRaw) {
-            try {
-                const oldData = JSON.parse(oldDataRaw);
-                const tables = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets'] as const;
-                
-                const newQueueItems: any[] = [];
-                const nowStr = new Date().toISOString();
-                
-                for (const table of tables) {
-                    const oldList = oldData[table] || [];
-                    const newList = stateToSave[table] || [];
-                    const oldMap = new Map(oldList.map((item: any) => [item.id, item]));
-                    const newMap = new Map(newList.map((item: any) => [item.id, item]));
+            const oldDataRaw = localStorage.getItem('ms_data');
+            
+            // Sync local storage write
+            localStorage.setItem('ms_data', JSON.stringify(stateToSave));
+
+            if (oldDataRaw) {
+                try {
+                    const oldData = JSON.parse(oldDataRaw);
+                    const tables: SyncEntityType[] = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets'];
                     
-                    // Check updates and creates
-                    for (const newItem of newList) {
-                        const oldItem = oldMap.get(newItem.id);
-                        if (!oldItem) {
-                            newQueueItems.push({
-                                id: crypto.randomUUID ? crypto.randomUUID() : 'q-' + Math.random().toString(36).substring(2, 9) + '-' + Date.now(),
-                                entityId: newItem.id,
-                                entityType: table,
-                                operation: 'create',
-                                payload: newItem,
-                                updatedAt: newItem.updatedAt || nowStr,
-                                status: 'pending',
-                                retryCount: 0
-                            });
-                        } else {
-                            const newItemCompare = { ...newItem, updatedAt: undefined, createdAt: undefined };
-                            const oldItemCompare = { ...oldItem, updatedAt: undefined, createdAt: undefined };
-                            if (JSON.stringify(newItemCompare) !== JSON.stringify(oldItemCompare)) {
+                    const newQueueItems: SyncQueueItem[] = [];
+                    const nowStr = new Date().toISOString();
+                    
+                    for (const table of tables) {
+                        const oldList = oldData[table] || [];
+                        const newList = stateToSave[table] || [];
+                        const oldMap = new Map(oldList.map((item: any) => [item.id, item]));
+                        const newMap = new Map(newList.map((item: any) => [item.id, item]));
+                        
+                        // Check updates and creates
+                        for (const newItem of newList) {
+                            const oldItem = oldMap.get(newItem.id);
+                            if (!oldItem) {
                                 newQueueItems.push({
                                     id: crypto.randomUUID ? crypto.randomUUID() : 'q-' + Math.random().toString(36).substring(2, 9) + '-' + Date.now(),
                                     entityId: newItem.id,
                                     entityType: table,
-                                    operation: 'update',
+                                    operation: 'create',
                                     payload: newItem,
                                     updatedAt: newItem.updatedAt || nowStr,
+                                    status: 'pending',
+                                    retryCount: 0
+                                });
+                            } else {
+                                const newItemCompare = { ...newItem, updatedAt: undefined, createdAt: undefined };
+                                const oldItemCompare = { ...oldItem, updatedAt: undefined, createdAt: undefined };
+                                if (JSON.stringify(newItemCompare) !== JSON.stringify(oldItemCompare)) {
+                                    newQueueItems.push({
+                                        id: crypto.randomUUID ? crypto.randomUUID() : 'q-' + Math.random().toString(36).substring(2, 9) + '-' + Date.now(),
+                                        entityId: newItem.id,
+                                        entityType: table,
+                                        operation: 'update',
+                                        payload: newItem,
+                                        updatedAt: newItem.updatedAt || nowStr,
+                                        status: 'pending',
+                                        retryCount: 0
+                                    });
+                                }
+                            }
+                        }
+                        
+                        // Check deletes
+                        for (const oldItem of oldList) {
+                            if (!newMap.has(oldItem.id)) {
+                                newQueueItems.push({
+                                    id: crypto.randomUUID ? crypto.randomUUID() : 'q-' + Math.random().toString(36).substring(2, 9) + '-' + Date.now(),
+                                    entityId: oldItem.id,
+                                    entityType: table,
+                                    operation: 'delete',
+                                    payload: oldItem,
+                                    updatedAt: nowStr,
                                     status: 'pending',
                                     retryCount: 0
                                 });
@@ -934,37 +1013,27 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         }
                     }
                     
-                    // Check deletes
-                    for (const oldItem of oldList) {
-                        if (!newMap.has(oldItem.id)) {
-                            newQueueItems.push({
-                                id: crypto.randomUUID ? crypto.randomUUID() : 'q-' + Math.random().toString(36).substring(2, 9) + '-' + Date.now(),
-                                entityId: oldItem.id,
-                                entityType: table,
-                                operation: 'delete',
-                                payload: oldItem,
-                                updatedAt: nowStr,
-                                status: 'pending',
-                                retryCount: 0
-                            });
-                        }
+                    if (newQueueItems.length > 0) {
+                        const currentQueue = getStoredQueue();
+                        const updatedQueue = [...currentQueue, ...newQueueItems].slice(-MAX_SYNC_QUEUE_SIZE);
+                        saveStoredQueue(updatedQueue);
+                        setSyncQueue(updatedQueue);
+                        
+                        // Trigger asynchronous processing
+                        processSyncQueue(updatedQueue);
                     }
+                } catch (e) {
+                    console.error("Error computing sync queue increments:", e);
                 }
-                
-                if (newQueueItems.length > 0) {
-                    const currentQueue = getStoredQueue();
-                    const updatedQueue = [...currentQueue, ...newQueueItems];
-                    saveStoredQueue(updatedQueue);
-                    setSyncQueue(updatedQueue);
-                    
-                    // Trigger asynchronous processing
-                    processSyncQueue(updatedQueue);
-                }
-            } catch (e) {
-                console.error("Error computing sync queue increments:", e);
             }
-        }
-    }, [clients, machines, readings, tickets, abonos, users, rentals, budgets, templates, machinePresets, gestiones, cobranzaConfig]);
+        }, SYNC_DEBOUNCE_MS);
+
+        return () => {
+            if (autosaveTimerRef.current) {
+                clearTimeout(autosaveTimerRef.current);
+            }
+        };
+    }, [clients, machines, readings, tickets, abonos, users, rentals, budgets, templates, machinePresets, gestiones, cobranzaConfig, currentUser, processSyncQueue]);
 
     return (
         <ManagementContext.Provider

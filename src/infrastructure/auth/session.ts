@@ -63,6 +63,7 @@ export async function createSession(
     secure: isSecure,
     sameSite: 'lax',
     path: '/',
+    maxAge: 365 * 24 * 60 * 60, // 1 year — matches the DB session TTL
   });
 
   return sessionId;

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/infrastructure/db/client';
 import { sql, gt } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
+import { getSession } from '@/infrastructure/auth/session';
 
 import { users } from '@/infrastructure/db/schema/users';
 import { clients } from '@/infrastructure/db/schema/clients';
@@ -104,6 +105,18 @@ async function ensureSchemaSynced(db: any) {
       await db.run(sql`ALTER TABLE readings ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0`);
     } catch (e) {}
 
+    // 6. Ensure missing columns in clients exist
+    const clientsColumns = [
+      { name: 'tax_category', type: "TEXT NOT NULL DEFAULT 'Monotributista'" },
+      { name: 'debt', type: 'REAL NOT NULL DEFAULT 0' },
+      { name: 'active', type: 'INTEGER NOT NULL DEFAULT 1' }
+    ];
+    for (const col of clientsColumns) {
+      try {
+        await db.run(sql.raw(`ALTER TABLE clients ADD COLUMN ${col.name} ${col.type}`));
+      } catch (e) {}
+    }
+
     isDbSchemaSynced = true;
     console.log("Database schema auto-sync completed successfully.");
   } catch (err) {
@@ -116,9 +129,14 @@ async function ensureSchemaSynced(db: any) {
  */
 export async function GET(request: Request) {
   try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'Sesión no válida.' }, { status: 401 });
+    }
+
     await ensureSchemaSynced(db);
     const { searchParams } = new URL(request.url);
-    const user = searchParams.get('user') || 'dmoyano';
+    const user = searchParams.get('user') || session.username || 'system';
     const sinceParam = searchParams.get('since');
     const sinceDate = sinceParam ? new Date(sinceParam) : null;
     const isValidSince = sinceDate && !isNaN(sinceDate.getTime());
@@ -176,8 +194,10 @@ export async function GET(request: Request) {
       }
     };
 
-    // Log the backup operation
-    await logServerAudit('datos', 'backup', `Copia de seguridad de base de datos Turso descargada con éxito. Total registros exportados: ${dbClients.length} clientes, ${dbMachines.length} copiadoras.`, user);
+    // Only log audit for manual (non-sync) backups to avoid flooding the audit_logs table
+    if (!isSystemSync) {
+      await logServerAudit('datos', 'backup', `Copia de seguridad de base de datos Turso descargada con éxito. Total registros exportados: ${dbClients.length} clientes, ${dbMachines.length} copiadoras.`, user);
+    }
 
     return new Response(JSON.stringify(backupPayload, null, 2), {
       status: 200,
@@ -198,9 +218,14 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'Sesión no válida.' }, { status: 401 });
+    }
+
     await ensureSchemaSynced(db);
     const { searchParams } = new URL(request.url);
-    const user = searchParams.get('user') || 'dmoyano';
+    const user = session.username || 'system';
     const payload = await request.json();
 
     if (!payload.clients || !payload.machines || !payload.plans || !payload.users) {
@@ -228,9 +253,8 @@ export async function POST(request: Request) {
       if (payload.users?.length) {
         for (const u of payload.users) {
           const hasInvalidPassword = !u.passwordHash || u.passwordHash.length < 10;
-          const finalPasswordHash = (u.id === 'user-admin' && hasInvalidPassword)
-            ? await bcrypt.hash('Jueves2389$', 10)
-            : (u.passwordHash || '');
+          // If the user already has a valid hash, keep it. Never hardcode passwords in source.
+          const finalPasswordHash = hasInvalidPassword ? '' : u.passwordHash;
 
           await tx.insert(users).values({
             id: u.id,
@@ -262,6 +286,9 @@ export async function POST(request: Request) {
             address: c.address || null,
             cuit: c.cuit || null,
             notes: c.notes || null,
+            taxCategory: c.taxCategory || 'Monotributista',
+            debt: Number(c.debt) || 0,
+            active: (c.active === false || c.active === 0) ? false : true,
             createdAt: c.createdAt ? new Date(c.createdAt) : new Date(),
             updatedAt: c.updatedAt ? new Date(c.updatedAt) : new Date()
           });
