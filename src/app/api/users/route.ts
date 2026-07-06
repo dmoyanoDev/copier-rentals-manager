@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   const ip = request.headers.get('x-forwarded-for') || '127.0.0.1';
   try {
     try {
-      await verifyMaster();
+      await verifyMaster(request);
     } catch (e: any) {
       await logSecurityEvent('forbidden_access', 'system', `Intento no autorizado de listar usuarios. IP: ${ip}`);
       const code = e.code === 'FORBIDDEN' ? 'FORBIDDEN' : 'UNAUTHORIZED';
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
   let masterUser;
 
   try {
-    masterUser = await verifyMaster();
+    masterUser = await verifyMaster(request);
   } catch (e: any) {
     await logSecurityEvent('forbidden_access', 'Unknown', `Intento no autorizado de crear usuario. IP: ${ip}`);
     const code = e.code === 'FORBIDDEN' ? 'FORBIDDEN' : 'UNAUTHORIZED';

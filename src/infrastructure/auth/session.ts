@@ -72,8 +72,19 @@ export async function createSession(
 /**
  * Recupera, desencripta y valida la sesión contra la base de datos.
  */
-export async function getSession(cookieValue?: string): Promise<UserSession | null> {
-  let token = cookieValue;
+export async function getSession(requestOrCookieValue?: Request | string): Promise<UserSession | null> {
+  let token: string | undefined;
+
+  if (requestOrCookieValue && typeof requestOrCookieValue !== 'string') {
+    const cookieHeader = requestOrCookieValue.headers.get('cookie') || '';
+    const sessionCookieValue = cookieHeader
+      .split(';')
+      .find(c => c.trim().startsWith(`${SESSION_COOKIE_NAME}=`))
+      ?.split('=')[1];
+    token = sessionCookieValue;
+  } else if (typeof requestOrCookieValue === 'string') {
+    token = requestOrCookieValue;
+  }
 
   if (!token) {
     const cookieStore = await cookies();
@@ -82,13 +93,15 @@ export async function getSession(cookieValue?: string): Promise<UserSession | nu
     token = sessionCookie.value;
   }
 
+  const isCustomToken = !!requestOrCookieValue;
+
   // 1. Desencriptar cookie
   const session = await decryptSession(token);
   if (!session) return null;
 
   // 2. Validar expiración del payload
   if (Date.now() > session.expiresAt) {
-    if (!cookieValue) await deleteSession();
+    if (!isCustomToken) await deleteSession();
     return null;
   }
 
@@ -112,7 +125,7 @@ export async function getSession(cookieValue?: string): Promise<UserSession | nu
 
     const match = results[0];
     if (!match) {
-      if (!cookieValue) await deleteSession();
+      if (!isCustomToken) await deleteSession();
       return null;
     }
 

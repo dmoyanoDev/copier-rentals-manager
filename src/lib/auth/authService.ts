@@ -11,8 +11,8 @@ export class AuthError extends Error {
 /**
  * Verifica si el usuario está autenticado. Retorna la sesión o arroja AuthError('UNAUTHORIZED').
  */
-export async function verifyAuth(): Promise<{ userId: string; username: string; fullname: string; role: string }> {
-  const session = await getSession();
+export async function verifyAuth(request?: Request): Promise<{ userId: string; username: string; fullname: string; role: string }> {
+  const session = await getSession(request);
   if (!session) {
     throw new AuthError('UNAUTHORIZED', 'Usuario no autenticado.');
   }
@@ -22,8 +22,8 @@ export async function verifyAuth(): Promise<{ userId: string; username: string; 
 /**
  * Verifica si el usuario autenticado tiene uno de los roles permitidos.
  */
-export async function verifyRole(allowedRoles: string[]): Promise<{ userId: string; username: string; fullname: string; role: string }> {
-  const session = await getSession();
+export async function verifyRole(allowedRoles: string[], request?: Request): Promise<{ userId: string; username: string; fullname: string; role: string }> {
+  const session = await getSession(request);
   if (!session) {
     throw new AuthError('UNAUTHORIZED', 'Usuario no autenticado.');
   }
@@ -36,8 +36,8 @@ export async function verifyRole(allowedRoles: string[]): Promise<{ userId: stri
 /**
  * Valida específicamente que el usuario autenticado sea el máster "dmoyano" con rol "master".
  */
-export async function verifyMaster(): Promise<{ userId: string; username: string; fullname: string; role: string; isMaster?: boolean }> {
-  const session = await getSession();
+export async function verifyMaster(request?: Request): Promise<{ userId: string; username: string; fullname: string; role: string; isMaster?: boolean }> {
+  const session = await getSession(request);
   if (!session) {
     throw new AuthError('UNAUTHORIZED', 'Usuario no autenticado.');
   }

@@ -8,14 +8,7 @@ import {
     Ticket,
     User,
     Abono,
-    Rental,
-    mockClients,
-    mockMachines,
-    mockReadings,
-    mockTickets,
-    mockUsers,
-    mockAbonos,
-    mockRentals
+    Rental
 } from './mockData';
 import { Budget, BudgetTemplate, MachinePreset } from '@/domain/budget/types';
 import { BRANDING } from '@/config/branding';

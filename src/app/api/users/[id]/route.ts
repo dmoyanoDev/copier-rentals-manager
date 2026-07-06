@@ -13,7 +13,7 @@ export async function PATCH(request: Request, props: { params: Promise<{ id: str
   const ip = request.headers.get('x-forwarded-for') || '127.0.0.1';
 
   try {
-    masterUser = await verifyMaster();
+    masterUser = await verifyMaster(request);
   } catch (e: any) {
     await logSecurityEvent('forbidden_access', 'Unknown', `Intento no autorizado de editar usuario. IP: ${ip}`);
     const code = e.code === 'FORBIDDEN' ? 'FORBIDDEN' : 'UNAUTHORIZED';

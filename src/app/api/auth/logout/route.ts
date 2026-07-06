@@ -4,7 +4,7 @@ import { logSecurityEvent } from '@/lib/security/audit';
 
 export async function POST(request: Request) {
   try {
-    const session = await getSession();
+    const session = await getSession(request);
     const username = session ? session.username : 'Unknown';
 
     await deleteSession();

@@ -5,9 +5,9 @@ import { users } from '@/infrastructure/db/schema/users';
 import { eq, and, ne } from 'drizzle-orm';
 import { logSecurityEvent } from '@/lib/security/audit';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const session = await getSession();
+    const session = await getSession(request);
 
     if (!session) {
       return NextResponse.json({
@@ -62,7 +62,7 @@ export async function PATCH(request: Request) {
   const userAgent = request.headers.get('user-agent') || 'Unknown';
 
   try {
-    const session = await getSession();
+    const session = await getSession(request);
     if (!session) {
       return NextResponse.json({
         ok: false,

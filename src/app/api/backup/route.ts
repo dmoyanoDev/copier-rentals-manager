@@ -129,7 +129,7 @@ async function ensureSchemaSynced(db: any) {
  */
 export async function GET(request: Request) {
   try {
-    const session = await getSession();
+    const session = await getSession(request);
     if (!session) {
       return NextResponse.json({ error: 'Sesión no válida.' }, { status: 401 });
     }
@@ -218,7 +218,7 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
-    const session = await getSession();
+    const session = await getSession(request);
     if (!session) {
       return NextResponse.json({ error: 'Sesión no válida.' }, { status: 401 });
     }
