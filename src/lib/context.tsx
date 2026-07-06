@@ -488,11 +488,15 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
         // 1. Process pending items first if there are any to maintain strict sequential order
         const currentQueue = getStoredQueue();
-        const pendingItems = currentQueue.filter((item) => item.status === 'pending' || item.status === 'failed');
+        const pendingItems = currentQueue.filter((item) => 
+            (item.status === 'pending' || item.status === 'failed') && item.retryCount < MAX_SYNC_RETRIES
+        );
         if (pendingItems.length > 0) {
             await processSyncQueue(currentQueue);
             const reReadQueue = getStoredQueue();
-            const reReadPending = reReadQueue.filter((item) => item.status === 'pending' || item.status === 'failed');
+            const reReadPending = reReadQueue.filter((item) => 
+                (item.status === 'pending' || item.status === 'failed') && item.retryCount < MAX_SYNC_RETRIES
+            );
             if (reReadPending.length > 0) {
                 return;
             }
