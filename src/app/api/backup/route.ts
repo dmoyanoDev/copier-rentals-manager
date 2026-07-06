@@ -139,19 +139,19 @@ export async function POST(request: Request) {
         for (const u of payload.users) {
           await tx.insert(users).values({
             id: u.id,
-            username: u.username,
-            fullname: u.fullname,
-            email: u.email,
-            passwordHash: u.passwordHash,
-            role: u.role,
-            phone: u.phone,
-            whatsapp: u.whatsapp,
-            zone: u.zone,
-            specialty: u.specialty,
-            availability: u.availability,
-            active: u.active ?? true,
-            workHours: u.workHours,
-            internalNotes: u.internalNotes
+            username: u.username || 'user-' + Math.random().toString(36).substring(2, 6),
+            fullname: u.fullname || 'Usuario',
+            email: u.email || `${u.username || 'user'}@example.com`,
+            passwordHash: u.passwordHash || '',
+            role: u.role || 'administrativo',
+            phone: u.phone || null,
+            whatsapp: u.whatsapp || null,
+            zone: u.zone || null,
+            specialty: u.specialty || null,
+            availability: u.availability || 'Disponible',
+            active: (u.active === false || u.active === 0) ? 0 : 1,
+            workHours: u.workHours || null,
+            internalNotes: u.internalNotes || null
           });
         }
       }
@@ -160,24 +160,25 @@ export async function POST(request: Request) {
         for (const c of payload.clients) {
           await tx.insert(clients).values({
             id: c.id,
-            name: c.name,
-            phone: c.phone,
-            email: c.email,
-            address: c.address,
-            cuit: c.cuit,
-            notes: c.notes,
+            name: c.name || 'Cliente sin nombre',
+            phone: c.phone || null,
+            email: c.email || null,
+            address: c.address || null,
+            cuit: c.cuit || null,
+            notes: c.notes || null,
             createdAt: c.createdAt ? new Date(c.createdAt) : new Date(),
             updatedAt: c.updatedAt ? new Date(c.updatedAt) : new Date()
           });
         }
       }
 
-      if (payload.plans?.length) {
-        for (const p of payload.plans) {
+      const targetPlans = payload.plans || payload.abonos || [];
+      if (targetPlans.length) {
+        for (const p of targetPlans) {
           await tx.insert(plans).values({
             id: p.id,
-            name: p.name,
-            limit: p.limit,
+            name: p.name || 'Plan Comercial',
+            limit: p.limit || 0,
             price: Number(p.price) || 0,
             excessPrice: Number(p.excessPrice) || 0,
             ivaRate: Number(p.ivaRate) || 21,
@@ -190,21 +191,21 @@ export async function POST(request: Request) {
         for (const m of payload.machines) {
           await tx.insert(machines).values({
             id: m.id,
-            brand: m.brand,
-            model: m.model,
-            serial: m.serial,
-            type: m.type,
-            status: m.status,
+            brand: m.brand || 'Desconocida',
+            model: m.model || 'Desconocido',
+            serial: m.serial || 'S/N-' + Math.random().toString(36).substring(2, 6),
+            type: m.type || 'B&N',
+            status: m.status || 'Usado',
             machineCounter: m.machineCounter || 0,
-            clientId: m.clientId,
-            abonoId: m.abonoId,
-            installationDate: m.installationDate,
+            clientId: m.clientId || null,
+            abonoId: m.abonoId || null,
+            installationDate: m.installationDate || null,
             initialCounter: m.initialCounter || 0,
             applyIva: m.applyIva ?? false,
             readingDay: m.readingDay || 10,
             isAvailable: m.isAvailable ?? true,
-            pdfUrl: m.pdfUrl,
-            features: m.features,
+            pdfUrl: m.pdfUrl || null,
+            features: m.features || null,
             createdAt: m.createdAt ? new Date(m.createdAt) : new Date(),
             updatedAt: m.updatedAt ? new Date(m.updatedAt) : new Date()
           });
@@ -216,10 +217,10 @@ export async function POST(request: Request) {
           const mach = payload.machines?.find((m: any) => m.id === r.machineId);
           await tx.insert(readings).values({
             id: r.id,
-            machineId: r.machineId,
+            machineId: r.machineId || 'unknown',
             clientId: r.clientId || mach?.clientId || 'unknown',
             abonoId: r.abonoId || mach?.abonoId || 'unknown',
-            month: r.month,
+            month: r.month || new Date().toISOString().substring(0, 7),
             initial: r.initial || 0,
             final: r.final || 0,
             readingStatus: r.readingStatus || 'cargada',
@@ -249,19 +250,19 @@ export async function POST(request: Request) {
             id: t.id,
             clientType: t.clientType || 'existente',
             clientId: t.clientId || null,
-            clientName: t.clientName,
+            clientName: t.clientName || 'Cliente',
             clientAddress: t.clientAddress || null,
             clientPhone: t.clientPhone || null,
             clientEmail: t.clientEmail || null,
             clientContact: t.clientContact || null,
             machineId: t.machineId || null,
-            machineDesc: t.machineDesc,
+            machineDesc: t.machineDesc || 'Equipo',
             serialNumber: t.serialNumber || null,
-            category: t.category,
+            category: t.category || 'Servicio',
             requestType: t.requestType || 'Telefono',
             priority: t.priority || 'Media',
             status: t.status || 'nuevo',
-            description: t.description,
+            description: t.description || 'Sin descripción',
             diagnostic: t.diagnostic || null,
             partsNeeded: t.partsNeeded || null,
             partsUsed: t.partsUsed || null,
