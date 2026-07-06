@@ -25,6 +25,28 @@ export default function RespaldoPage() {
         currentUser 
     } = useManagement();
 
+    const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
+    const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+
+    useEffect(() => {
+        async function checkAuth() {
+            try {
+                const res = await fetch('/api/auth/me');
+                const data = await res.json();
+                if (res.ok && data.authenticated && data.user.permissions.isMaster) {
+                    setIsAuthorized(true);
+                } else {
+                    setIsAuthorized(false);
+                }
+            } catch (e) {
+                setIsAuthorized(false);
+            } finally {
+                setIsLoadingAuth(false);
+            }
+        }
+        checkAuth();
+    }, []);
+
     // Sub-tab Navigation
     const [currentSubTab, setCurrentSubTab] = useState<'exportar' | 'importar' | 'backup' | 'limpieza' | 'auditoria'>('exportar');
 
@@ -512,6 +534,30 @@ export default function RespaldoPage() {
 
         return matchesQuery && matchesModule && matchesAction;
     });
+
+    if (isLoadingAuth) {
+        return (
+            <div className="flex flex-col items-center justify-center py-20 space-y-4">
+                <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-slate-400 text-xs font-semibold animate-pulse">Validando credenciales de seguridad...</p>
+            </div>
+        );
+    }
+
+    if (isAuthorized === false) {
+        return (
+            <div className="flex flex-col items-center justify-center py-20 px-4 text-center max-w-lg mx-auto space-y-4 animate-fade-in">
+                <div className="p-4 bg-red-950/40 border border-red-900 rounded-full text-red-500">
+                    <AlertTriangle size={48} />
+                </div>
+                <h2 className="text-xl font-bold text-slate-100">Acceso Restringido</h2>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                    Esta sección está protegida bajo estándares estrictos de seguridad.
+                    Solo el **Usuario Maestro (dmoyano)** posee los privilegios necesarios para acceder a las opciones de Respaldo, Restauración, Importación y Limpieza de base de datos.
+                </p>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6 animate-fade-in relative text-slate-100 pb-12">

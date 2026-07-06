@@ -1,16 +1,41 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useManagement } from '@/lib/context';
+import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { BRANDING } from '@/config/branding';
+import { LogOut, Key, Shield } from 'lucide-react';
+
+interface SidebarUser {
+  username: string;
+  fullname: string;
+  role: string;
+}
 
 export const Sidebar: React.FC = () => {
     const pathname = usePathname();
-    const { currentUser, setCurrentUser, users } = useManagement();
+    const router = useRouter();
+    const [currentUser, setCurrentUser] = useState<SidebarUser | null>(null);
+    const [isMaster, setIsMaster] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+    // Cargar sesión del servidor en el cliente
+    useEffect(() => {
+        async function fetchMe() {
+            try {
+                const res = await fetch('/api/auth/me');
+                const data = await res.json();
+                if (res.ok && data.authenticated) {
+                    setCurrentUser(data.user);
+                    setIsMaster(data.user.permissions.isMaster);
+                }
+            } catch (err) {
+                console.error('Error al recuperar sesión en Sidebar:', err);
+            }
+        }
+        fetchMe();
+    }, []);
 
     const menuItems = [
         {
@@ -120,15 +145,30 @@ export const Sidebar: React.FC = () => {
         }
     ];
 
-    const cycleUser = () => {
-        const currentIdx = users.findIndex(u => u.id === currentUser?.id);
-        const nextIdx = (currentIdx + 1) % users.length;
-        setCurrentUser(users[nextIdx]);
+    // Filtrar menús autorizados
+    const allowedMenuItems = menuItems.filter(item => {
+        if (item.href === '/usuarios' || item.href === '/respaldo') {
+            return isMaster;
+        }
+        return true;
+    });
+
+    const handleLogout = async () => {
+        if (confirm('¿Está seguro de que desea cerrar sesión en el sistema?')) {
+            try {
+                const res = await fetch('/api/auth/logout', { method: 'POST' });
+                if (res.ok) {
+                    window.location.href = '/login';
+                }
+            } catch (err) {
+                console.error('Error al cerrar sesión:', err);
+            }
+        }
     };
 
     return (
         <>
-            {/* Desktop Sidebar (md breakpoint and up: width 768px+) */}
+            {/* Desktop Sidebar (md breakpoint and up) */}
             <aside className="hidden md:flex flex-col w-20 xl:w-64 bg-slate-900 text-slate-300 border-r border-slate-800 h-screen fixed left-0 top-0 z-40 transition-all duration-300">
                 <div className="h-16 flex items-center gap-3 px-4 xl:px-6 border-b border-slate-800 justify-center xl:justify-start">
                     <div className="w-8 h-8 bg-indigo-650 rounded flex items-center justify-center font-extrabold text-white text-sm shadow-md shrink-0">
@@ -141,7 +181,7 @@ export const Sidebar: React.FC = () => {
                 </div>
 
                 <nav className="flex-1 px-2 xl:px-4 py-6 space-y-1.5 overflow-y-auto">
-                    {menuItems.map(item => {
+                    {allowedMenuItems.map(item => {
                         const active = pathname === item.href;
                         return (
                             <Link
@@ -152,7 +192,7 @@ export const Sidebar: React.FC = () => {
                                     active
                                         ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10"
                                         : "hover:bg-slate-800/60 hover:text-slate-100 text-slate-400"
-                                )}
+                                    )}
                                 title={item.label}
                             >
                                 <span className="shrink-0">{item.icon}</span>
@@ -162,34 +202,39 @@ export const Sidebar: React.FC = () => {
                     })}
                 </nav>
 
-                {/* Desktop User profile */}
-                <div className="p-3 xl:p-4 border-t border-slate-800 bg-slate-950/40">
-                    <button
-                        onClick={cycleUser}
-                        className="w-full flex items-center gap-3 p-1.5 xl:p-2.5 rounded-xl hover:bg-slate-800/40 transition-colors text-left justify-center xl:justify-start group"
-                        title={currentUser?.fullname || 'Usuario'}
-                    >
-                        <div className="w-9 h-9 rounded-lg bg-indigo-600/20 text-indigo-400 flex items-center justify-center font-bold text-sm border border-indigo-500/20 group-hover:scale-105 transition-transform shrink-0">
+                {/* Desktop User profile & Logout */}
+                <div className="p-3 xl:p-4 border-t border-slate-800 bg-slate-950/40 space-y-2">
+                    <div className="w-full flex items-center gap-3 p-1.5 xl:p-2.5 text-left justify-center xl:justify-start">
+                        <div className="w-9 h-9 rounded-lg bg-indigo-600/20 text-indigo-400 flex items-center justify-center font-bold text-sm border border-indigo-500/20 shrink-0 relative">
                             {currentUser?.fullname ? currentUser.fullname.split(' ').map(n => n[0]).join('') : 'U'}
+                            {isMaster && (
+                                <span className="absolute -top-1.5 -right-1.5 bg-emerald-500 text-slate-950 rounded-full p-0.5" title="Usuario Maestro">
+                                    <Shield size={10} />
+                                </span>
+                            )}
                         </div>
                         <div className="hidden xl:flex flex-col flex-1 min-w-0 transition-all duration-300">
                             <span className="block text-xs font-semibold text-slate-200 truncate leading-none">
-                                {currentUser?.fullname}
+                                {currentUser?.fullname || 'Cargando...'}
                             </span>
                             <span className="block text-[10px] text-slate-500 mt-1 capitalize truncate">
-                                Rol: {currentUser?.role}
+                                {currentUser?.role || ''}
                             </span>
                         </div>
-                        <svg className="hidden xl:block w-4 h-4 text-slate-600 group-hover:text-slate-400 transition-colors shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                        </svg>
+                    </div>
+                    
+                    <button
+                        onClick={handleLogout}
+                        className="w-full flex items-center gap-3 px-3 xl:px-4 py-2.5 rounded-xl text-red-400 hover:bg-red-950/30 hover:text-red-300 transition-colors text-xs font-semibold justify-center xl:justify-start cursor-pointer border border-transparent hover:border-red-900/40"
+                    >
+                        <LogOut size={14} className="shrink-0" />
+                        <span className="hidden xl:block">Cerrar Sesión</span>
                     </button>
                 </div>
             </aside>
 
-            {/* Mobile Bottom Bar (screens < 768px: iPhone, Z Fold folded) */}
+            {/* Mobile Bottom Bar (screens < 768px) */}
             <aside className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-slate-900 border-t border-slate-800 z-40 flex items-center justify-around px-2 shadow-2xl">
-                {/* 1. Panel de Control */}
                 <Link
                     href="/"
                     className={cn(
@@ -203,7 +248,6 @@ export const Sidebar: React.FC = () => {
                     <span className="text-[9px] font-medium tracking-tight">Inicio</span>
                 </Link>
 
-                {/* 2. Área Técnica */}
                 <Link
                     href="/tecnica"
                     className={cn(
@@ -217,7 +261,6 @@ export const Sidebar: React.FC = () => {
                     <span className="text-[9px] font-medium tracking-tight">Técnica</span>
                 </Link>
 
-                {/* 3. Alquileres */}
                 <Link
                     href="/alquileres"
                     className={cn(
@@ -231,7 +274,6 @@ export const Sidebar: React.FC = () => {
                     <span className="text-[9px] font-medium tracking-tight">Alquileres</span>
                 </Link>
 
-                {/* 4. Menú Más (Abre el Drawer) */}
                 <button
                     onClick={() => setIsMobileMenuOpen(true)}
                     className="flex flex-col items-center justify-center gap-1 py-1.5 px-3 text-slate-400"
@@ -246,7 +288,6 @@ export const Sidebar: React.FC = () => {
             {/* Mobile Glassmorphic Drawer Menu overlay */}
             {isMobileMenuOpen && (
                 <div className="fixed inset-0 z-50 flex flex-col bg-slate-950/90 backdrop-blur-md animate-fade-in md:hidden">
-                    {/* Drawer Header */}
                     <div className="h-16 flex items-center justify-between px-6 border-b border-slate-850">
                         <div className="flex items-center gap-2">
                             <div className="w-7 h-7 bg-indigo-650 rounded flex items-center justify-center font-extrabold text-white text-xs">
@@ -264,9 +305,8 @@ export const Sidebar: React.FC = () => {
                         </button>
                     </div>
 
-                    {/* Drawer List */}
                     <div className="flex-1 overflow-y-auto px-6 py-6 space-y-2">
-                        {menuItems.map(item => {
+                        {allowedMenuItems.map(item => {
                             const active = pathname === item.href;
                             return (
                                 <Link
@@ -287,29 +327,31 @@ export const Sidebar: React.FC = () => {
                         })}
                     </div>
 
-                    {/* Drawer User profile */}
-                    <div className="p-6 border-t border-slate-850 bg-slate-950/40 mb-16">
-                        <button
-                            onClick={() => {
-                                cycleUser();
-                                setIsMobileMenuOpen(false);
-                            }}
-                            className="w-full flex items-center gap-3 p-3 rounded-xl bg-slate-900 border border-slate-800 text-left"
-                        >
-                            <div className="w-8 h-8 rounded bg-indigo-650 text-white font-bold text-xs flex items-center justify-center">
+                    {/* Drawer User profile & Logout */}
+                    <div className="p-6 border-t border-slate-850 bg-slate-950/40 mb-16 space-y-3">
+                        <div className="w-full flex items-center gap-3 p-3 rounded-xl bg-slate-900 border border-slate-800 text-left">
+                            <div className="w-8 h-8 rounded bg-indigo-650 text-white font-bold text-xs flex items-center justify-center relative">
                                 {currentUser?.fullname ? currentUser.fullname.split(' ').map(n => n[0]).join('') : 'U'}
                             </div>
                             <div className="flex-1 min-w-0">
                                 <span className="block text-xs font-semibold text-slate-200 truncate">
-                                    {currentUser?.fullname}
+                                    {currentUser?.fullname || 'Cargando...'}
                                 </span>
                                 <span className="block text-[9px] text-slate-500 mt-0.5 capitalize">
-                                    Cambiar Operario (Rol: {currentUser?.role})
+                                    {currentUser?.role || ''}
                                 </span>
                             </div>
-                            <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                            </svg>
+                        </div>
+
+                        <button
+                            onClick={() => {
+                                setIsMobileMenuOpen(false);
+                                handleLogout();
+                            }}
+                            className="w-full flex items-center justify-center gap-2 p-3 rounded-xl bg-red-950/30 border border-red-900/40 text-red-400 hover:text-red-300 transition-colors font-semibold text-xs cursor-pointer"
+                        >
+                            <LogOut size={14} />
+                            <span>Cerrar Sesión</span>
                         </button>
                     </div>
                 </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { encryptSession, decryptSession, UserSession } from './session';
+import { encryptSession, decryptSession, UserSession } from '../../lib/auth/sessionDecrypt';
 
 describe('Sesiones Cifradas AES-GCM (Web Crypto API)', () => {
   it('debe encriptar y desencriptar una sesión de usuario con éxito manteniendo sus atributos', async () => {

@@ -10,3 +10,5 @@ export * from './sharedPdfs';
 export * from './notificationSettings';
 export * from './notificationHistory';
 export * from './auditLogs';
+export * from './sessions';
+export * from './passwordResetTokens';

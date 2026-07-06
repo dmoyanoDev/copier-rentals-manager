@@ -15,6 +15,9 @@ export const users = sqliteTable('users', {
   active: integer('active').default(1).notNull(), // 1 = Activo, 0 = Inactivo
   workHours: text('work_hours'),
   internalNotes: text('internal_notes'),
+  lastLoginAt: integer('last_login_at', { mode: 'timestamp' }),
+  failedLoginAttempts: integer('failed_login_attempts').default(0).notNull(),
+  lockedUntil: integer('locked_until', { mode: 'timestamp' }),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
 });
