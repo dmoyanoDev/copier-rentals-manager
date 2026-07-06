@@ -607,7 +607,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }, 1500);
     }, []);
 
-    // Re-sync when page refocuses, tab changes or network goes online
+    // Re-sync when page refocuses, tab changes, network goes online, or periodically in background (real-time sync)
     useEffect(() => {
         const handleSyncTrigger = () => {
             syncFromDatabase();
@@ -623,10 +623,18 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         };
         document.addEventListener('visibilitychange', handleVisibilityChange);
 
+        // Setup background polling interval (every 15 seconds) to ensure real-time updates
+        const pollInterval = setInterval(() => {
+            if (document.visibilityState === 'visible' && !isSyncingRef.current) {
+                syncFromDatabase();
+            }
+        }, 15000);
+
         return () => {
             window.removeEventListener('focus', handleSyncTrigger);
             window.removeEventListener('online', handleSyncTrigger);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
+            clearInterval(pollInterval);
         };
     }, []);
 
