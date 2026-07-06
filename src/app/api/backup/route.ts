@@ -41,6 +41,8 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const user = searchParams.get('user') || 'dmoyano';
 
+    const isSystemSync = user === 'system' || user === 'autosave';
+
     const [
       dbUsers,
       dbClients,
@@ -62,11 +64,11 @@ export async function GET(request: Request) {
       db.select().from(readings),
       db.select().from(tickets),
       db.select().from(budgets),
-      db.select().from(emailLogs),
-      db.select().from(sharedPdfs),
+      isSystemSync ? Promise.resolve([]) : db.select().from(emailLogs),
+      isSystemSync ? Promise.resolve([]) : db.select().from(sharedPdfs),
       db.select().from(notificationSettings),
-      db.select().from(notificationHistory),
-      db.select().from(auditLogs)
+      isSystemSync ? Promise.resolve([]) : db.select().from(notificationHistory),
+      isSystemSync ? Promise.resolve([]) : db.select().from(auditLogs)
     ]);
 
     const backupPayload = {
@@ -121,11 +123,11 @@ export async function POST(request: Request) {
 
     // Process database restore inside a transaction block
     await db.transaction(async (tx) => {
-      // 1. Delete all rows from target tables in correct order
-      await tx.delete(notificationHistory);
-      await tx.delete(notificationSettings);
-      await tx.delete(sharedPdfs);
-      await tx.delete(emailLogs);
+      // 1. Delete all rows from target tables only if they are present in the payload to preserve logs during autosaves
+      if (payload.notificationHistory !== undefined) await tx.delete(notificationHistory);
+      if (payload.notificationSettings !== undefined) await tx.delete(notificationSettings);
+      if (payload.sharedPdfs !== undefined) await tx.delete(sharedPdfs);
+      if (payload.emailLogs !== undefined) await tx.delete(emailLogs);
       await tx.delete(budgets);
       await tx.delete(tickets);
       await tx.delete(readings);
@@ -133,7 +135,7 @@ export async function POST(request: Request) {
       await tx.delete(plans);
       await tx.delete(clients);
       await tx.delete(users);
-      await tx.delete(auditLogs);
+      if (payload.auditLogs !== undefined) await tx.delete(auditLogs);
 
       // 2. Insert new rows if present
       if (payload.users?.length) {

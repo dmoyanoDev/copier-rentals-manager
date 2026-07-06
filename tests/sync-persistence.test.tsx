@@ -365,4 +365,64 @@ describe('Sync Persistence and Lockouts', () => {
     const mergedCache = JSON.parse(localStorage.getItem('ms_data') || '{}');
     expect(mergedCache.clients.length).toBe(0);
   });
+
+  it('keeps newly created local items without timestamps on sync', async () => {
+    // 1. Mock server response to return empty clients list
+    fetchSpy.mockImplementation((url: any) => {
+      if (url.includes('/api/auth/me')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            authenticated: true,
+            user: { id: 'user-admin', role: 'master' }
+          })
+        } as any);
+      }
+      if (url.includes('/api/backup?user=system')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            clients: [] // Empty on server
+          })
+        } as any);
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as any);
+    });
+
+    render(
+      <ManagementProvider>
+        <TestConsumer />
+      </ManagementProvider>
+    );
+
+    // Resolve initial load and timer settle
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1600);
+    });
+
+    // Simulate user adding a client (so c-new is added to state, has no updatedAt timestamp)
+    const addButton = screen.getByTestId('add-client');
+    await act(async () => {
+      fireEvent.click(addButton);
+    });
+
+    // Expect clients count to be 1 in React state
+    expect(screen.getByTestId('clients-count').textContent).toBe('1');
+
+    // Trigger syncFromDatabase by dispatching focus
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+    });
+
+    // Flush microtasks
+    for (let i = 0; i < 5; i++) {
+      await act(async () => {
+        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(50);
+      });
+    }
+
+    // Expect clients count to still be 1 (not deleted/overwritten!)
+    expect(screen.getByTestId('clients-count').textContent).toBe('1');
+  });
 });

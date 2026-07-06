@@ -264,13 +264,18 @@ const mergeData = (local: any, server: any, lastSyncTime: Date | null) => {
             const serverItem: any = serverMap.get(localItem.id);
             if (!serverItem) {
                 // Only exists locally. Check if it is a new offline creation or deleted on server.
-                const localTime = new Date(localItem.updatedAt || localItem.createdAt || 0).getTime();
+                const localTime = localItem.updatedAt || localItem.createdAt
+                    ? new Date(localItem.updatedAt || localItem.createdAt).getTime()
+                    : new Date().getTime(); // Treat as new local creation if timestamp is missing!
+                
                 if (localTime > lastSync) {
                     mergedList.push(localItem);
                 }
             } else {
                 // Exists in both, compare timestamps
-                const localTime = new Date(localItem.updatedAt || localItem.createdAt || 0).getTime();
+                const localTime = localItem.updatedAt || localItem.createdAt
+                    ? new Date(localItem.updatedAt || localItem.createdAt).getTime()
+                    : new Date().getTime(); // Treat as modified if timestamp is missing!
                 const serverTime = new Date(serverItem.updatedAt || serverItem.createdAt || 0).getTime();
                 if (localTime >= serverTime) {
                     mergedList.push(localItem);
@@ -354,16 +359,16 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     
                 if (hasServerData) {
                     let currentLocalState: any = {
-                        clients: [],
-                        machines: [],
-                        readings: [],
-                        tickets: [],
-                        abonos: [],
-                        users: [],
-                        rentals: [],
-                        budgets: []
+                        clients: clients || [],
+                        machines: machines || [],
+                        readings: readings || [],
+                        tickets: tickets || [],
+                        abonos: abonos || [],
+                        users: users || [],
+                        rentals: rentals || [],
+                        budgets: budgets || []
                     };
-                    if (typeof window !== 'undefined') {
+                    if (isInitialLoadRef.current && typeof window !== 'undefined') {
                         try {
                             const raw = localStorage.getItem('ms_data');
                             if (raw) {
