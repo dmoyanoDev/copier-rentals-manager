@@ -127,6 +127,7 @@ export async function POST(request: Request) {
         // 3. Validar payload con Zod para operaciones de creación/actualización
         const parsed = schema.safeParse(payload);
         if (!parsed.success) {
+          console.error("!!! ZOD VALIDATION ERROR !!!", "Entity:", entityType, "ID:", entityId, "Error:", JSON.stringify(parsed.error.format(), null, 2));
           results.push({
             id,
             status: 'failed',

@@ -1,4 +1,4 @@
-﻿import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 import { clients } from './clients';
 import { machines } from './machines';
 import { plans } from './plans';
@@ -12,7 +12,7 @@ export const rentals = sqliteTable('rentals', {
   endDate: text('endDate'),
   status: text('status').default('activo').notNull(),
   observations: text('observations'),
-  history: text('history'),
+  history: text('history', { mode: 'json' }).$defaultFn(() => []).notNull(),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
 });
