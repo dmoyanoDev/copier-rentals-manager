@@ -3,6 +3,7 @@ import { ManagementProvider } from "@/lib/context";
 import Sidebar from "@/components/ui/sidebar";
 import LiveClock from "@/components/shared/live-clock";
 import PageHeaderActions from "../header-actions";
+import { ToastContainer } from "@/components/ui/toast";
 
 export default function DashboardLayout({
   children,
@@ -41,6 +42,8 @@ export default function DashboardLayout({
           </main>
         </div>
       </div>
-    </ManagementProvider>
+        {/* Global toast notification overlay — shows save success/error feedback */}
+        <ToastContainer />
+      </ManagementProvider>
   );
 }

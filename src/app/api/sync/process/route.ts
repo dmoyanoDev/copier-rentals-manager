@@ -138,37 +138,42 @@ export async function POST(request: Request) {
 
         const cleanPayload = parsed.data;
 
-        // 4. Comparación Last-Write-Wins (LWW) contra base de datos
-        try {
-          const existing = await tx.select().from(table).where(eq(table.id, entityId)).limit(1);
-          if (existing.length > 0) {
-            const dbItem: any = existing[0];
-            const dbUpdatedAt = dbItem.updatedAt ? new Date(dbItem.updatedAt).getTime() : 0;
-            const incomingUpdatedAt = new Date(cleanPayload.updatedAt || updatedAt).getTime();
+          // 4. Compare Last-Write-Wins (LWW) against database
+          try {
+            const existing = await tx.select().from(table).where(eq(table.id, entityId)).limit(1);
+            
+            // Always stamp with server time so incremental queries on other devices pick it up correctly.
+            // Client clocks can drift — server time is the authoritative timestamp for sync.
+            const serverNow = new Date();
+            const payloadWithServerTime = { ...cleanPayload, updatedAt: serverNow };
+            
+            if (existing.length > 0) {
+              const dbItem: any = existing[0];
+              const dbUpdatedAt = dbItem.updatedAt ? new Date(dbItem.updatedAt).getTime() : 0;
+              const incomingUpdatedAt = new Date(cleanPayload.updatedAt || updatedAt).getTime();
 
-            if (dbUpdatedAt > incomingUpdatedAt) {
-              // El servidor tiene una versión más nueva. Omitimos escritura de forma exitosa.
-              // El cliente descartará el elemento de su cola y se rehidratará en el próximo poll.
-              results.push({ id, status: 'synced', skipped: true, reason: 'server_has_newer_version' });
-              continue;
+              if (dbUpdatedAt > incomingUpdatedAt) {
+                // El servidor tiene una versión más nueva. Omitimos escritura de forma exitosa.
+                results.push({ id, status: 'synced', skipped: true, reason: 'server_has_newer_version' });
+                continue;
+              }
+
+              // Actualizar registro existente con timestamp del servidor
+              await tx.update(table).set(payloadWithServerTime).where(eq(table.id, entityId));
+            } else {
+              // Crear nuevo registro con timestamp del servidor
+              await tx.insert(table).values(payloadWithServerTime);
             }
-
-            // Actualizar registro existente
-            await tx.update(table).set(cleanPayload).where(eq(table.id, entityId));
-          } else {
-            // Crear nuevo registro
-            await tx.insert(table).values(cleanPayload);
+            results.push({ id, status: 'synced' });
+          } catch (e: any) {
+            console.error(`Error writing entity ${entityType} ID ${entityId}:`, e);
+            results.push({
+              id,
+              status: 'failed',
+              reason: 'db_error',
+              message: e.message
+            });
           }
-          results.push({ id, status: 'synced' });
-        } catch (e: any) {
-          console.error(`Error writing entity ${entityType} ID ${entityId}:`, e);
-          results.push({
-            id,
-            status: 'failed',
-            reason: 'db_error',
-            message: e.message
-          });
-        }
       }
     });
 

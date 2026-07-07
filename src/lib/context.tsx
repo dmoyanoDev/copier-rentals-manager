@@ -15,6 +15,7 @@ import { BRANDING } from '@/config/branding';
 import { defaultMachinePresets, defaultBudgetTemplates } from '@/domain/budget/presets';
 import type { SyncQueueItem, SyncEntityType } from '@/domain/types';
 import { MAX_SYNC_QUEUE_SIZE, MAX_SYNC_RETRIES, SYNC_DEBOUNCE_MS, SYNC_POLL_INTERVAL_MS } from '@/domain/types';
+import { showSaveSuccess, showSaveError, showOffline } from '@/components/ui/toast';
 
 // Extend Client interface locally
 export interface LocalClient extends Client {
@@ -260,34 +261,41 @@ const mergeData = (local: any, server: any, lastSyncTime: Date | null, isIncreme
         for (const localItem of localList) {
             const serverItem: any = serverMap.get(localItem.id);
             if (!serverItem) {
-                // Only exists locally. Check if it is a new offline creation or deleted on server.
+                // Only exists locally.
                 if (isIncremental) {
-                    // Incremental sync: keep local item as it's just not changed on the server.
+                    // Incremental sync: keep local item — server didn't return it so it hasn't changed remotely
                     mergedList.push(localItem);
                 } else {
                     const localTime = localItem.updatedAt || localItem.createdAt
                         ? new Date(localItem.updatedAt || localItem.createdAt).getTime()
-                        : 0; // FIX: Items without timestamps are NOT treated as new — default to 0 (oldest)
-                    
+                        : 0;
                     if (localTime > lastSync) {
                         mergedList.push(localItem);
                     }
                 }
             } else {
-                // Exists in both, compare timestamps
-                const localTime = localItem.updatedAt || localItem.createdAt
-                    ? new Date(localItem.updatedAt || localItem.createdAt).getTime()
-                    : 0; // FIX: Items without timestamps default to 0 (oldest)
-                const serverTime = new Date(serverItem.updatedAt || serverItem.createdAt || 0).getTime();
-                if (localTime >= serverTime) {
-                    mergedList.push(localItem);
-                } else {
+                // Exists in both.
+                if (isIncremental) {
+                    // CRITICAL FIX: On incremental sync the server item ALWAYS wins.
+                    // The server only returns items changed since lastSyncTime —
+                    // these are confirmed writes from other devices and must override local state.
                     mergedList.push(serverItem);
+                } else {
+                    // Full sync: Last-Write-Wins based on timestamps
+                    const localTime = localItem.updatedAt || localItem.createdAt
+                        ? new Date(localItem.updatedAt || localItem.createdAt).getTime()
+                        : 0;
+                    const serverTime = new Date(serverItem.updatedAt || serverItem.createdAt || 0).getTime();
+                    if (localTime > serverTime) {
+                        mergedList.push(localItem);
+                    } else {
+                        mergedList.push(serverItem);
+                    }
                 }
             }
         }
         
-        // 2. Process server items
+        // 2. Add server items not present locally
         for (const serverItem of serverList) {
             if (!localMap.has(serverItem.id)) {
                 if (!deletedSet.has(serverItem.id)) {
@@ -303,6 +311,7 @@ const mergeData = (local: any, server: any, lastSyncTime: Date | null, isIncreme
 };
 
 const ManagementContext = createContext<ManagementContextType | undefined>(undefined);
+
 
 export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [currentMonth, setCurrentMonth] = useState('');
@@ -429,6 +438,9 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             if (data.success && Array.isArray(data.results)) {
                 const resultsMap = new Map<string, any>(data.results.map((r: any) => [r.id, r]));
                 
+                const failedResults = data.results.filter((r: any) => r.status === 'failed');
+                const syncedCount  = data.results.filter((r: any) => r.status === 'synced').length;
+
                 const finalQueue = getStoredQueue().map((item) => {
                     const result: any = resultsMap.get(item.id);
                     if (result) {
@@ -450,6 +462,17 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 
                 saveStoredQueue(trimmedQueue);
                 setSyncQueue(trimmedQueue);
+
+                // Notify user of sync result
+                if (failedResults.length > 0) {
+                    const firstError = failedResults[0];
+                    const reason = firstError.reason === 'validation_error'
+                        ? 'Error de validacion de datos'
+                        : firstError.message || firstError.reason || 'Error desconocido';
+                    showSaveError(reason);
+                } else if (syncedCount > 0) {
+                    showSaveSuccess();
+                }
             } else {
                 throw new Error("Invalid sync response format");
             }
@@ -464,9 +487,11 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             saveStoredQueue(revertedQueue);
             setSyncQueue(revertedQueue);
             setSyncError("OFFLINE");
+            showOffline();
         } finally {
             isProcessingQueueRef.current = false;
         }
+
     }, []);
 
     // Fetch snapshot from backend database — uses stateRef to avoid stale closures
@@ -513,7 +538,14 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 } catch (e) {}
             }
             const sinceQuery = storedLastSync ? `&since=${encodeURIComponent(storedLastSync.toISOString())}` : '';
-            const response = await fetch(`/api/backup?user=system${sinceQuery}`);
+            const response = await fetch(`/api/backup?user=system${sinceQuery}`, {
+                // Bypass browser cache entirely — critical for cross-device real-time sync
+                cache: 'no-store',
+                headers: {
+                    'Cache-Control': 'no-cache, no-store',
+                    'Pragma': 'no-cache',
+                }
+            });
             const isIncremental = !!sinceQuery;
 
             if (response.ok) {
