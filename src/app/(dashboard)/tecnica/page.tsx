@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 export default function TechnicalPage() {
-    const { tickets, setTickets, currentUser, users, setUsers, clients, machines, setMachines } = useManagement();
+    const { tickets, setTickets, currentUser, users, setUsers, clients, machines, setMachines, updateTicketAction } = useManagement();
     const isTech = currentUser?.role === 'tecnico';
 
     // Core Navigation Tabs: 'bitacora' | 'tecnicos' | 'config' | 'historial_envios' | 'metricas'
@@ -359,7 +359,7 @@ export default function TechnicalPage() {
             history: updatedHistory
         };
 
-        setTickets(prev => prev.map(t => t.id === selectedTicket.id ? updated : t));
+        updateTicketAction(updated);
         setSelectedTicket(updated);
         alert('¡Alerta de aviso reenviada exitosamente!');
     };
@@ -436,10 +436,11 @@ export default function TechnicalPage() {
         }
 
         // C. Sincronización del estado operativo de la máquina
+        let machineUpdate: { id: string; status: any } | undefined = undefined;
         if (selectedTicket.machineId && editMachineStatus) {
             const mach = machines.find(m => m.id === selectedTicket.machineId);
             if (mach && mach.status !== editMachineStatus) {
-                setMachines(prev => prev.map(m => m.id === selectedTicket.machineId ? { ...m, status: editMachineStatus as any } : m));
+                machineUpdate = { id: selectedTicket.machineId, status: editMachineStatus as any };
                 newHistory.push({
                     date: new Date().toISOString().split('T')[0],
                     time: new Date().toLocaleTimeString('es-AR').slice(0, 5),
@@ -477,7 +478,8 @@ export default function TechnicalPage() {
             });
         }
 
-        setTickets(prev => prev.map(t => t.id === selectedTicket.id ? updated : t));
+        // Use context action
+        updateTicketAction(updated, machineUpdate);
         setSelectedTicket(updated);
         alert('¡Ficha del ticket técnico guardada correctamente!');
     };
@@ -628,7 +630,8 @@ export default function TechnicalPage() {
             });
         }
 
-        setTickets(prev => [...prev, initialTicket]);
+        // Use context action (adds to state, saves localStorage, and schedules sync item)
+        updateTicketAction(initialTicket);
         setIsCreating(false);
         handleOpenDetail(initialTicket);
     };
@@ -1290,7 +1293,7 @@ export default function TechnicalPage() {
                                                 ]
                                             };
 
-                                            setTickets(prev => [...prev, newTicket]);
+                                            updateTicketAction(newTicket);
                                             alert('¡Orden de trabajo técnico para mantenimiento preventivo creada con éxito!');
                                         };
 

@@ -6,11 +6,14 @@ import { Card, CardContent } from '@/components/ui/card';
 import { TableContainer, Table, TableHeader, TableRow, TableHeaderCell, TableBody, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { formatCurrency, formatPeriod, getClientIvaRate } from '@/lib/utils';
-import { Reading, Machine, Client, Abono } from '@/lib/mockData';
+import { Reading, Machine, Client, Abono, Rental } from '@/lib/mockData';
 import { Search, Filter, PlusCircle, CheckCircle, AlertTriangle, FileText, UserPlus, FileCheck, Layers, Clipboard } from 'lucide-react';
 
 export default function ReadingsPage() {
-    const { clients, setClients, machines, setMachines, readings, setReadings, abonos, setAbonos, currentMonth, currentUser, tickets } = useManagement();
+    const { 
+        clients, setClients, machines, setMachines, readings, setReadings, abonos, setAbonos, currentMonth, currentUser, tickets,
+        updateClientAction, updateAbonoAction, updateMachineAction, addRentalAction, addReadingAction
+    } = useManagement();
     
     // Core states
     const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
@@ -144,14 +147,8 @@ export default function ReadingsPage() {
         // Add timeline history property
         newReading.history = initialHistory;
 
-        // Save reading
-        setReadings(prev => {
-            const filtered = prev.filter(r => !(r.machineId === selectedMachine.id && r.month === currentMonth));
-            return [...filtered, newReading];
-        });
-
-        // Sync machine counter
-        setMachines(prev => prev.map(m => m.id === selectedMachine.id ? { ...m, currentCounter: finalVal } : m));
+        // Use context action (updates both state arrays, saves localStorage, and syncs queue item)
+        addReadingAction(newReading, { id: selectedMachine.id, currentCounter: finalVal });
 
         setSelectedMachine(null);
     };
@@ -164,7 +161,7 @@ export default function ReadingsPage() {
         };
         updated.history = nextHistory;
 
-        setReadings(prev => prev.map(item => item.id === r.id ? updated : item));
+        addReadingAction(updated);
         alert('Lectura validada con éxito. Ya se puede facturar.');
     };
 
@@ -190,7 +187,7 @@ export default function ReadingsPage() {
         };
         updated.history = nextHistory;
 
-        setReadings(prev => prev.map(item => item.id === showInvoiceModal.id ? updated : item));
+        addReadingAction(updated);
         setShowInvoiceModal(null);
         alert('Facturación registrada exitosamente.');
     };
@@ -200,6 +197,8 @@ export default function ReadingsPage() {
         let finalClientId = rentalClientId;
         let finalMachineId = rentalMachineId;
         let finalPlanId = rentalPlanId;
+        const nowStr = new Date().toISOString();
+        const startDateStr = new Date().toISOString().split('T')[0];
 
         // 1. Create client if needed
         if (rentalClientMode === 'create') {
@@ -215,10 +214,18 @@ export default function ReadingsPage() {
                 address: 'Dirección no especificada',
                 phone: 'Sin teléfono',
                 email: `${newClientName.toLowerCase().replace(/ /g, '')}@example.com`,
-                debt: 0
+                debt: 0,
+                active: true,
+                createdAt: nowStr,
+                updatedAt: nowStr
             };
-            setClients(prev => [...prev, nClient]);
+            updateClientAction(nClient, 'create');
             finalClientId = nClient.id;
+        } else {
+            if (!finalClientId) {
+                alert('Selecciona un cliente para el alquiler.');
+                return;
+            }
         }
 
         // 2. Create Plan if needed
@@ -232,10 +239,18 @@ export default function ReadingsPage() {
                 name: newPlanName,
                 limit: parseInt(newPlanLimit, 10) || 5000,
                 price: parseInt(newPlanPrice, 10) || 25000,
-                excessPrice: parseInt(newPlanExcess, 10) || 15
+                excessPrice: parseInt(newPlanExcess, 10) || 15,
+                active: true,
+                createdAt: nowStr,
+                updatedAt: nowStr
             };
-            setAbonos(prev => [...prev, nPlan]);
+            updateAbonoAction(nPlan, 'create');
             finalPlanId = nPlan.id;
+        } else {
+            if (!finalPlanId) {
+                alert('Selecciona un plan de abono.');
+                return;
+            }
         }
 
         // 3. Create or update Machine
@@ -256,22 +271,46 @@ export default function ReadingsPage() {
                 applyIva: true,
                 clientId: finalClientId,
                 abonoId: finalPlanId,
-                lastServiceCounter: 0
+                lastServiceCounter: 0,
+                createdAt: nowStr,
+                updatedAt: nowStr
             };
-            setMachines(prev => [...prev, nMachine]);
+            updateMachineAction(nMachine, 'create');
+            finalMachineId = nMachine.id;
         } else {
             if (!finalMachineId) {
                 alert('Selecciona una copiadora para alquilar.');
                 return;
             }
-            // Update existing machine to tie it to client/abono
-            setMachines(prev => prev.map(m => m.id === finalMachineId ? {
-                ...m,
-                clientId: finalClientId,
-                abonoId: finalPlanId,
-                status: 'Alquilada'
-            } : m));
         }
+
+        // 4. Create the actual Rental Contract
+        const nRental: Rental = {
+            id: `rental-${Date.now()}`,
+            clientId: finalClientId,
+            machineId: finalMachineId,
+            abonoId: finalPlanId,
+            startDate: startDateStr,
+            status: 'activo',
+            history: [
+                {
+                    date: startDateStr,
+                    time: new Date().toTimeString().split(' ')[0].substring(0, 5),
+                    action: 'Contrato de alquiler activado y máquinas asignadas (desde Lecturas)',
+                    user: currentUser?.fullname || 'Administrativo'
+                }
+            ],
+            createdAt: nowStr,
+            updatedAt: nowStr
+        };
+
+        // Call context action (saves rental, updates machine links, and syncs both to Turso)
+        addRentalAction(nRental, [{
+            id: finalMachineId,
+            clientId: finalClientId,
+            abonoId: finalPlanId,
+            status: 'Alquilada'
+        }]);
 
         // Reset forms
         setShowNewRentalModal(false);

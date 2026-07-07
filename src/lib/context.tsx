@@ -140,6 +140,16 @@ interface ManagementContextType {
     syncFromDatabase: () => Promise<void>;
     syncQueue: SyncQueueItem[];
     processSyncQueue: (passedQueue?: SyncQueueItem[]) => Promise<void>;
+
+    // Action-Driven mutations
+    addRentalAction: (rental: Rental, machineUpdates: { id: string; clientId: string | null; abonoId: string | null; status: any }[]) => void;
+    updateRentalAction: (rental: Rental, machineUpdates?: { id: string; clientId: string | null; abonoId: string | null; status: any }[]) => void;
+    updateTicketAction: (ticket: Ticket, machineUpdate?: { id: string; status: any }) => void;
+    addReadingAction: (reading: Reading, machineUpdate?: { id: string; currentCounter: number }) => void;
+    updateClientAction: (client: Client, operation?: 'create' | 'update' | 'delete') => void;
+    updateMachineAction: (machine: Machine, operation?: 'create' | 'update' | 'delete') => void;
+    updateAbonoAction: (abono: Abono, operation?: 'create' | 'update' | 'delete') => void;
+    addBudgetAction: (budget: Budget, operation?: 'create' | 'update' | 'delete') => void;
 }
 
 const trackDeletions = (newState: any) => {
@@ -518,13 +528,6 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         );
         if (pendingItems.length > 0) {
             await processSyncQueue(currentQueue);
-            const reReadQueue = getStoredQueue();
-            const reReadPending = reReadQueue.filter((item) => 
-                (item.status === 'pending' || item.status === 'failed') && item.retryCount < MAX_SYNC_RETRIES
-            );
-            if (reReadPending.length > 0) {
-                return;
-            }
         }
 
         isSyncingRef.current = true;
@@ -986,127 +989,263 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         };
     }, [syncFromDatabase]);
 
-    // Save changes to localStorage with debounce, and queue incremental changes for remote sync
-    useEffect(() => {
-        // Prevent saving if no authenticated user or if the app is during initial load or synchronizing from backend
-        if (!currentUser || !isInitialLoadDoneRef.current || isSyncingRef.current) {
-            return;
-        }
-        if (clients.length === 0 && budgets.length === 0 && machines.length === 0) {
-            return;
-        }
-
-        // FIX: Debounce autosave to prevent firing on every keystroke
-        if (autosaveTimerRef.current) {
-            clearTimeout(autosaveTimerRef.current);
-        }
-
-        autosaveTimerRef.current = setTimeout(() => {
-            const stateToSave: any = { 
-                clients, 
-                machines, 
-                readings, 
-                tickets, 
-                plans: abonos,
-                abonos,
-                users,
-                rentals,
-                budgets,
-                templates,
-                machinePresets,
-                gestiones,
-                cobranzaConfig
-            };
-
-            const oldDataRaw = localStorage.getItem('ms_data');
-            
-            // Sync local storage write
-            localStorage.setItem('ms_data', JSON.stringify(stateToSave));
-
-            if (oldDataRaw) {
-                try {
-                    const oldData = JSON.parse(oldDataRaw);
-                    const tables: SyncEntityType[] = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets'];
-                    
-                    const newQueueItems: SyncQueueItem[] = [];
-                    const nowStr = new Date().toISOString();
-                    
-                    for (const table of tables) {
-                        const oldList = oldData[table] || [];
-                        const newList = stateToSave[table] || [];
-                        const oldMap = new Map(oldList.map((item: any) => [item.id, item]));
-                        const newMap = new Map(newList.map((item: any) => [item.id, item]));
-                        
-                        // Check updates and creates
-                        for (const newItem of newList) {
-                            const oldItem = oldMap.get(newItem.id);
-                            if (!oldItem) {
-                                newQueueItems.push({
-                                    id: crypto.randomUUID ? crypto.randomUUID() : 'q-' + Math.random().toString(36).substring(2, 9) + '-' + Date.now(),
-                                    entityId: newItem.id,
-                                    entityType: table,
-                                    operation: 'create',
-                                    payload: newItem,
-                                    updatedAt: newItem.updatedAt || nowStr,
-                                    status: 'pending',
-                                    retryCount: 0
-                                });
-                            } else {
-                                const newItemCompare = { ...newItem, updatedAt: undefined, createdAt: undefined };
-                                const oldItemCompare = { ...oldItem, updatedAt: undefined, createdAt: undefined };
-                                if (JSON.stringify(newItemCompare) !== JSON.stringify(oldItemCompare)) {
-                                    newQueueItems.push({
-                                        id: crypto.randomUUID ? crypto.randomUUID() : 'q-' + Math.random().toString(36).substring(2, 9) + '-' + Date.now(),
-                                        entityId: newItem.id,
-                                        entityType: table,
-                                        operation: 'update',
-                                        payload: newItem,
-                                        updatedAt: newItem.updatedAt || nowStr,
-                                        status: 'pending',
-                                        retryCount: 0
-                                    });
-                                }
-                            }
-                        }
-                        
-                        // Check deletes
-                        for (const oldItem of oldList) {
-                            if (!newMap.has(oldItem.id)) {
-                                newQueueItems.push({
-                                    id: crypto.randomUUID ? crypto.randomUUID() : 'q-' + Math.random().toString(36).substring(2, 9) + '-' + Date.now(),
-                                    entityId: oldItem.id,
-                                    entityType: table,
-                                    operation: 'delete',
-                                    payload: oldItem,
-                                    updatedAt: nowStr,
-                                    status: 'pending',
-                                    retryCount: 0
-                                });
-                            }
-                        }
-                    }
-                    
-                    if (newQueueItems.length > 0) {
-                        const currentQueue = getStoredQueue();
-                        const updatedQueue = [...currentQueue, ...newQueueItems].slice(-MAX_SYNC_QUEUE_SIZE);
-                        saveStoredQueue(updatedQueue);
-                        setSyncQueue(updatedQueue);
-                        
-                        // Trigger asynchronous processing
-                        processSyncQueue(updatedQueue);
-                    }
-                } catch (e) {
-                    console.error("Error computing sync queue increments:", e);
-                }
-            }
-        }, SYNC_DEBOUNCE_MS);
-
-        return () => {
-            if (autosaveTimerRef.current) {
-                clearTimeout(autosaveTimerRef.current);
-            }
+    // Centralized state saver helper
+    const saveStateToLocalStorage = (customState?: any) => {
+        const stateToSave = {
+            clients: customState?.clients ?? stateRef.current.clients,
+            machines: customState?.machines ?? stateRef.current.machines,
+            readings: customState?.readings ?? stateRef.current.readings,
+            tickets: customState?.tickets ?? stateRef.current.tickets,
+            plans: customState?.abonos ?? stateRef.current.abonos,
+            abonos: customState?.abonos ?? stateRef.current.abonos,
+            users: customState?.users ?? stateRef.current.users,
+            rentals: customState?.rentals ?? stateRef.current.rentals,
+            budgets: customState?.budgets ?? stateRef.current.budgets,
+            templates,
+            machinePresets,
+            gestiones,
+            cobranzaConfig
         };
-    }, [clients, machines, readings, tickets, abonos, users, rentals, budgets, templates, machinePresets, gestiones, cobranzaConfig, currentUser, processSyncQueue]);
+        try {
+            localStorage.setItem('ms_data', JSON.stringify(stateToSave));
+        } catch (e) {
+            console.error("Error saving state to localStorage:", e);
+        }
+    };
+
+    // Generic enqueue helper
+    const enqueueSyncItem = useCallback((entityId: string, entityType: SyncEntityType, operation: 'create' | 'update' | 'delete', payload: any) => {
+        const nowStr = new Date().toISOString();
+        
+        // Remove circular or system state properties from payloads before enqueuing
+        const cleanPayload = { ...payload };
+        
+        const newItem: SyncQueueItem = {
+            id: crypto.randomUUID ? crypto.randomUUID() : 'q-' + Math.random().toString(36).substring(2, 9) + '-' + Date.now(),
+            entityId,
+            entityType,
+            operation,
+            payload: cleanPayload,
+            updatedAt: nowStr,
+            status: 'pending',
+            retryCount: 0
+        };
+
+        const currentQueue = getStoredQueue();
+        const updatedQueue = [...currentQueue, newItem].slice(-MAX_SYNC_QUEUE_SIZE);
+        saveStoredQueue(updatedQueue);
+        setSyncQueue(updatedQueue);
+        
+        // Process sync queue in background
+        processSyncQueue(updatedQueue);
+    }, [processSyncQueue]);
+
+    // Explicit Action methods to mutate state & schedule sync
+    const addRentalAction = useCallback((rental: Rental, machineUpdates: { id: string; clientId: string | null; abonoId: string | null; status: any }[]) => {
+        const nowStr = new Date().toISOString();
+        const rentalWithTime = { ...rental, createdAt: rental.createdAt || nowStr, updatedAt: nowStr };
+        
+        // Update rentals state
+        const updatedRentals = [rentalWithTime, ...stateRef.current.rentals];
+        setRentals(updatedRentals);
+
+        // Update machines state
+        const updatedMachines = stateRef.current.machines.map(m => {
+            const up = machineUpdates.find(u => u.id === m.id);
+            if (up) {
+                return { ...m, clientId: up.clientId, abonoId: up.abonoId, status: up.status, updatedAt: nowStr };
+            }
+            return m;
+        });
+        setMachines(updatedMachines);
+
+        // Save state to storage
+        saveStateToLocalStorage({ rentals: updatedRentals, machines: updatedMachines });
+
+        // Enqueue sync actions
+        enqueueSyncItem(rentalWithTime.id, 'rentals', 'create', rentalWithTime);
+        machineUpdates.forEach(up => {
+            const fullMachine = updatedMachines.find(m => m.id === up.id);
+            if (fullMachine) {
+                enqueueSyncItem(fullMachine.id, 'machines', 'update', fullMachine);
+            }
+        });
+    }, [enqueueSyncItem]);
+
+    const updateRentalAction = useCallback((rental: Rental, machineUpdates?: { id: string; clientId: string | null; abonoId: string | null; status: any }[]) => {
+        const nowStr = new Date().toISOString();
+        const rentalWithTime = { ...rental, updatedAt: nowStr, createdAt: rental.createdAt || nowStr };
+        
+        // Update rentals state
+        const updatedRentals = stateRef.current.rentals.map(r => r.id === rental.id ? rentalWithTime : r);
+        setRentals(updatedRentals);
+
+        // Update machines state if provided
+        let updatedMachines = stateRef.current.machines;
+        if (machineUpdates && machineUpdates.length > 0) {
+            updatedMachines = stateRef.current.machines.map(m => {
+                const up = machineUpdates.find(u => u.id === m.id);
+                if (up) {
+                    return { ...m, clientId: up.clientId, abonoId: up.abonoId, status: up.status, updatedAt: nowStr };
+                }
+                return m;
+            });
+            setMachines(updatedMachines);
+        }
+
+        saveStateToLocalStorage({ rentals: updatedRentals, machines: updatedMachines });
+
+        enqueueSyncItem(rentalWithTime.id, 'rentals', 'update', rentalWithTime);
+        if (machineUpdates) {
+            machineUpdates.forEach(up => {
+                const fullMachine = updatedMachines.find(m => m.id === up.id);
+                if (fullMachine) {
+                    enqueueSyncItem(fullMachine.id, 'machines', 'update', fullMachine);
+                }
+            });
+        }
+    }, [enqueueSyncItem]);
+
+    const updateTicketAction = useCallback((ticket: Ticket, machineUpdate?: { id: string; status: any }) => {
+        const nowStr = new Date().toISOString();
+        const ticketWithTime = { ...ticket, updatedAt: nowStr, createdAt: ticket.createdAt || new Date().getTime() };
+        
+        // Check if ticket exists to determine create vs update
+        const exists = stateRef.current.tickets.some(t => t.id === ticket.id);
+        const operation = exists ? 'update' : 'create';
+
+        const updatedTickets = exists
+            ? stateRef.current.tickets.map(t => t.id === ticket.id ? ticketWithTime : t)
+            : [ticketWithTime, ...stateRef.current.tickets];
+        setTickets(updatedTickets);
+
+        let updatedMachines = stateRef.current.machines;
+        if (machineUpdate) {
+            updatedMachines = stateRef.current.machines.map(m => {
+                if (m.id === machineUpdate.id) {
+                    return { ...m, status: machineUpdate.status, updatedAt: nowStr };
+                }
+                return m;
+            });
+            setMachines(updatedMachines);
+        }
+
+        saveStateToLocalStorage({ tickets: updatedTickets, machines: updatedMachines });
+
+        enqueueSyncItem(ticketWithTime.id, 'tickets', operation, ticketWithTime);
+        if (machineUpdate) {
+            const fullMachine = updatedMachines.find(m => m.id === machineUpdate.id);
+            if (fullMachine) {
+                enqueueSyncItem(fullMachine.id, 'machines', 'update', fullMachine);
+            }
+        }
+    }, [enqueueSyncItem]);
+
+    const addReadingAction = useCallback((reading: Reading, machineUpdate?: { id: string; currentCounter: number }) => {
+        const nowStr = new Date().toISOString();
+        const readingWithTime = { ...reading, updatedAt: nowStr, createdAt: reading.createdAt || nowStr };
+
+        const exists = stateRef.current.readings.some(r => r.id === reading.id);
+        const operation = exists ? 'update' : 'create';
+
+        const updatedReadings = exists
+            ? stateRef.current.readings.map(r => r.id === reading.id ? readingWithTime : r)
+            : [...stateRef.current.readings.filter(r => !(r.machineId === reading.machineId && r.month === reading.month)), readingWithTime];
+        setReadings(updatedReadings);
+
+        let updatedMachines = stateRef.current.machines;
+        if (machineUpdate) {
+            updatedMachines = stateRef.current.machines.map(m => {
+                if (m.id === machineUpdate.id) {
+                    return { ...m, currentCounter: machineUpdate.currentCounter, updatedAt: nowStr };
+                }
+                return m;
+            });
+            setMachines(updatedMachines);
+        }
+
+        saveStateToLocalStorage({ readings: updatedReadings, machines: updatedMachines });
+
+        enqueueSyncItem(readingWithTime.id, 'readings', operation, readingWithTime);
+        if (machineUpdate) {
+            const fullMachine = updatedMachines.find(m => m.id === machineUpdate.id);
+            if (fullMachine) {
+                enqueueSyncItem(fullMachine.id, 'machines', 'update', fullMachine);
+            }
+        }
+    }, [enqueueSyncItem]);
+
+    const updateClientAction = useCallback((client: Client, operation: 'create' | 'update' | 'delete' = 'update') => {
+        const nowStr = new Date().toISOString();
+        const clientWithTime = { ...client, updatedAt: nowStr, createdAt: client.createdAt || nowStr };
+        
+        let updatedClients = stateRef.current.clients;
+        if (operation === 'delete') {
+            updatedClients = stateRef.current.clients.filter(c => c.id !== client.id);
+        } else if (operation === 'create') {
+            updatedClients = [...stateRef.current.clients, clientWithTime];
+        } else {
+            updatedClients = stateRef.current.clients.map(c => c.id === client.id ? clientWithTime : c);
+        }
+        setClients(updatedClients);
+        saveStateToLocalStorage({ clients: updatedClients });
+
+        enqueueSyncItem(client.id, 'clients', operation, operation === 'delete' ? client : clientWithTime);
+    }, [enqueueSyncItem]);
+
+    const updateMachineAction = useCallback((machine: Machine, operation: 'create' | 'update' | 'delete' = 'update') => {
+        const nowStr = new Date().toISOString();
+        const machineWithTime = { ...machine, updatedAt: nowStr, createdAt: machine.createdAt || nowStr };
+        
+        let updatedMachines = stateRef.current.machines;
+        if (operation === 'delete') {
+            updatedMachines = stateRef.current.machines.filter(m => m.id !== machine.id);
+        } else if (operation === 'create') {
+            updatedMachines = [...stateRef.current.machines, machineWithTime];
+        } else {
+            updatedMachines = stateRef.current.machines.map(m => m.id === machine.id ? machineWithTime : m);
+        }
+        setMachines(updatedMachines);
+        saveStateToLocalStorage({ machines: updatedMachines });
+
+        enqueueSyncItem(machine.id, 'machines', operation, operation === 'delete' ? machine : machineWithTime);
+    }, [enqueueSyncItem]);
+
+    const updateAbonoAction = useCallback((abono: Abono, operation: 'create' | 'update' | 'delete' = 'update') => {
+        const nowStr = new Date().toISOString();
+        const abonoWithTime = { ...abono, updatedAt: nowStr, createdAt: abono.createdAt || nowStr };
+
+        let updatedAbonos = stateRef.current.abonos;
+        if (operation === 'delete') {
+            updatedAbonos = stateRef.current.abonos.filter(a => a.id !== abono.id);
+        } else if (operation === 'create') {
+            updatedAbonos = [...stateRef.current.abonos, abonoWithTime];
+        } else {
+            updatedAbonos = stateRef.current.abonos.map(a => a.id === abono.id ? abonoWithTime : a);
+        }
+        setAbonos(updatedAbonos);
+        saveStateToLocalStorage({ abonos: updatedAbonos });
+
+        enqueueSyncItem(abono.id, 'abonos', operation, operation === 'delete' ? abono : abonoWithTime);
+    }, [enqueueSyncItem]);
+
+    const addBudgetAction = useCallback((budget: Budget, operation: 'create' | 'update' | 'delete' = 'update') => {
+        const nowStr = new Date().toISOString();
+        const budgetWithTime = { ...budget, updatedAt: nowStr, createdAt: budget.createdAt || nowStr };
+
+        let updatedBudgets = stateRef.current.budgets;
+        if (operation === 'delete') {
+            updatedBudgets = stateRef.current.budgets.filter(b => b.id !== budget.id);
+        } else if (operation === 'create') {
+            updatedBudgets = [budgetWithTime, ...stateRef.current.budgets];
+        } else {
+            updatedBudgets = stateRef.current.budgets.map(b => b.id === budget.id ? budgetWithTime : b);
+        }
+        setBudgets(updatedBudgets);
+        saveStateToLocalStorage({ budgets: updatedBudgets });
+
+        enqueueSyncItem(budget.id, 'budgets', operation, operation === 'delete' ? budget : budgetWithTime);
+    }, [enqueueSyncItem]);
 
     return (
         <ManagementContext.Provider
@@ -1144,7 +1283,15 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 lastSyncTime,
                 syncFromDatabase,
                 syncQueue,
-                processSyncQueue
+                processSyncQueue,
+                addRentalAction,
+                updateRentalAction,
+                updateTicketAction,
+                addReadingAction,
+                updateClientAction,
+                updateMachineAction,
+                updateAbonoAction,
+                addBudgetAction
             }}
         >
             {children}

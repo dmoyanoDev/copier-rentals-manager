@@ -14,7 +14,10 @@ import { Machine, Rental, Client, Abono } from '@/lib/mockData';
 import { Search, Filter, PlusCircle, CheckCircle, HelpCircle, XCircle, RefreshCw, Calendar, FileText, Layers, Trash2, Edit2, ShieldAlert } from 'lucide-react';
 
 export default function RentalsPage() {
-    const { clients, setClients, machines, setMachines, abonos, setAbonos, rentals, setRentals, readings, currentUser } = useManagement();
+    const { 
+        clients, setClients, machines, setMachines, abonos, setAbonos, rentals, setRentals, readings, currentUser,
+        updateClientAction, updateAbonoAction, updateMachineAction, addRentalAction, updateRentalAction
+    } = useManagement();
     
     // Core states
     const [searchQuery, setSearchQuery] = useState('');
@@ -135,7 +138,7 @@ export default function RentalsPage() {
                 debt: 0,
                 active: true
             };
-            setClients(prev => [...prev, nClient]);
+            updateClientAction(nClient, 'create');
             finalClientId = nClient.id;
         }
 
@@ -149,7 +152,7 @@ export default function RentalsPage() {
                 excessPrice: parseFloat(newPlanExcess) || 15,
                 active: true
             };
-            setAbonos(prev => [...prev, nPlan]);
+            updateAbonoAction(nPlan, 'create');
             finalPlanId = nPlan.id;
         }
 
@@ -169,15 +172,8 @@ export default function RentalsPage() {
                 clientId: finalClientId,
                 abonoId: finalPlanId
             };
-            setMachines(prev => [...prev, nMachine]);
+            updateMachineAction(nMachine, 'create');
             finalMachineId = nMachine.id;
-        } else {
-            setMachines(prev => prev.map(m => m.id === finalMachineId ? {
-                ...m,
-                clientId: finalClientId,
-                abonoId: finalPlanId,
-                status: 'Alquilada'
-            } : m));
         }
 
         // 4. Create Rental Contract
@@ -199,7 +195,14 @@ export default function RentalsPage() {
             ]
         };
 
-        setRentals(prev => [nRental, ...prev]);
+        // Invoke context addRentalAction
+        addRentalAction(nRental, [{
+            id: finalMachineId,
+            clientId: finalClientId,
+            abonoId: finalPlanId,
+            status: 'Alquilada'
+        }]);
+
         setShowCreateModal(false);
         // Reset inputs
         setRentalClientId('');
@@ -224,7 +227,7 @@ export default function RentalsPage() {
             startDate: new Date().toISOString().split('T')[0],
             history: extendedHistory
         };
-        setRentals(prev => prev.map(r => r.id === selectedRental.id ? updated : r));
+        updateRentalAction(updated);
         setSelectedRental(updated);
         alert('Contrato renovado con éxito.');
     };
@@ -237,18 +240,11 @@ export default function RentalsPage() {
         const newMachine = machines.find(m => m.id === selectedNewMachineId);
         if (!newMachine) return;
 
-        // Update machines
-        setMachines(prev => prev.map(m => {
-            if (m.id === selectedRental.machineId) {
-                // Free old machine
-                return { ...m, clientId: null, abonoId: null, status: 'Disponible' };
-            }
-            if (m.id === selectedNewMachineId) {
-                // Bind new machine
-                return { ...m, clientId: selectedRental.clientId, abonoId: selectedRental.abonoId, status: 'Alquilada' };
-            }
-            return m;
-        }));
+        // Prepare machine updates payload
+        const machineUpdates = [
+            { id: selectedRental.machineId, clientId: null, abonoId: null, status: 'Disponible' as const },
+            { id: selectedNewMachineId, clientId: selectedRental.clientId, abonoId: selectedRental.abonoId, status: 'Alquilada' as const }
+        ];
 
         // Update rental
         const logAction = `Reemplazo de equipo: se retira S/N ${oldMachine ? oldMachine.serial : 'N/A'} y se instala S/N ${newMachine.serial}`;
@@ -259,7 +255,7 @@ export default function RentalsPage() {
             history: nextHistory
         };
 
-        setRentals(prev => prev.map(r => r.id === selectedRental.id ? updated : r));
+        updateRentalAction(updated, machineUpdates);
         setSelectedRental(updated);
         setShowChangeMachineModal(false);
         setSelectedNewMachineId('');
@@ -274,8 +270,9 @@ export default function RentalsPage() {
         const newPlan = abonos.find(a => a.id === selectedNewPlanId);
         if (!newPlan) return;
 
-        // Update active machine plan link
-        setMachines(prev => prev.map(m => m.id === selectedRental.machineId ? { ...m, abonoId: selectedNewPlanId } : m));
+        const machineUpdates = [
+            { id: selectedRental.machineId, clientId: selectedRental.clientId, abonoId: selectedNewPlanId, status: 'Alquilada' as const }
+        ];
 
         // Update rental plan link
         const logAction = `Cambio de abono: del plan "${oldPlan ? oldPlan.name : 'N/A'}" al plan "${newPlan.name}"`;
@@ -286,7 +283,7 @@ export default function RentalsPage() {
             history: nextHistory
         };
 
-        setRentals(prev => prev.map(r => r.id === selectedRental.id ? updated : r));
+        updateRentalAction(updated, machineUpdates);
         setSelectedRental(updated);
         setShowChangePlanModal(false);
         setSelectedNewPlanId('');
@@ -298,7 +295,9 @@ export default function RentalsPage() {
         if (!selectedRental) return;
         if (confirm('¿Estás seguro de que deseas finalizar este contrato de alquiler? El equipo asociado volverá a estar disponible.')) {
             // Free machine
-            setMachines(prev => prev.map(m => m.id === selectedRental.machineId ? { ...m, clientId: null, abonoId: null, status: 'Disponible' } : m));
+            const machineUpdates = [
+                { id: selectedRental.machineId, clientId: null, abonoId: null, status: 'Disponible' as const }
+            ];
             
             // Set rental to finalized
             const nextHistory = addTimelineLog(selectedRental, 'Contrato finalizado y equipo liberado a stock');
@@ -309,7 +308,7 @@ export default function RentalsPage() {
                 history: nextHistory
             };
 
-            setRentals(prev => prev.map(r => r.id === selectedRental.id ? updated : r));
+            updateRentalAction(updated, machineUpdates);
             setSelectedRental(updated);
             alert('Contrato finalizado con éxito.');
         }

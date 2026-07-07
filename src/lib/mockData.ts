@@ -8,6 +8,8 @@ export interface Client {
     email: string;
     debt: number;
     active?: boolean;
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 export interface Abono {
@@ -17,6 +19,8 @@ export interface Abono {
     limit: number;
     excessPrice: number;
     active?: boolean;
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 export interface Machine {
@@ -32,6 +36,8 @@ export interface Machine {
     preventiveInterval: number; // in copies, e.g. 15000
     status: 'Disponible' | 'Alquilada' | 'En Taller' | 'Alerta Técnica';
     applyIva: boolean;
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 export interface Reading {
@@ -49,6 +55,8 @@ export interface Reading {
     readingStatus: 'cargada' | 'observada' | 'validada' | 'facturada';
     readingComment?: string;
     history?: { date: string; time: string; action: string; user: string; }[];
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 export interface Rental {
@@ -61,6 +69,8 @@ export interface Rental {
     status: 'activo' | 'pausado' | 'finalizado' | 'vencido';
     observations?: string;
     history?: { date: string; time: string; action: string; user: string; }[];
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 export interface Ticket {
