@@ -4,10 +4,23 @@ import { notificationSettings } from '@/infrastructure/db/schema/notificationSet
 import { getOrCreateNotificationSettings } from '@/infrastructure/notifications/notificationService';
 import { eq } from 'drizzle-orm';
 
+// Always read live config from database
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+const NO_CACHE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+  'Pragma': 'no-cache',
+  'Expires': '0',
+  'CDN-Cache-Control': 'no-store',
+  'Netlify-CDN-Cache-Control': 'no-store',
+};
+
 export async function GET() {
   try {
     const settings = await getOrCreateNotificationSettings();
-    return NextResponse.json(settings);
+    return NextResponse.json(settings, { headers: NO_CACHE_HEADERS });
+
   } catch (error: any) {
     console.error('Error fetching settings:', error);
     return NextResponse.json({ error: 'Failed to fetch settings' }, { status: 500 });

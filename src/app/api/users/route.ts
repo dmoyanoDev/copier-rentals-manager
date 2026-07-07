@@ -6,7 +6,20 @@ import { verifyMaster } from '@/lib/auth/authService';
 import { hashPassword, validatePasswordStrength } from '@/lib/auth/passwordService';
 import { logSecurityEvent } from '@/lib/security/audit';
 
+// Always fetch live data from Turso — never serve cached user lists
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+const NO_CACHE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+  'Pragma': 'no-cache',
+  'Expires': '0',
+  'CDN-Cache-Control': 'no-store',
+  'Netlify-CDN-Cache-Control': 'no-store',
+};
+
 export async function GET(request: Request) {
+
   const ip = request.headers.get('x-forwarded-for') || '127.0.0.1';
   try {
     try {
@@ -28,7 +41,7 @@ export async function GET(request: Request) {
       return rest;
     });
 
-    return NextResponse.json({ ok: true, data: { users: safeUsers } });
+    return NextResponse.json({ ok: true, data: { users: safeUsers } }, { headers: NO_CACHE_HEADERS });
   } catch (error: any) {
     console.error('Error en GET /api/users:', error);
     return NextResponse.json({

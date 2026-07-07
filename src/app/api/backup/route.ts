@@ -1,4 +1,8 @@
 import { NextResponse } from 'next/server';
+
+// Always query Turso — never serve cached responses from CDN or Next.js ISR
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 import { db } from '@/infrastructure/db/client';
 import { sql, gt, ne, eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
@@ -204,6 +208,14 @@ export async function GET(request: Request) {
       headers: {
         'Content-Type': 'application/json',
         'Content-Disposition': `attachment; filename="turso_backup_${new Date().toISOString().split('T')[0]}.json"`,
+        // Prevent ALL caching layers from serving a stale snapshot
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'CDN-Cache-Control': 'no-store',
+        'Netlify-CDN-Cache-Control': 'no-store',
+        'Surrogate-Control': 'no-store',
+        'Vary': 'Accept-Encoding',
       },
     });
   } catch (error: any) {

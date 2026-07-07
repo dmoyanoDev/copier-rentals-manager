@@ -5,7 +5,20 @@ import { users } from '@/infrastructure/db/schema/users';
 import { eq, and, ne } from 'drizzle-orm';
 import { logSecurityEvent } from '@/lib/security/audit';
 
+// Never cache session checks — always verify against the live cookie
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+const NO_CACHE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+  'Pragma': 'no-cache',
+  'Expires': '0',
+  'CDN-Cache-Control': 'no-store',
+  'Netlify-CDN-Cache-Control': 'no-store',
+};
+
 export async function GET(request: Request) {
+
   try {
     const session = await getSession(request);
 
@@ -14,7 +27,7 @@ export async function GET(request: Request) {
         ok: false,
         authenticated: false,
         error: { code: 'UNAUTHORIZED', message: 'Sesión no válida.' }
-      }, { status: 401 });
+      }, { status: 401, headers: NO_CACHE_HEADERS });
     }
 
     const isMaster = session.isMaster === true || session.role === 'master' || session.userId === 'user-admin';
@@ -47,7 +60,8 @@ export async function GET(request: Request) {
           canManageSystem: isMaster || session.role === 'admin',
         },
       },
-    });
+    }, { headers: NO_CACHE_HEADERS });
+
   } catch (error) {
     console.error('Error en API GET /api/auth/me:', error);
     return NextResponse.json({

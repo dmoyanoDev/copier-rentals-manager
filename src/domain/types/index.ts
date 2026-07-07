@@ -210,4 +210,6 @@ export interface HistoryEntry {
 export const MAX_SYNC_QUEUE_SIZE = 500;
 export const MAX_SYNC_RETRIES = 5;
 export const SYNC_DEBOUNCE_MS = 500;
-export const SYNC_POLL_INTERVAL_MS = 15000;
+// Poll every 5 seconds when tab is visible — achieves near-real-time sync across devices
+// Safe for Turso free tier: incremental requests are lightweight (only fetches changes since last sync)
+export const SYNC_POLL_INTERVAL_MS = 5000;
