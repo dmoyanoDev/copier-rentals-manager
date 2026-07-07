@@ -137,7 +137,7 @@ interface ManagementContextType {
     isSyncing: boolean;
     syncError: string | null;
     lastSyncTime: Date | null;
-    syncFromDatabase: () => Promise<void>;
+    syncFromDatabase: (forceUser?: User | null, forceRetry?: boolean) => Promise<void>;
     syncQueue: SyncQueueItem[];
     processSyncQueue: (passedQueue?: SyncQueueItem[]) => Promise<void>;
 
@@ -505,7 +505,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }, []);
 
     // Fetch snapshot from backend database — uses stateRef to avoid stale closures
-    const syncFromDatabase = useCallback(async (forceUser?: User | null) => {
+    const syncFromDatabase = useCallback(async (forceUser?: User | null, forceRetry: boolean = false) => {
         const activeUser = forceUser !== undefined ? forceUser : stateRef.current.currentUser;
         if (!activeUser) {
             return;
@@ -522,7 +522,18 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (isSyncingRef.current) return;
 
         // 1. Process pending items first if there are any to maintain strict sequential order
-        const currentQueue = getStoredQueue();
+        let currentQueue = getStoredQueue();
+        if (forceRetry) {
+            currentQueue = currentQueue.map(item => {
+                if (item.status === 'failed' || item.retryCount >= MAX_SYNC_RETRIES) {
+                    return { ...item, status: 'pending' as const, retryCount: 0 };
+                }
+                return item;
+            });
+            saveStoredQueue(currentQueue);
+            setSyncQueue(currentQueue);
+        }
+
         const pendingItems = currentQueue.filter((item) => 
             (item.status === 'pending' || item.status === 'failed') && item.retryCount < MAX_SYNC_RETRIES
         );

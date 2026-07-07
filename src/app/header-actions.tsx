@@ -14,7 +14,7 @@ const PageHeaderActions: React.FC = () => {
         <div className="flex items-center gap-3">
             {/* Cloud Database Sync Status Indicator */}
             <button
-                onClick={() => syncFromDatabase()}
+                onClick={() => syncFromDatabase(null, true)}
                 disabled={isSyncing || syncingCount > 0}
                 title={
                     isSyncing || syncingCount > 0
