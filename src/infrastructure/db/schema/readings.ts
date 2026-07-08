@@ -11,6 +11,11 @@ export const readings = sqliteTable('readings', {
   month: text('month').notNull(), // YYYY-MM
   initial: integer('initial').notNull(),
   final: integer('final').notNull(),
+  excessCount: integer('excess_count').default(0).notNull(),
+  excessPrice: real('excess_price').default(0).notNull(),
+  netAmount: real('net_amount').default(0).notNull(),
+  ivaAmount: real('iva_amount').default(0).notNull(),
+  totalAmount: real('total_amount').default(0).notNull(),
   readingStatus: text('reading_status').default('Lectura tomada').notNull(),
   billingStatus: text('billing_status').default('No facturado').notNull(), // No facturado, Facturado, Enviada
   collectionStatus: text('collection_status').default('Impago').notNull(), // Impago, Parcial, Pagado
