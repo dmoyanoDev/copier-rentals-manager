@@ -673,7 +673,11 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         }
                     }
 
-                    if (localChangesExist) {
+                    const isMaster = (stateRef.current.currentUser as any)?.role === 'master' || 
+                                     (stateRef.current.currentUser as any)?.isMaster || 
+                                     stateRef.current.currentUser?.username === 'dmoyano';
+
+                    if (localChangesExist && isMaster) {
                         const mergedRaw = JSON.stringify(stateToSave);
                         fetch('/api/backup?user=autosave', {
                             method: 'POST',
