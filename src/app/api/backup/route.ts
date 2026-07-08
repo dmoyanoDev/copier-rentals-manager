@@ -237,6 +237,7 @@ export async function POST(request: Request) {
 
     await ensureSchemaSynced(db);
     const { searchParams } = new URL(request.url);
+    const isAutosave = searchParams.get('user') === 'autosave';
     const user = session.username || 'system';
     const payload = await request.json();
 
@@ -258,11 +259,13 @@ export async function POST(request: Request) {
       await tx.delete(machines);
       await tx.delete(plans);
       await tx.delete(clients);
-      await tx.delete(users).where(ne(users.id, session.userId));
+      if (!isAutosave) {
+        await tx.delete(users).where(ne(users.id, session.userId));
+      }
       if (payload.auditLogs !== undefined) await tx.delete(auditLogs);
 
       // 2. Insert new rows if present
-      if (payload.users?.length) {
+      if (!isAutosave && payload.users?.length) {
         for (const u of payload.users) {
           const hasInvalidPassword = !u.passwordHash || u.passwordHash.length < 10;
           // If the user already has a valid hash, keep it. Never hardcode passwords in source.
