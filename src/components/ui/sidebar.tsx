@@ -145,11 +145,19 @@ export const Sidebar: React.FC = () => {
         }
     ];
 
-    // Filtrar menús autorizados
+    // Filtrar menús autorizados según el rol del usuario
     const allowedMenuItems = menuItems.filter(item => {
+        // Rutas exclusivas del Master
         if (item.href === '/usuarios' || item.href === '/respaldo') {
             return isMaster;
         }
+
+        // Si el usuario es técnico, restringir pestañas administrativas
+        if (currentUser?.role === 'tecnico') {
+            const restrictedTechPaths = ['/lecturas', '/abonos', '/clientes', '/historial', '/presupuestos', '/alquileres'];
+            return !restrictedTechPaths.includes(item.href);
+        }
+
         return true;
     });
 
@@ -262,16 +270,20 @@ export const Sidebar: React.FC = () => {
                 </Link>
 
                 <Link
-                    href="/alquileres"
+                    href={currentUser?.role === 'tecnico' ? '/maquinas' : '/alquileres'}
                     className={cn(
                         "flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-xl transition-all",
-                        pathname === '/alquileres' ? "text-indigo-400 bg-indigo-950/30 font-semibold" : "text-slate-400"
+                        pathname === (currentUser?.role === 'tecnico' ? '/maquinas' : '/alquileres') 
+                            ? "text-indigo-400 bg-indigo-950/30 font-semibold" 
+                            : "text-slate-400"
                     )}
                 >
                     <div className="w-5 h-5">
-                        {menuItems[1].icon}
+                        {currentUser?.role === 'tecnico' ? menuItems[5].icon : menuItems[1].icon}
                     </div>
-                    <span className="text-[9px] font-medium tracking-tight">Alquileres</span>
+                    <span className="text-[9px] font-medium tracking-tight">
+                        {currentUser?.role === 'tecnico' ? 'Máquinas' : 'Alquileres'}
+                    </span>
                 </Link>
 
                 <button
