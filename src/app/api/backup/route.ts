@@ -491,7 +491,20 @@ export async function POST(request: Request) {
             endDate: r.endDate || null,
             status: r.status || 'activo',
             observations: r.observations || null,
-            history: typeof r.history === 'string' ? r.history : JSON.stringify(r.history || []),
+            history: (() => {
+              if (!r.history) return [];
+              if (Array.isArray(r.history)) return r.history;
+              if (typeof r.history === 'string') {
+                try {
+                  let parsed = JSON.parse(r.history);
+                  if (typeof parsed === 'string') {
+                    parsed = JSON.parse(parsed);
+                  }
+                  if (Array.isArray(parsed)) return parsed;
+                } catch (e) {}
+              }
+              return [];
+            })(),
             createdAt: r.createdAt ? new Date(r.createdAt) : new Date(),
             updatedAt: r.updatedAt ? new Date(r.updatedAt) : new Date()
           });
