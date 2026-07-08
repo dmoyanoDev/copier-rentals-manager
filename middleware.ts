@@ -48,8 +48,8 @@ export async function middleware(request: NextRequest) {
 
   // Protección de roles (RBAC) para técnicos
   if (session.role === 'tecnico') {
-    // Los técnicos solo pueden acceder a: Dashboard (/), Soporte Técnico (/tecnica) y Consulta de Máquinas (/maquinas)
-    const restrictedPaths = ['/lecturas', '/abonos', '/usuarios', '/clientes', '/historial', '/presupuestos', '/respaldo', '/alquileres'];
+    // Los técnicos solo pueden acceder a: Dashboard (/), Soporte Técnico (/tecnica), Consulta de Máquinas (/maquinas) y Lecturas (/lecturas)
+    const restrictedPaths = ['/abonos', '/usuarios', '/clientes', '/historial', '/presupuestos', '/respaldo', '/alquileres'];
     const isRestricted = restrictedPaths.some(path => pathname.startsWith(path));
     
     if (isRestricted) {

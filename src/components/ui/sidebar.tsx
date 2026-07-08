@@ -154,7 +154,7 @@ export const Sidebar: React.FC = () => {
 
         // Si el usuario es técnico, restringir pestañas administrativas
         if (currentUser?.role === 'tecnico') {
-            const restrictedTechPaths = ['/lecturas', '/abonos', '/clientes', '/historial', '/presupuestos', '/alquileres'];
+            const restrictedTechPaths = ['/abonos', '/clientes', '/historial', '/presupuestos', '/alquileres'];
             return !restrictedTechPaths.includes(item.href);
         }
 
