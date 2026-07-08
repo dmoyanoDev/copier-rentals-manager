@@ -26,6 +26,7 @@ export default function UsersPage() {
   const [fullname, setFullname] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'administrativo' | 'tecnico' | 'master'>('tecnico');
   const [isActive, setIsActive] = useState<boolean>(true);
@@ -71,6 +72,7 @@ export default function UsersPage() {
       setFullname(user.fullname);
       setEmail(user.email);
       setPhone(user.phone || '');
+      setWhatsapp(user.whatsapp || '');
       setPassword('');
       setRole(user.role as any);
       setIsActive(user.active === 1);
@@ -80,6 +82,7 @@ export default function UsersPage() {
       setFullname('');
       setEmail('');
       setPhone('');
+      setWhatsapp('');
       setPassword('');
       setRole('tecnico');
       setIsActive(true);
@@ -106,6 +109,7 @@ export default function UsersPage() {
       fullname: fullname.trim(),
       email: email.trim(),
       phone: phone.trim() || null,
+      whatsapp: whatsapp.trim() || phone.trim() || null,
       role,
       active: isActive ? 1 : 0,
     };
@@ -221,7 +225,7 @@ export default function UsersPage() {
               <TableHeaderCell>Usuario</TableHeaderCell>
               <TableHeaderCell>Nombre Completo</TableHeaderCell>
               <TableHeaderCell>Email</TableHeaderCell>
-              <TableHeaderCell>Celular / Teléfono</TableHeaderCell>
+              <TableHeaderCell>Contacto</TableHeaderCell>
               <TableHeaderCell>Estado</TableHeaderCell>
               <TableHeaderCell>Rol Asignado</TableHeaderCell>
               <TableHeaderCell className="text-right">Acción</TableHeaderCell>
@@ -243,7 +247,12 @@ export default function UsersPage() {
                   </TableCell>
                   <TableCell className="font-bold text-slate-100">{u.fullname}</TableCell>
                   <TableCell className="text-xs text-slate-400">{u.email}</TableCell>
-                  <TableCell className="text-xs text-slate-300">{u.phone || 'Sin Celular'}</TableCell>
+                  <TableCell className="text-xs text-slate-300">
+                    <div className="flex flex-col">
+                      <span>Cel: {u.phone || 'Sin Celular'}</span>
+                      {u.whatsapp && <span className="text-[10px] text-emerald-400 font-medium">WA: {u.whatsapp}</span>}
+                    </div>
+                  </TableCell>
                   <TableCell className="text-xs">
                     <button
                       onClick={() => handleToggleActive(u)}
@@ -333,6 +342,12 @@ export default function UsersPage() {
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="Ej: 11-5432-8765"
+          />
+          <Input
+            label="Número de WhatsApp"
+            value={whatsapp}
+            onChange={(e) => setWhatsapp(e.target.value)}
+            placeholder="Ej: 5493814667288 (Sin +)"
           />
           
           <Input
