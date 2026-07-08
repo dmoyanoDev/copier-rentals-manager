@@ -364,6 +364,70 @@ export default function TechnicalPage() {
         alert('¡Alerta de aviso reenviada exitosamente!');
     };
 
+    // Trigger manual direct WhatsApp Web dispatch from frontend
+    const handleWhatsAppDirect = (event: string) => {
+        if (!selectedTicket) return;
+        const tech = users.find(u => u.id === selectedTicket.assignedTechId);
+        if (!tech) {
+            alert('¡Atención! Asigne un técnico al ticket para poder enviar la alerta.');
+            return;
+        }
+        if (!tech.whatsapp) {
+            alert('¡Atención! El técnico asignado no tiene un número de WhatsApp registrado.');
+            return;
+        }
+
+        // Clean WhatsApp number
+        const cleanWhatsapp = tech.whatsapp.replace(/\D/g, '');
+        if (!cleanWhatsapp) {
+            alert('¡Atención! El número de WhatsApp registrado no es válido.');
+            return;
+        }
+
+        // Variables replacement Map
+        const variables: Record<string, string> = {
+            ticket: selectedTicket.id.replace('ticket-', ''),
+            evento: event.toUpperCase().replace('_', ' '),
+            cliente: selectedTicket.clientName,
+            direccion: selectedTicket.clientAddress || 'No especificada',
+            equipo: selectedTicket.machineDesc,
+            serie: selectedTicket.serialNumber || 'Sin Nro Serie',
+            falla: selectedTicket.description,
+            prioridad: selectedTicket.priority.toUpperCase(),
+            tecnico: tech.fullname,
+            sla: selectedTicket.slaDate ? new Date(selectedTicket.slaDate).toLocaleString('es-AR') : 'Sin definir',
+            enlace: `${window.location.origin}/tecnica?ticketId=${selectedTicket.id}`
+        };
+
+        // Fallback to default template if configuration is empty
+        const templateText = configTemplates.whatsapp || `*M&S TECNOLOGÍA DIGITAL - ÁREA TÉCNICA*\n\nHola *{tecnico}*, se ha registrado una actualización para el Ticket *TCK-{ticket}*.\n\n*Detalles del Servicio:*\n• *Evento:* {evento}\n• *Cliente:* {cliente}\n• *Dirección:* {direccion}\n• *Equipo:* {equipo} (S/N: {serie})\n• *Falla:* {falla}\n• *Prioridad:* {prioridad}\n• *Fecha Límite SLA:* {sla}\n\nPor favor, ingresa al panel para gestionarlo:\n{enlace}`;
+
+        let output = templateText;
+        for (const [k, v] of Object.entries(variables)) {
+            output = output.replace(new RegExp(`{${k}}`, 'g'), v);
+        }
+
+        // Open API link
+        const whatsappUrl = `https://api.whatsapp.com/send?phone=${cleanWhatsapp}&text=${encodeURIComponent(output)}`;
+        window.open(whatsappUrl, '_blank');
+        
+        // Log locally to history
+        const updatedHistory = [...(selectedTicket.history || []), {
+            date: new Date().toISOString().split('T')[0],
+            time: new Date().toLocaleTimeString('es-AR').slice(0, 5),
+            action: `[WhatsApp Web] Notificación abierta para el evento: ${event.toUpperCase()}`,
+            user: currentUser?.fullname || 'Administración'
+        }];
+
+        const updated: Ticket = {
+            ...selectedTicket,
+            history: updatedHistory
+        };
+
+        updateTicketAction(updated);
+        setSelectedTicket(updated);
+    };
+
     // Detail drawer open
     const handleOpenDetail = (t: Ticket) => {
         setSelectedTicket(t);
@@ -1942,18 +2006,30 @@ export default function TechnicalPage() {
                             )}
 
                             {/* Actions toolbar */}
-                            <div className="flex gap-2">
+                            <div className="grid grid-cols-2 gap-2">
                                 <button 
                                     onClick={() => handleManualResendNotification('asignado')}
-                                    className="flex-1 px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-[10px] font-bold hover:bg-slate-900 transition-all text-center"
+                                    className="px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-[10px] font-bold hover:bg-slate-900 transition-all text-center cursor-pointer"
                                 >
-                                    Reenviar Aviso Asignación
+                                    Enviar Email Asignación
+                                </button>
+                                <button 
+                                    onClick={() => handleWhatsAppDirect('asignado')}
+                                    className="px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl text-[10px] font-bold hover:bg-emerald-500/20 transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
+                                >
+                                    Enviar WA Asignación
                                 </button>
                                 <button 
                                     onClick={() => handleManualResendNotification('resuelto')}
-                                    className="flex-1 px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-[10px] font-bold hover:bg-slate-900 transition-all text-center"
+                                    className="px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-[10px] font-bold hover:bg-slate-900 transition-all text-center cursor-pointer"
                                 >
-                                    Reenviar Alerta Resuelto
+                                    Enviar Email Resuelto
+                                </button>
+                                <button 
+                                    onClick={() => handleWhatsAppDirect('resuelto')}
+                                    className="px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl text-[10px] font-bold hover:bg-emerald-500/20 transition-all text-center flex items-center justify-center gap-1 cursor-pointer"
+                                >
+                                    Enviar WA Resuelto
                                 </button>
                             </div>
 
