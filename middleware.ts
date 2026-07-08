@@ -60,12 +60,13 @@ export async function middleware(request: NextRequest) {
 
   // Protección exclusiva para el usuario Maestro
   const isMasterRoute = pathname.startsWith('/usuarios') || pathname.startsWith('/respaldo');
-  const isMasterApiRoute = pathname.startsWith('/api/users') || pathname.startsWith('/api/backup') || pathname.startsWith('/api/export') || pathname.startsWith('/api/import');
+  const isMasterApiRoute = pathname.startsWith('/api/users') || pathname.startsWith('/api/export') || pathname.startsWith('/api/import');
+  const isBackupRestore = pathname.startsWith('/api/backup') && request.method !== 'GET';
 
-  if (isMasterRoute || isMasterApiRoute) {
+  if (isMasterRoute || isMasterApiRoute || isBackupRestore) {
     const isMaster = isMasterUser(session);
     if (!isMaster) {
-      if (isMasterApiRoute || pathname.startsWith('/api/')) {
+      if (isMasterApiRoute || isBackupRestore || pathname.startsWith('/api/')) {
         return NextResponse.json({
           ok: false,
           error: { code: 'FORBIDDEN', message: 'No tenés permisos para acceder a este recurso.' }
