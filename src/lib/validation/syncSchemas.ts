@@ -117,8 +117,8 @@ export const machineSyncSchema = z.object({
 export const readingSyncSchema = z.object({
   id: z.string().min(1),
   machineId: z.string().min(1),
-  clientId: z.string().min(1),
-  abonoId: z.string().min(1),
+  clientId: z.string().nullable().optional(),
+  abonoId: z.string().nullable().optional(),
   month: z.string().min(1),
   initial: z.number().int().default(0),
   final: z.number().int().default(0),

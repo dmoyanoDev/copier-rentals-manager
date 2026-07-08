@@ -132,6 +132,8 @@ export default function ReadingsPage() {
         const newReading: Reading = {
             id: `r-${Date.now()}`,
             machineId: selectedMachine.id,
+            clientId: selectedMachine.clientId || '',
+            abonoId: selectedMachine.abonoId || '',
             month: currentMonth,
             initial: initialVal,
             final: finalVal,

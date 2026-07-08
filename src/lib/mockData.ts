@@ -43,6 +43,8 @@ export interface Machine {
 export interface Reading {
     id: string;
     machineId: string;
+    clientId?: string;
+    abonoId?: string;
     month: string; // YYYY-MM
     initial: number;
     final: number;

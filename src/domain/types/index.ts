@@ -48,6 +48,8 @@ export interface Machine {
 export interface Reading {
     id: string;
     machineId: string;
+    clientId?: string;
+    abonoId?: string;
     month: string;
     initial: number;
     final: number;
