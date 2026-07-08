@@ -139,6 +139,18 @@ export async function POST(request: Request) {
 
         const cleanPayload = parsed.data;
 
+        // Auto-reparar clientId y abonoId huérfanos para lecturas
+        if (entityType === 'readings') {
+          const rPayload = cleanPayload as any;
+          if (!rPayload.clientId || !rPayload.abonoId) {
+            const mach = await tx.select().from(machines).where(eq(machines.id, rPayload.machineId)).limit(1);
+            if (mach.length > 0) {
+              rPayload.clientId = rPayload.clientId || mach[0].clientId;
+              rPayload.abonoId = rPayload.abonoId || mach[0].abonoId;
+            }
+          }
+        }
+
           // 4. Compare Last-Write-Wins (LWW) against database
           try {
             const existing = await tx.select().from(table).where(eq(table.id, entityId)).limit(1);
