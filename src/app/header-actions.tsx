@@ -2,10 +2,10 @@
 
 import React from 'react';
 import { useManagement } from '@/lib/context';
-import { Cloud, CloudOff, RefreshCw } from 'lucide-react';
+import { Cloud, CloudOff, RefreshCw, RotateCcw } from 'lucide-react';
 
 const PageHeaderActions: React.FC = () => {
-    const { currentMonth, setCurrentMonth, isSyncing, syncError, lastSyncTime, syncFromDatabase, syncQueue } = useManagement();
+    const { currentMonth, setCurrentMonth, isSyncing, syncError, lastSyncTime, syncFromDatabase, syncQueue, resetSyncAction } = useManagement();
 
     const pendingCount = syncQueue?.filter((i: any) => i.status === 'pending' || i.status === 'failed').length || 0;
     const syncingCount = syncQueue?.filter((i: any) => i.status === 'syncing').length || 0;
@@ -70,6 +70,23 @@ const PageHeaderActions: React.FC = () => {
                     </>
                 )}
             </button>
+
+            {/* Manual Sync Queue Reset Option */}
+            {pendingCount > 0 && (
+                <button
+                    onClick={async () => {
+                        if (window.confirm("¿Deseas restablecer la base de datos local y descargar la información limpia de la nube? Se descartarán los cambios locales no sincronizados de este dispositivo.")) {
+                            await resetSyncAction();
+                        }
+                    }}
+                    disabled={isSyncing}
+                    title="Descartar cambios locales pendientes y descargar datos frescos de la nube"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-red-200 dark:border-red-900/40 bg-red-500/10 hover:bg-red-500/25 transition-all text-[11px] font-semibold text-red-400 select-none cursor-pointer"
+                >
+                    <RotateCcw size={12} />
+                    <span>Restablecer</span>
+                </button>
+            )}
 
             <div className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 shadow-sm text-xs">
                 <span className="font-semibold text-slate-500 dark:text-slate-400">Mes de gestión:</span>

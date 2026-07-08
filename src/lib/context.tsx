@@ -140,6 +140,7 @@ interface ManagementContextType {
     syncFromDatabase: (forceUser?: User | null, forceRetry?: boolean) => Promise<void>;
     syncQueue: SyncQueueItem[];
     processSyncQueue: (passedQueue?: SyncQueueItem[]) => Promise<void>;
+    resetSyncAction: () => Promise<void>;
 
     // Action-Driven mutations
     addRentalAction: (rental: Rental, machineUpdates: { id: string; clientId: string | null; abonoId: string | null; status: any }[]) => void;
@@ -794,6 +795,28 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
     }, [processSyncQueue]);
 
+    const resetSyncAction = useCallback(async () => {
+        setIsSyncing(true);
+        try {
+            if (typeof window !== 'undefined') {
+                localStorage.removeItem('ms_sync_queue');
+                localStorage.removeItem('ms_last_sync_time');
+                localStorage.removeItem('ms_deleted_ids');
+            }
+            setSyncQueue([]);
+            setLastSyncTime(null);
+            setSyncError(null);
+            
+            await syncFromDatabase(stateRef.current.currentUser);
+            showSaveSuccess();
+        } catch (e) {
+            console.error("Error resetting sync:", e);
+            showSaveError("No se pudo restablecer la base de datos local");
+        } finally {
+            setIsSyncing(false);
+        }
+    }, [syncFromDatabase]);
+
     // Initial load effect
     useEffect(() => {
         const controller = new AbortController();
@@ -1302,7 +1325,8 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 updateClientAction,
                 updateMachineAction,
                 updateAbonoAction,
-                addBudgetAction
+                addBudgetAction,
+                resetSyncAction
             }}
         >
             {children}
