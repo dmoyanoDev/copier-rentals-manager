@@ -123,39 +123,46 @@ export default function PresupuestosPage() {
     // 2. EFFECTS & HELPERS
     // ==========================================
     
+    const hasInitializedForm = React.useRef(false);
+    
     // Auto-generate budget number initially and apply default template
     useEffect(() => {
         if (activeTab === 'create' && !formBudgetId) {
-            setNumero('PRE-' + (1000 + budgets.length + 1));
-            setFecha(new Date().toISOString().split('T')[0]);
-            handleClientSelect('');
-            
-            // Pre-fill default template for alquiler
-            const defaultType = 'alquiler';
-            setTipo(defaultType);
-            const matched = templates.find(t => t.tipo === defaultType && t.activo);
-            if (matched) {
-                setSelectedTemplateId(matched.id);
-                setIntroText(matched.defaultIntroText);
-                setConditionsText(matched.defaultConditionsText);
-                setIncludesText(matched.defaultIncludesText);
-                setExcludesText(matched.defaultExcludesText);
-                setIvaMode(matched.defaultTaxMode);
-                if (isNoState) {
-                    setRequirementsText(matched.defaultRequirementsText);
+            if (!hasInitializedForm.current) {
+                hasInitializedForm.current = true;
+                setNumero('PRE-' + (1000 + budgets.length + 1));
+                setFecha(new Date().toISOString().split('T')[0]);
+                handleClientSelect('');
+                
+                // Pre-fill default template for alquiler
+                const defaultType = 'alquiler';
+                setTipo(defaultType);
+                const matched = templates.find(t => t.tipo === defaultType && t.activo);
+                if (matched) {
+                    setSelectedTemplateId(matched.id);
+                    setIntroText(matched.defaultIntroText);
+                    setConditionsText(matched.defaultConditionsText);
+                    setIncludesText(matched.defaultIncludesText);
+                    setExcludesText(matched.defaultExcludesText);
+                    setIvaMode(matched.defaultTaxMode);
+                    if (isNoState) {
+                        setRequirementsText(matched.defaultRequirementsText);
+                    } else {
+                        setRequirementsText('');
+                    }
                 } else {
+                    setIntroText('');
+                    setConditionsText('');
+                    setIncludesText('');
+                    setExcludesText('');
                     setRequirementsText('');
                 }
-            } else {
-                setIntroText('');
-                setConditionsText('');
-                setIncludesText('');
-                setExcludesText('');
-                setRequirementsText('');
+                setIsTextDirty(false); // Reset dirty on create new
             }
-            setIsTextDirty(false); // Reset dirty on create new
+        } else {
+            hasInitializedForm.current = false;
         }
-    }, [activeTab, budgets, formBudgetId, templates, isNoState]);
+    }, [activeTab, budgets.length, formBudgetId, templates, isNoState]);
 
     // Handle selection of a client
     const handleClientSelect = (id: string) => {
