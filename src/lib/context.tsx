@@ -652,10 +652,10 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         users: merged.users || [],
                         rentals: merged.rentals || [],
                         budgets: merged.budgets || [],
-                        templates: parsed.templates || [],
-                        machinePresets: parsed.machinePresets || [],
-                        gestiones: parsed.gestiones || [],
-                        cobranzaConfig: parsed.cobranzaConfig || defaultCobranzaConfig
+                        templates: parsed.templates || templates || [],
+                        machinePresets: parsed.machinePresets || machinePresets || [],
+                        gestiones: parsed.gestiones || gestiones || [],
+                        cobranzaConfig: parsed.cobranzaConfig || cobranzaConfig || defaultCobranzaConfig
                     };
                     try {
                         localStorage.setItem('ms_data', JSON.stringify(stateToSave));
@@ -934,7 +934,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 const customTemplates = loadedTemplates.filter((t: any) => !defaultIds.includes(t.id));
                 setTemplates([...defaultBudgetTemplates, ...customTemplates]);
 
-                setMachinePresets(parsed.machinePresets || defaultMachinePresets);
+                setMachinePresets(parsed.machinePresets && parsed.machinePresets.length > 0 ? parsed.machinePresets : defaultMachinePresets);
                 setGestiones(parsed.gestiones || defaultGestiones);
                 
                 if (parsed.cobranzaConfig) {
