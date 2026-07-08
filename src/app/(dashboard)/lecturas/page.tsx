@@ -76,6 +76,26 @@ export default function ReadingsPage() {
         return [...(r.history || []), logEntry];
     };
 
+    const getInitialCounterForMachine = (machine: Machine, monthStr: string): number => {
+        const machineReadings = readings.filter(r => r.machineId === machine.id);
+        if (machineReadings.length === 0) {
+            return machine.currentCounter || 0;
+        }
+
+        // Obtener lecturas de meses anteriores al mes seleccionado, ordenadas de forma descendente
+        const pastReadings = machineReadings
+            .filter(r => r.month < monthStr)
+            .sort((a, b) => b.month.localeCompare(a.month));
+
+        if (pastReadings.length > 0) {
+            return pastReadings[0].final || 0;
+        }
+
+        // Fallback: si no hay lecturas anteriores, usar la lectura más reciente de cualquier mes cargada
+        const anyPast = [...machineReadings].sort((a, b) => b.month.localeCompare(a.month));
+        return anyPast[0].final || machine.currentCounter || 0;
+    };
+
     const handleOpenLogModal = (m: Machine) => {
         setSelectedMachine(m);
         setInputValue('');
@@ -91,7 +111,7 @@ export default function ReadingsPage() {
             return;
         }
 
-        const initialVal = selectedMachine.currentCounter || 0;
+        const initialVal = getInitialCounterForMachine(selectedMachine, currentMonth);
         if (finalVal < initialVal) {
             setValidationError(`Error: El contador final (${finalVal.toLocaleString()}) no puede ser menor al contador anterior (${initialVal.toLocaleString()}).`);
             return;
@@ -518,7 +538,9 @@ export default function ReadingsPage() {
                                                         )}
                                                     </span>
                                                 </TableCell>
-                                                <TableCell className="font-mono-tabular text-xs text-slate-300">{(reading ? (reading.initial || 0) : (m.currentCounter || 0)).toLocaleString()}</TableCell>
+                                                <TableCell className="font-mono-tabular text-xs text-slate-300">
+                                                    {(reading ? (reading.initial || 0) : getInitialCounterForMachine(m, currentMonth)).toLocaleString()}
+                                                </TableCell>
                                                 <TableCell className="font-mono-tabular text-xs text-slate-300">
                                                     {reading ? (reading.final || 0).toLocaleString() : '-'}
                                                 </TableCell>
@@ -660,7 +682,7 @@ export default function ReadingsPage() {
                                 <div className="text-xs bg-indigo-950/20 p-3 rounded-xl border border-indigo-900/30">
                                     <span className="text-slate-400 block text-[9px] uppercase font-bold">Contador Anterior</span>
                                     <span className="font-bold text-slate-205 font-mono-tabular mt-1 block">
-                                        {(selectedMachine.currentCounter || 0).toLocaleString()} copias
+                                        {getInitialCounterForMachine(selectedMachine, currentMonth).toLocaleString()} copias
                                     </span>
                                 </div>
 
