@@ -139,7 +139,7 @@ interface ManagementContextType {
     lastSyncTime: Date | null;
     syncFromDatabase: (forceUser?: User | null, forceRetry?: boolean) => Promise<void>;
     syncQueue: SyncQueueItem[];
-    processSyncQueue: (passedQueue?: SyncQueueItem[]) => Promise<boolean>;
+    processSyncQueue: (passedQueue?: SyncQueueItem[]) => Promise<void>;
     resetSyncAction: () => Promise<void>;
 
     // Action-Driven mutations
@@ -348,6 +348,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const isProcessingQueueRef = useRef(false);
     const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
+    const hasSyncQueueFailedRef = useRef(false);
 
     // Use refs to always have current state values available to callbacks without stale closures
     const stateRef = useRef({
@@ -394,14 +395,15 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
 
     const processSyncQueue = useCallback(async (passedQueue?: SyncQueueItem[]) => {
-        if (isProcessingQueueRef.current) return false;
+        if (isProcessingQueueRef.current) return;
+        hasSyncQueueFailedRef.current = false;
         
         const queueToProcess = passedQueue || getStoredQueue();
         const pendingItems = queueToProcess.filter((item) => 
             (item.status === 'pending' || item.status === 'failed') && item.retryCount < MAX_SYNC_RETRIES
         );
         
-        if (pendingItems.length === 0) return true;
+        if (pendingItems.length === 0) return;
         
         isProcessingQueueRef.current = true;
         let succeeded = false;
@@ -465,7 +467,8 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 if (typeof window !== 'undefined') {
                     window.location.href = '/login';
                 }
-                return false;
+                hasSyncQueueFailedRef.current = true;
+                return;
             }
 
             if (!response.ok) {
@@ -527,6 +530,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             setSyncQueue(revertedQueue);
             setSyncError("OFFLINE");
             showOffline();
+            hasSyncQueueFailedRef.current = true;
         } finally {
             isProcessingQueueRef.current = false;
             // Only retry immediately if the last processing was successful (to handle parallel insertions)
@@ -542,7 +546,6 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 }
             }
         }
-        return succeeded;
     }, []);
 
     // Fetch snapshot from backend database — uses stateRef to avoid stale closures
@@ -579,8 +582,8 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             (item.status === 'pending' || item.status === 'failed') && item.retryCount < MAX_SYNC_RETRIES
         );
         if (pendingItems.length > 0) {
-            const queueSucceeded = await processSyncQueue(currentQueue);
-            if (!queueSucceeded) {
+            await processSyncQueue(currentQueue);
+            if (hasSyncQueueFailedRef.current) {
                 return;
             }
         }
