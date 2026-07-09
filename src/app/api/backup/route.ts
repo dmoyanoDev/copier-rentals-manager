@@ -144,7 +144,7 @@ export async function GET(request: Request) {
     const sinceParam = searchParams.get('since');
     const sinceDate = sinceParam ? new Date(sinceParam) : null;
     const isValidSince = sinceDate && !isNaN(sinceDate.getTime());
-    const sinceSeconds = isValidSince ? Math.floor(sinceDate!.getTime() / 1000) : 0;
+    const sinceMs = isValidSince ? sinceDate!.getTime() : 0;
 
     const isSystemSync = user === 'system' || user === 'autosave';
 
@@ -163,19 +163,19 @@ export async function GET(request: Request) {
       dbAuditLogs,
       dbRentals
     ] = await Promise.all([
-      isValidSince ? db.select().from(users).where(sql`${users.updatedAt} > ${sinceSeconds}`) : db.select().from(users),
-      isValidSince ? db.select().from(clients).where(sql`${clients.updatedAt} > ${sinceSeconds}`) : db.select().from(clients),
-      isValidSince ? db.select().from(plans).where(sql`${plans.updatedAt} > ${sinceSeconds}`) : db.select().from(plans),
-      isValidSince ? db.select().from(machines).where(sql`${machines.updatedAt} > ${sinceSeconds}`) : db.select().from(machines),
-      isValidSince ? db.select().from(readings).where(sql`${readings.updatedAt} > ${sinceSeconds}`) : db.select().from(readings),
-      isValidSince ? db.select().from(tickets).where(sql`${tickets.updatedAt} > ${sinceSeconds}`) : db.select().from(tickets),
-      isValidSince ? db.select().from(budgets).where(sql`${budgets.updatedAt} > ${sinceSeconds}`) : db.select().from(budgets),
+      isValidSince ? db.select().from(users).where(sql`${users.updatedAt} > ${sinceMs}`) : db.select().from(users),
+      isValidSince ? db.select().from(clients).where(sql`${clients.updatedAt} > ${sinceMs}`) : db.select().from(clients),
+      isValidSince ? db.select().from(plans).where(sql`${plans.updatedAt} > ${sinceMs}`) : db.select().from(plans),
+      isValidSince ? db.select().from(machines).where(sql`${machines.updatedAt} > ${sinceMs}`) : db.select().from(machines),
+      isValidSince ? db.select().from(readings).where(sql`${readings.updatedAt} > ${sinceMs}`) : db.select().from(readings),
+      isValidSince ? db.select().from(tickets).where(sql`${tickets.updatedAt} > ${sinceMs}`) : db.select().from(tickets),
+      isValidSince ? db.select().from(budgets).where(sql`${budgets.updatedAt} > ${sinceMs}`) : db.select().from(budgets),
       isSystemSync || isValidSince ? Promise.resolve([]) : db.select().from(emailLogs),
       isSystemSync || isValidSince ? Promise.resolve([]) : db.select().from(sharedPdfs),
       isValidSince ? Promise.resolve([]) : db.select().from(notificationSettings),
       isSystemSync || isValidSince ? Promise.resolve([]) : db.select().from(notificationHistory),
       isSystemSync || isValidSince ? Promise.resolve([]) : db.select().from(auditLogs),
-      isValidSince ? db.select().from(rentals).where(sql`${rentals.updatedAt} > ${sinceSeconds}`) : db.select().from(rentals)
+      isValidSince ? db.select().from(rentals).where(sql`${rentals.updatedAt} > ${sinceMs}`) : db.select().from(rentals)
     ]);
 
     const backupPayload = {

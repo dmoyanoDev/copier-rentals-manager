@@ -8,6 +8,7 @@ describe('Sesiones Cifradas AES-GCM (Web Crypto API)', () => {
       username: 'operador_test',
       fullname: 'Operador de Pruebas',
       role: 'tecnico',
+      sessionId: 'mock-session-id',
       expiresAt: Date.now() + 60000, // 1 minuto
     };
 

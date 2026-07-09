@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ManagementProvider, useManagement } from '../src/lib/context';
 
 const SyncQueueTestConsumer: React.FC = () => {
-  const { clients, setClients, isSyncing, syncError, lastSyncTime, syncQueue, processSyncQueue } = useManagement();
+  const { clients, updateClientAction, isSyncing, syncError, lastSyncTime, syncQueue, processSyncQueue } = useManagement();
   return (
     <div>
       <span data-testid="clients-count">{clients.length}</span>
@@ -16,7 +16,7 @@ const SyncQueueTestConsumer: React.FC = () => {
         {syncQueue ? syncQueue.filter((i: any) => i.status === 'syncing').length : 0}
       </span>
       <span data-testid="sync-error">{syncError || 'none'}</span>
-      <button data-testid="add-client" onClick={() => setClients([{ id: 'c-test', name: 'Client Test', updatedAt: new Date().toISOString() }])}>
+      <button data-testid="add-client" onClick={() => updateClientAction({ id: 'c-test', name: 'Client Test', cuit: '20-12345678-9', taxCategory: 'Monotributista', address: '', phone: '', email: '', debt: 0 }, 'create')}>
         Add Client
       </button>
       <button data-testid="manual-sync" onClick={() => processSyncQueue()}>

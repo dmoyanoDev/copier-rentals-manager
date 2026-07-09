@@ -15,14 +15,14 @@ Object.defineProperty(window, 'location', {
 });
 
 const TestConsumer: React.FC = () => {
-  const { clients, setClients, isSyncing, syncError, lastSyncTime } = useManagement();
+  const { clients, updateClientAction, isSyncing, syncError, lastSyncTime } = useManagement();
   return (
     <div>
       <span data-testid="clients-count">{clients.length}</span>
       <span data-testid="is-syncing">{isSyncing ? 'true' : 'false'}</span>
       <span data-testid="sync-error">{syncError || 'none'}</span>
       <span data-testid="last-sync">{lastSyncTime ? 'synced' : 'never'}</span>
-      <button data-testid="add-client" onClick={() => setClients([{ id: 'c-1', name: 'Client 1' }])}>
+      <button data-testid="add-client" onClick={() => updateClientAction({ id: 'c-1', name: 'Client 1', cuit: '20-12345678-9', taxCategory: 'Monotributista', address: '', phone: '', email: '', debt: 0 }, 'create')}>
         Add Client
       </button>
     </div>
@@ -132,7 +132,7 @@ describe('Sync Persistence and Lockouts', () => {
     }
 
     // Verify GET backup occurred for initial sync
-    expect(fetchSpy).toHaveBeenCalledWith('/api/backup?user=system');
+    expect(fetchSpy).toHaveBeenCalledWith(expect.stringContaining('/api/backup?user=system'), expect.any(Object));
 
     // Confirm that NO POST autosave occurred during the initial mount state loading
     const autosaveCalls = fetchSpy.mock.calls.filter((call: any) => call[0].includes('/api/backup?user=autosave'));
@@ -157,8 +157,8 @@ describe('Sync Persistence and Lockouts', () => {
       fireEvent.click(addButton);
     });
 
-    // Expect clients count to be 1 in React state
-    expect(screen.getByTestId('clients-count').textContent).toBe('1');
+    // Expect clients count to be 2 in React state
+    expect(screen.getByTestId('clients-count').textContent).toBe('2');
 
     // Advance timer by 3.5 seconds to resolve the debounce (3000ms)
     await act(async () => {
@@ -171,7 +171,7 @@ describe('Sync Persistence and Lockouts', () => {
     
     // Check that it was saved to localStorage
     const savedData = JSON.parse(localStorage.getItem('ms_data') || '{}');
-    expect(savedData.clients?.length).toBe(1);
+    expect(savedData.clients?.length).toBe(2);
   });
 
   it('handles 401 error during sync by deauthenticating user and setting UNAUTHORIZED status', async () => {

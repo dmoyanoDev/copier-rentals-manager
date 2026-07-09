@@ -229,7 +229,7 @@ export default function ReadingsPage() {
                 return;
             }
             const nClient: Client = {
-                id: `c-${Date.now()}`,
+                id: `client-${Date.now()}`,
                 name: newClientName,
                 cuit: newClientCuit,
                 taxCategory: newClientTax,
@@ -257,7 +257,7 @@ export default function ReadingsPage() {
                 return;
             }
             const nPlan: Abono = {
-                id: `p-${Date.now()}`,
+                id: `abono-${Date.now()}`,
                 name: newPlanName,
                 limit: parseInt(newPlanLimit, 10) || 5000,
                 price: parseInt(newPlanPrice, 10) || 25000,
@@ -282,7 +282,7 @@ export default function ReadingsPage() {
                 return;
             }
             const nMachine: Machine = {
-                id: `m-${Date.now()}`,
+                id: `machine-${Date.now()}`,
                 brand: newMachineBrand,
                 model: newMachineModel,
                 serial: newMachineSerial,

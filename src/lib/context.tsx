@@ -286,23 +286,15 @@ const mergeData = (local: any, server: any, lastSyncTime: Date | null, isIncreme
                     }
                 }
             } else {
-                // Exists in both.
-                if (isIncremental) {
-                    // CRITICAL FIX: On incremental sync the server item ALWAYS wins.
-                    // The server only returns items changed since lastSyncTime —
-                    // these are confirmed writes from other devices and must override local state.
-                    mergedList.push(serverItem);
+                // Exists in both. Use Last-Write-Wins based on timestamps.
+                const localTime = localItem.updatedAt || localItem.createdAt
+                    ? new Date(localItem.updatedAt || localItem.createdAt).getTime()
+                    : 0;
+                const serverTime = new Date(serverItem.updatedAt || serverItem.createdAt || 0).getTime();
+                if (localTime > serverTime) {
+                    mergedList.push(localItem);
                 } else {
-                    // Full sync: Last-Write-Wins based on timestamps
-                    const localTime = localItem.updatedAt || localItem.createdAt
-                        ? new Date(localItem.updatedAt || localItem.createdAt).getTime()
-                        : 0;
-                    const serverTime = new Date(serverItem.updatedAt || serverItem.createdAt || 0).getTime();
-                    if (localTime > serverTime) {
-                        mergedList.push(localItem);
-                    } else {
-                        mergedList.push(serverItem);
-                    }
+                    mergedList.push(serverItem);
                 }
             }
         }
@@ -412,6 +404,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (pendingItems.length === 0) return;
         
         isProcessingQueueRef.current = true;
+        let succeeded = false;
         setSyncError(null);
         
         // Update items to 'syncing' status
@@ -424,13 +417,46 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         saveStoredQueue(updatedQueue);
         setSyncQueue(updatedQueue);
 
+        // Sort items by relational dependency order before sending
+        const ENTITY_TYPE_ORDER: Record<string, number> = {
+            users: 0,
+            clients: 1,
+            plans: 2,
+            abonos: 2,
+            machines: 3,
+            readings: 4,
+            rentals: 5,
+            tickets: 6,
+            budgets: 7
+        };
+
+        const getOrder = (item: SyncQueueItem) => {
+            const baseOrder = ENTITY_TYPE_ORDER[item.entityType] ?? 99;
+            if (item.operation === 'delete') {
+                return 100 - baseOrder;
+            }
+            return baseOrder;
+        };
+
+        const sortedPendingItems = [...pendingItems].sort((a, b) => {
+            if (a.entityType === b.entityType && a.entityId === b.entityId) {
+                return queueToProcess.indexOf(a) - queueToProcess.indexOf(b);
+            }
+            const orderA = getOrder(a);
+            const orderB = getOrder(b);
+            if (orderA !== orderB) {
+                return orderA - orderB;
+            }
+            return queueToProcess.indexOf(a) - queueToProcess.indexOf(b);
+        });
+
         try {
             const response = await fetch('/api/sync/process', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ items: pendingItems })
+                body: JSON.stringify({ items: sortedPendingItems })
             });
 
             if (response.status === 401) {
@@ -485,6 +511,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 } else if (syncedCount > 0) {
                     showSaveSuccess();
                 }
+                succeeded = true;
             } else {
                 throw new Error("Invalid sync response format");
             }
@@ -502,18 +529,20 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             showOffline();
         } finally {
             isProcessingQueueRef.current = false;
-            // Check if new pending items were added during the sync operation
-            const remainingQueue = getStoredQueue();
-            const hasPending = remainingQueue.some(item => 
-                (item.status === 'pending' || item.status === 'failed') && item.retryCount < MAX_SYNC_RETRIES
-            );
-            if (hasPending) {
-                setTimeout(() => {
-                    processSyncQueue();
-                }, 100);
+            // Only retry immediately if the last processing was successful (to handle parallel insertions)
+            if (succeeded) {
+                const remainingQueue = getStoredQueue();
+                const hasPending = remainingQueue.some(item => 
+                    (item.status === 'pending' || item.status === 'failed') && item.retryCount < MAX_SYNC_RETRIES
+                );
+                if (hasPending) {
+                    setTimeout(() => {
+                        processSyncQueue();
+                    }, 100);
+                }
             }
         }
-
+        return succeeded;
     }, []);
 
     // Fetch snapshot from backend database — uses stateRef to avoid stale closures
@@ -550,7 +579,10 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             (item.status === 'pending' || item.status === 'failed') && item.retryCount < MAX_SYNC_RETRIES
         );
         if (pendingItems.length > 0) {
-            await processSyncQueue(currentQueue);
+            const queueSucceeded = await processSyncQueue(currentQueue);
+            if (!queueSucceeded) {
+                return;
+            }
         }
 
         isSyncingRef.current = true;

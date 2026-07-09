@@ -43,10 +43,43 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
+    // Sort items by dependency order
+    const ENTITY_TYPE_ORDER: Record<string, number> = {
+      'users': 0,
+      'clients': 1,
+      'plans': 2,
+      'abonos': 2,
+      'machines': 3,
+      'readings': 4,
+      'rentals': 5,
+      'tickets': 6,
+      'budgets': 7
+    };
+
+    const getOrder = (item: any) => {
+      const baseOrder = ENTITY_TYPE_ORDER[item.entityType] ?? 99;
+      if (item.operation === 'delete') {
+        return 100 - baseOrder;
+      }
+      return baseOrder;
+    };
+
+    const sortedItems = [...items].sort((a: any, b: any) => {
+      if (a.entityType === b.entityType && a.entityId === b.entityId) {
+        return items.indexOf(a) - items.indexOf(b);
+      }
+      const orderA = getOrder(a);
+      const orderB = getOrder(b);
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+      return items.indexOf(a) - items.indexOf(b);
+    });
+
     const results: any[] = [];
 
     await db.transaction(async (tx) => {
-      for (const item of items) {
+      for (const item of sortedItems) {
         const { id, entityId, entityType, operation, payload, updatedAt } = item;
 
         if (!id || !entityId || !entityType || !operation || !payload || !updatedAt) {
