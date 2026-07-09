@@ -30,7 +30,9 @@ export default function PresupuestosPage() {
         setTemplates, 
         machinePresets, 
         setMachinePresets,
-        currentUser
+        currentUser,
+        addBudgetAction,
+        updateClientAction
     } = useManagement();
 
     const [activeTab, setActiveTab] = useState<'list' | 'create' | 'presets' | 'templates'>('list');
@@ -460,7 +462,7 @@ export default function PresupuestosPage() {
                 taxCategory: 'Responsable Inscripto' as any,
                 debt: 0
             };
-            setClients(prev => [...prev, newClientData]);
+            updateClientAction(newClientData, 'create');
         }
 
         const newBudget: Budget = {
@@ -511,9 +513,9 @@ export default function PresupuestosPage() {
         };
 
         if (formBudgetId) {
-            setBudgets(prev => prev.map(b => b.id === formBudgetId ? newBudget : b));
+            addBudgetAction(newBudget, 'update');
         } else {
-            setBudgets(prev => [...prev, newBudget]);
+            addBudgetAction(newBudget, 'create');
         }
 
         alert(statusOverride === 'emitido' ? '¡Presupuesto Emitido con Éxito!' : 'Borrador Guardado.');
@@ -581,14 +583,14 @@ export default function PresupuestosPage() {
             updatedAt: new Date().toISOString(),
             issuedAt: undefined
         };
-        setBudgets(prev => [...prev, duplicated]);
+        addBudgetAction(duplicated, 'create');
         alert(`¡Presupuesto clonado como Borrador bajo el Nro ${duplicated.numero}!`);
     };
 
     const handleDeleteBudget = (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
         if (confirm('¿Está seguro de que desea eliminar este presupuesto?')) {
-            setBudgets(prev => prev.filter(b => b.id !== id));
+            addBudgetAction({ id } as any, 'delete');
             if (selectedBudget?.id === id) {
                 setSelectedBudget(null);
             }
@@ -614,7 +616,7 @@ export default function PresupuestosPage() {
             sendLogs: [...(selectedBudget.sendLogs || []), log]
         };
 
-        setBudgets(prev => prev.map(b => b.id === selectedBudget.id ? updatedBudget : b));
+        addBudgetAction(updatedBudget, 'update');
         setSelectedBudget(updatedBudget);
     };
 
@@ -760,7 +762,7 @@ export default function PresupuestosPage() {
                 ...selectedBudget,
                 estado: 'enviado' as const
             };
-            setBudgets(prev => prev.map(b => b.id === selectedBudget.id ? updatedBudget : b));
+            addBudgetAction(updatedBudget, 'update');
             setSelectedBudget(updatedBudget);
             
             setIsEmailModalOpen(false);

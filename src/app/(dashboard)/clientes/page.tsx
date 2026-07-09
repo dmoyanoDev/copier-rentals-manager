@@ -48,7 +48,8 @@ const LocalBadge = ({ variant, children, className = '' }: { variant: 'success' 
 export default function ClientsPage() {
     const { 
         clients, setClients, machines, readings, setReadings, abonos, rentals,
-        gestiones, setGestiones, cobranzaConfig, setCobranzaConfig
+        gestiones, setGestiones, cobranzaConfig, setCobranzaConfig,
+        updateClientAction
     } = useManagement();
     
     // Tabs setup
@@ -901,9 +902,9 @@ export default function ClientsPage() {
         };
 
         if (editingClient) {
-            setClients(prev => prev.map(c => c.id === editingClient.id ? clientData : c));
+            updateClientAction(clientData, 'update');
         } else {
-            setClients(prev => [...prev, clientData]);
+            updateClientAction(clientData, 'create');
         }
 
         setIsFormOpen(false);
@@ -917,7 +918,7 @@ export default function ClientsPage() {
         }
 
         if (confirm('¿Está seguro de que desea eliminar este cliente del sistema?')) {
-            setClients(prev => prev.filter(c => c.id !== id));
+            updateClientAction({ id } as any, 'delete');
         }
     };
 

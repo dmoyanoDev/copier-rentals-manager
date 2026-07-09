@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 export default function TechnicalPage() {
-    const { tickets, setTickets, currentUser, users, setUsers, clients, machines, setMachines, updateTicketAction, updateUserAction } = useManagement();
+    const { tickets, setTickets, currentUser, users, setUsers, clients, machines, setMachines, updateTicketAction, updateUserAction, updateMachineAction } = useManagement();
     const isTech = currentUser?.role === 'tecnico';
 
     // Core Navigation Tabs: 'bitacora' | 'tecnicos' | 'config' | 'historial_envios' | 'metricas'
@@ -1317,7 +1317,7 @@ export default function TechnicalPage() {
                                         // Quick trigger functions
                                         const triggerReset = () => {
                                             if (confirm(`¿Confirmas el registro del servicio preventivo de la máquina S/N ${m.serial}? Se actualizará el contador de último service a ${current.toLocaleString()}.`)) {
-                                                setMachines(prev => prev.map(item => item.id === m.id ? { ...item, lastServiceCounter: current } : item));
+                                                updateMachineAction({ ...m, lastServiceCounter: current }, 'update');
                                                 alert('¡Mantenimiento preventivo registrado exitosamente!');
                                             }
                                         };

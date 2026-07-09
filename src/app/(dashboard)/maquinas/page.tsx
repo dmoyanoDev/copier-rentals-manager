@@ -15,7 +15,7 @@ import { Machine } from '@/lib/mockData';
 import { formatCurrency, formatPeriod } from '@/lib/utils';
 
 export default function MachinesPage() {
-    const { machines, setMachines, clients, abonos, readings, setReadings, rentals } = useManagement();
+    const { machines, setMachines, clients, abonos, readings, setReadings, rentals, updateMachineAction } = useManagement();
     const [searchQuery, setSearchQuery] = useState('');
     const [filterStatus, setFilterStatus] = useState('');
     
@@ -128,9 +128,9 @@ export default function MachinesPage() {
         };
 
         if (editingMachine) {
-            setMachines(prev => prev.map(m => m.id === editingMachine.id ? machineData : m));
+            updateMachineAction(machineData, 'update');
         } else {
-            setMachines(prev => [...prev, machineData]);
+            updateMachineAction(machineData, 'create');
         }
 
         if (evaluated.alertMessage) {
@@ -144,19 +144,25 @@ export default function MachinesPage() {
         const hasHistory = readings.some(r => r.machineId === id);
         if (hasHistory) {
             if (confirm('El equipo posee registros de lecturas históricas. ¿Desea realizar una desactivación física (baja lógica) y mantener su historial técnico?')) {
-                setMachines(prev => prev.map(m => m.id === id ? { ...m, status: 'Inactiva' as any, clientId: null, abonoId: null } : m));
+                const machObj = machines.find(m => m.id === id);
+                if (machObj) {
+                    updateMachineAction({ ...machObj, status: 'Inactiva' as any, clientId: null, abonoId: null }, 'update');
+                }
             }
             return;
         }
 
         if (confirm('¿Está seguro de que desea eliminar este equipo del sistema?')) {
-            setMachines(prev => prev.filter(m => m.id !== id));
+            updateMachineAction({ id } as any, 'delete');
         }
     };
 
     const handleRegisterMaintenance = (id: string, count: number) => {
         if (confirm(`¿Confirmas el registro de mantenimiento preventivo? Se actualizará el contador de referencia a ${count.toLocaleString('es-AR')} copias.`)) {
-            setMachines(prev => prev.map(m => m.id === id ? { ...m, lastServiceCounter: count } : m));
+            const machObj = machines.find(m => m.id === id);
+            if (machObj) {
+                updateMachineAction({ ...machObj, lastServiceCounter: count }, 'update');
+            }
             // Update selected view state if open
             if (selectedMachine && selectedMachine.id === id) {
                 setSelectedMachine(prev => prev ? { ...prev, lastServiceCounter: count } : null);

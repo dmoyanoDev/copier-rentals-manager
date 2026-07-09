@@ -13,7 +13,7 @@ import { Reading, Machine } from '@/lib/mockData';
 import { Check, Clock, Search, Filter, RefreshCw, Edit, Trash2, ShieldAlert } from 'lucide-react';
 
 export default function HistoryPage() {
-    const { readings, setReadings, machines, setMachines, clients, abonos } = useManagement();
+    const { readings, setReadings, machines, setMachines, clients, abonos, addReadingAction, updateMachineAction } = useManagement();
     
     // Filter States
     const [searchQuery, setSearchQuery] = useState('');
@@ -32,7 +32,15 @@ export default function HistoryPage() {
 
     const handleTogglePaymentStatus = (id: string, currentStatus: 'pending' | 'paid') => {
         const nextStatus = currentStatus === 'paid' ? 'pending' : 'paid';
-        setReadings(prev => prev.map(r => r.id === id ? { ...r, status: nextStatus } : r));
+        const targetReading = readings.find(r => r.id === id);
+        if (targetReading) {
+            const updatedReading: Reading = {
+                ...targetReading,
+                status: nextStatus,
+                collectionStatus: nextStatus === 'paid' ? 'Pagado' as const : 'Impago' as const
+            };
+            addReadingAction(updatedReading);
+        }
     };
 
     const handleOpenEditModal = (r: Reading) => {
@@ -99,15 +107,13 @@ export default function HistoryPage() {
             readingComment: warning || undefined
         };
 
-        // Update readings list in context
-        setReadings(prev => prev.map(r => r.id === editingReading.id ? updatedReading : r));
-
-        // Sync machine counter if this is the machine's latest reading
+        // Update readings list in context using action
+        const machObj = machines.find(m => m.id === mach.id);
         const machReadings = readings.filter(r => r.machineId === mach.id);
         const maxMonth = machReadings.reduce((max, r) => r.month > max ? r.month : max, '');
-        if (editingReading.month >= maxMonth) {
-            setMachines(prev => prev.map(m => m.id === mach.id ? { ...m, currentCounter: finalVal } : m));
-        }
+        const shouldUpdateCounter = editingReading.month >= maxMonth;
+
+        addReadingAction(updatedReading, shouldUpdateCounter && machObj ? { id: mach.id, currentCounter: finalVal } : undefined);
 
         setEditingReading(null);
         alert('¡Lectura editada y liquidación recalculada correctamente!');
@@ -115,7 +121,7 @@ export default function HistoryPage() {
 
     const handleDeleteReading = (id: string) => {
         if (confirm('¿Estás seguro de que deseas eliminar esta liquidación histórica?')) {
-            setReadings(prev => prev.filter(r => r.id !== id));
+            addReadingAction({ id } as any, undefined, 'delete');
         }
     };
 

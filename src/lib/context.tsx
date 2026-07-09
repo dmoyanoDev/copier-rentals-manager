@@ -146,7 +146,7 @@ interface ManagementContextType {
     addRentalAction: (rental: Rental, machineUpdates: { id: string; clientId: string | null; abonoId: string | null; status: any }[]) => void;
     updateRentalAction: (rental: Rental, machineUpdates?: { id: string; clientId: string | null; abonoId: string | null; status: any }[]) => void;
     updateTicketAction: (ticket: Ticket, machineUpdate?: { id: string; status: any }) => void;
-    addReadingAction: (reading: Reading, machineUpdate?: { id: string; currentCounter: number }) => void;
+    addReadingAction: (reading: Reading, machineUpdate?: { id: string; currentCounter: number }, operation?: 'create' | 'update' | 'delete') => void;
     updateClientAction: (client: Client, operation?: 'create' | 'update' | 'delete') => void;
     updateMachineAction: (machine: Machine, operation?: 'create' | 'update' | 'delete') => void;
     updateAbonoAction: (abono: Abono, operation?: 'create' | 'update' | 'delete') => void;
@@ -1180,16 +1180,21 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
     }, [enqueueSyncItem]);
 
-    const addReadingAction = useCallback((reading: Reading, machineUpdate?: { id: string; currentCounter: number }) => {
+    const addReadingAction = useCallback((reading: Reading, machineUpdate?: { id: string; currentCounter: number }, operationOverride?: 'create' | 'update' | 'delete') => {
         const nowStr = new Date().toISOString();
         const readingWithTime = { ...reading, updatedAt: nowStr, createdAt: reading.createdAt || nowStr };
 
         const exists = stateRef.current.readings.some(r => r.id === reading.id);
-        const operation = exists ? 'update' : 'create';
+        const operation = operationOverride || (exists ? 'update' : 'create');
 
-        const updatedReadings = exists
-            ? stateRef.current.readings.map(r => r.id === reading.id ? readingWithTime : r)
-            : [...stateRef.current.readings.filter(r => !(r.machineId === reading.machineId && r.month === reading.month)), readingWithTime];
+        let updatedReadings = stateRef.current.readings;
+        if (operation === 'delete') {
+            updatedReadings = stateRef.current.readings.filter(r => r.id !== reading.id);
+        } else {
+            updatedReadings = exists
+                ? stateRef.current.readings.map(r => r.id === reading.id ? readingWithTime : r)
+                : [...stateRef.current.readings.filter(r => !(r.machineId === reading.machineId && r.month === reading.month)), readingWithTime];
+        }
         setReadings(updatedReadings);
 
         let updatedMachines = stateRef.current.machines;
@@ -1205,7 +1210,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
         saveStateToLocalStorage({ readings: updatedReadings, machines: updatedMachines });
 
-        enqueueSyncItem(readingWithTime.id, 'readings', operation, readingWithTime);
+        enqueueSyncItem(readingWithTime.id, 'readings', operation, operation === 'delete' ? reading : readingWithTime);
         if (machineUpdate) {
             const fullMachine = updatedMachines.find(m => m.id === machineUpdate.id);
             if (fullMachine) {

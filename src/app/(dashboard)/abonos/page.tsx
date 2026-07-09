@@ -14,7 +14,7 @@ import { Plus, Trash2, Edit, FileText, CheckCircle, ShieldAlert, Sparkles } from
 import { Abono } from '@/lib/mockData';
 
 export default function AbonosPage() {
-    const { abonos, setAbonos, machines, clients, rentals } = useManagement();
+    const { abonos, setAbonos, machines, clients, rentals, updateAbonoAction } = useManagement();
     const [searchQuery, setSearchQuery] = useState('');
     const [filterActive, setFilterActive] = useState('');
     
@@ -83,9 +83,9 @@ export default function AbonosPage() {
         };
 
         if (editingAbono) {
-            setAbonos(prev => prev.map(a => a.id === editingAbono.id ? abonoData : a));
+            updateAbonoAction(abonoData, 'update');
         } else {
-            setAbonos(prev => [...prev, abonoData]);
+            updateAbonoAction(abonoData, 'create');
         }
 
         setIsFormOpen(false);
@@ -99,7 +99,7 @@ export default function AbonosPage() {
         }
 
         if (confirm('¿Está seguro de que desea eliminar este plan de abono del catálogo?')) {
-            setAbonos(prev => prev.filter(a => a.id !== id));
+            updateAbonoAction({ id } as any, 'delete');
         }
     };
 

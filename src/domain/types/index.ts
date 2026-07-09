@@ -60,6 +60,8 @@ export interface Reading {
     totalAmount: number;
     status: 'pending' | 'paid';
     readingStatus: 'cargada' | 'observada' | 'validada' | 'facturada';
+    collectionStatus?: 'Impago' | 'Pagado';
+    billingStatus?: 'No facturado' | 'Facturado';
     readingComment?: string;
     history?: { date: string; time: string; action: string; user: string; }[];
     createdAt?: string;
