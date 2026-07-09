@@ -502,6 +502,16 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             showOffline();
         } finally {
             isProcessingQueueRef.current = false;
+            // Check if new pending items were added during the sync operation
+            const remainingQueue = getStoredQueue();
+            const hasPending = remainingQueue.some(item => 
+                (item.status === 'pending' || item.status === 'failed') && item.retryCount < MAX_SYNC_RETRIES
+            );
+            if (hasPending) {
+                setTimeout(() => {
+                    processSyncQueue();
+                }, 100);
+            }
         }
 
     }, []);
