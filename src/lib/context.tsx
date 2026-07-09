@@ -139,7 +139,7 @@ interface ManagementContextType {
     lastSyncTime: Date | null;
     syncFromDatabase: (forceUser?: User | null, forceRetry?: boolean) => Promise<void>;
     syncQueue: SyncQueueItem[];
-    processSyncQueue: (passedQueue?: SyncQueueItem[]) => Promise<void>;
+    processSyncQueue: (passedQueue?: SyncQueueItem[]) => Promise<boolean>;
     resetSyncAction: () => Promise<void>;
 
     // Action-Driven mutations
@@ -394,14 +394,14 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
 
     const processSyncQueue = useCallback(async (passedQueue?: SyncQueueItem[]) => {
-        if (isProcessingQueueRef.current) return;
+        if (isProcessingQueueRef.current) return false;
         
         const queueToProcess = passedQueue || getStoredQueue();
         const pendingItems = queueToProcess.filter((item) => 
             (item.status === 'pending' || item.status === 'failed') && item.retryCount < MAX_SYNC_RETRIES
         );
         
-        if (pendingItems.length === 0) return;
+        if (pendingItems.length === 0) return true;
         
         isProcessingQueueRef.current = true;
         let succeeded = false;
@@ -465,7 +465,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 if (typeof window !== 'undefined') {
                     window.location.href = '/login';
                 }
-                return;
+                return false;
             }
 
             if (!response.ok) {
