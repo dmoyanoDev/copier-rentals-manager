@@ -151,6 +151,7 @@ interface ManagementContextType {
     updateMachineAction: (machine: Machine, operation?: 'create' | 'update' | 'delete') => void;
     updateAbonoAction: (abono: Abono, operation?: 'create' | 'update' | 'delete') => void;
     addBudgetAction: (budget: Budget, operation?: 'create' | 'update' | 'delete') => void;
+    updateUserAction: (user: User, operation?: 'create' | 'update' | 'delete') => void;
 }
 
 const trackDeletions = (newState: any) => {
@@ -1285,6 +1286,24 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         enqueueSyncItem(budget.id, 'budgets', operation, operation === 'delete' ? budget : budgetWithTime);
     }, [enqueueSyncItem]);
 
+    const updateUserAction = useCallback((user: User, operation: 'create' | 'update' | 'delete' = 'update') => {
+        const nowStr = new Date().toISOString();
+        const userWithTime = { ...user, updatedAt: nowStr, createdAt: user.createdAt || nowStr };
+
+        let updatedUsers = stateRef.current.users;
+        if (operation === 'delete') {
+            updatedUsers = stateRef.current.users.filter(u => u.id !== user.id);
+        } else if (operation === 'create') {
+            updatedUsers = [...stateRef.current.users, userWithTime];
+        } else {
+            updatedUsers = stateRef.current.users.map(u => u.id === user.id ? userWithTime : u);
+        }
+        setUsers(updatedUsers);
+        saveStateToLocalStorage({ users: updatedUsers });
+
+        enqueueSyncItem(user.id, 'users', operation, operation === 'delete' ? user : userWithTime);
+    }, [enqueueSyncItem]);
+
     return (
         <ManagementContext.Provider
             value={{
@@ -1330,6 +1349,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 updateMachineAction,
                 updateAbonoAction,
                 addBudgetAction,
+                updateUserAction,
                 resetSyncAction
             }}
         >

@@ -108,8 +108,8 @@ export async function getSession(requestOrCookieValue?: Request | string): Promi
     return null;
   }
 
-  // 2. Validar expiración del payload
-  if (Date.now() > session.expiresAt) {
+  // 2. Validar expiración del payload (solo como redundancia offline con margen de gracia)
+  if (Date.now() > session.expiresAt + 14 * 24 * 60 * 60 * 1000) {
     try {
       await deleteSession();
     } catch (e) {}
@@ -142,9 +142,18 @@ export async function getSession(requestOrCookieValue?: Request | string): Promi
       return null;
     }
 
+    // 3b. Validar expiración real de la base de datos (fuente de verdad definitiva)
+    const dbExpiresAtMs = new Date(match.dbSession.expiresAt).getTime();
+    if (Date.now() > dbExpiresAtMs) {
+      try {
+        await deleteSession();
+      } catch (e) {}
+      return null;
+    }
+
     // 4. Sliding Expiration (Renovación automática) si queda menos de la mitad del tiempo (7 días)
     const now = Date.now();
-    const remainingTime = session.expiresAt - now;
+    const remainingTime = dbExpiresAtMs - now;
 
     if (remainingTime < SESSION_RENEWAL_MS) {
       const newExpiresAt = new Date(now + SESSION_DURATION_MS);

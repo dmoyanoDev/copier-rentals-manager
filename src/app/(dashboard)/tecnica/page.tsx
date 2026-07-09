@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 export default function TechnicalPage() {
-    const { tickets, setTickets, currentUser, users, setUsers, clients, machines, setMachines, updateTicketAction } = useManagement();
+    const { tickets, setTickets, currentUser, users, setUsers, clients, machines, setMachines, updateTicketAction, updateUserAction } = useManagement();
     const isTech = currentUser?.role === 'tecnico';
 
     // Core Navigation Tabs: 'bitacora' | 'tecnicos' | 'config' | 'historial_envios' | 'metricas'
@@ -764,7 +764,7 @@ export default function TechnicalPage() {
                 workHours: formTechWorkHours,
                 internalNotes: formTechInternalNotes
             };
-            setUsers(prev => prev.map(u => u.id === editingTech.id ? updated : u));
+            updateUserAction(updated, 'update');
             alert('¡Perfil del técnico actualizado con éxito!');
         } else {
             const newTech: User = {
@@ -782,7 +782,7 @@ export default function TechnicalPage() {
                 workHours: formTechWorkHours,
                 internalNotes: formTechInternalNotes
             };
-            setUsers(prev => [...prev, newTech]);
+            updateUserAction(newTech, 'create');
             alert('¡Nuevo técnico registrado en el sistema!');
         }
         setIsTechFormOpen(false);
@@ -795,7 +795,7 @@ export default function TechnicalPage() {
                 ...tech,
                 active: false
             };
-            setUsers(prev => prev.map(u => u.id === tech.id ? updated : u));
+            updateUserAction(updated, 'update');
         }
     };
 

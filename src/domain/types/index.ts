@@ -134,6 +134,8 @@ export interface User {
     active?: boolean;
     workHours?: string;
     internalNotes?: string;
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 // Extended types
