@@ -1,4 +1,5 @@
 'use client';
+// M&S Tecnología Digital - Management Provider - Sync Engine and State Core
 
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import {
