@@ -108,8 +108,9 @@ export async function getSession(requestOrCookieValue?: Request | string): Promi
     return null;
   }
 
-  // 2. Validar expiración del payload (solo como redundancia offline con margen de gracia)
-  if (Date.now() > session.expiresAt + 14 * 24 * 60 * 60 * 1000) {
+  // 2. Validar expiración del payload (como redundancia offline con margen de gracia de 5 minutos para skew de reloj)
+  const CLOCK_SKEW_MS = 5 * 60 * 1000; // 5 minutes
+  if (Date.now() > session.expiresAt + CLOCK_SKEW_MS) {
     try {
       await deleteSession();
     } catch (e) {}

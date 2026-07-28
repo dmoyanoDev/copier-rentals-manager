@@ -3,7 +3,8 @@
 import React from 'react';
 import { useManagement } from '@/lib/context';
 import { Card, CardContent } from '@/components/ui/card';
-import { formatCurrency, formatPeriod, isTicketOverdue, getSystemAlerts, SystemAlert } from '@/lib/utils';
+import { formatCurrency, formatPeriod, getSystemAlerts } from '@/lib/utils';
+import type { Machine } from '@/lib/mockData';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { AlertCircle } from 'lucide-react';
@@ -136,8 +137,9 @@ export default function DashboardPage() {
         const readingsToValidate = readings.filter(r => r.month === currentMonth && (r.readingStatus === 'observada' || r.readingStatus === 'cargada'));
 
         // Critical machines (multiple incident tickets in the last 60 days)
-        const criticalMachinesMap: { [machineId: string]: { machine: any; count: number } } = {};
-        const sixtyDaysAgo = Date.now() - (60 * 24 * 60 * 60 * 1000);
+        const criticalMachinesMap: { [machineId: string]: { machine: Machine; count: number } } = {};
+        const now = new Date();
+        const sixtyDaysAgo = now.getTime() - (60 * 24 * 60 * 60 * 1000);
         tickets.forEach(t => {
             if (t.machineId && t.createdAt && t.createdAt >= sixtyDaysAgo) {
                 const mach = machines.find(m => m.id === t.machineId);

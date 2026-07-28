@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useManagement } from '@/lib/context';
 import { Card, CardContent } from '@/components/ui/card';
 import { TableContainer, Table, TableHeader, TableRow, TableHeaderCell, TableBody, TableCell } from '@/components/ui/table';
@@ -289,16 +289,17 @@ export default function ClientsPage() {
     };
 
     // Register quick actions suggested
-    const registerCobranzaGestion = (
+    const registerCobranzaGestion = useCallback((
         clientId: string, 
         type: 'WhatsApp' | 'Email' | 'Llamado' | 'Pago registrado' | 'Promesa de pago' | 'Regularización' | 'Auditoría',
         result: string,
         observations: string
     ) => {
+        const today = new Date().toISOString().split('T')[0];
         const newGestion = {
-            id: `g-${Date.now()}`,
+            id: `g-${crypto.randomUUID()}`,
             clientId,
-            date: todayStr,
+            date: today,
             type,
             user: 'Administrador',
             channel: type === 'WhatsApp' ? 'WhatsApp Web' : type === 'Email' ? 'Email Client' : 'Sistema',
@@ -306,7 +307,7 @@ export default function ClientsPage() {
             observations
         };
         setGestiones(prev => [newGestion, ...(prev || [])]);
-    };
+    }, []);
 
     const handleQuickAction = (client: LocalClient, type: 'whatsapp' | 'email' | 'promesa' | 'llamado') => {
         if (type === 'whatsapp') {
@@ -2216,7 +2217,7 @@ export default function ClientsPage() {
                                                         <span>Medio: {g.channel}</span>
                                                         <span>Resultado: {g.result}</span>
                                                     </div>
-                                                    <p className="text-[11px] text-slate-300 mt-1">"{g.observations}"</p>
+                                                    <p className="text-[11px] text-slate-300 mt-1">&quot;{g.observations}&quot;</p>
                                                     <span className="text-[9px] text-slate-550 block text-right">Por: {g.user}</span>
                                                 </div>
                                             ))
