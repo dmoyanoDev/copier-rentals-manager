@@ -4,7 +4,7 @@ import React from 'react';
 import { useManagement } from '@/lib/context';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatCurrency, formatPeriod, getSystemAlerts } from '@/lib/utils';
-import type { Machine } from '@/lib/mockData';
+import type { Machine } from '@/domain/types';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { AlertCircle } from 'lucide-react';

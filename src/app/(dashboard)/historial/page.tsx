@@ -121,7 +121,7 @@ export default function HistoryPage() {
 
     const handleDeleteReading = (id: string) => {
         if (confirm('¿Estás seguro de que deseas eliminar esta liquidación histórica?')) {
-            addReadingAction({ id } as any, undefined, 'delete');
+            addReadingAction({ id } as unknown as Reading, undefined, 'delete');
         }
     };
 

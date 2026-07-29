@@ -717,7 +717,7 @@ export default function RentalsPage() {
                                         />
                                         <select
                                             value={newClientTax}
-                                            onChange={(e) => setNewClientTax(e.target.value as any)}
+                                            onChange={(e) => setNewClientTax(e.target.value as 'Responsable Inscripto' | 'Monotributista' | 'Exento')}
                                             className="col-span-2 bg-slate-955 border border-slate-850 rounded-xl px-3 py-2 text-xs text-slate-100 outline-none"
                                         >
                                             <option value="Responsable Inscripto">Responsable Inscripto</option>

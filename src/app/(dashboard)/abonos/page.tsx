@@ -99,7 +99,7 @@ export default function AbonosPage() {
         }
 
         if (confirm('¿Está seguro de que desea eliminar este plan de abono del catálogo?')) {
-            updateAbonoAction({ id } as any, 'delete');
+            updateAbonoAction({ id } as unknown as Abono, 'delete');
         }
     };
 

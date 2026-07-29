@@ -641,7 +641,7 @@ export default function ReadingsPage() {
                                     <div className="space-y-3 relative before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-800">
                                         {(viewTimelineReading.history || [
                                             { date: '-', time: '-', action: 'Carga inicial del registro', user: 'Administrativo' }
-                                        ]).map((log: any, idx: number) => (
+                                        ]).map((log: { date: string, time: string, action: string, user: string }, idx: number) => (
                                             <div key={idx} className="relative pl-6 text-[10px] space-y-0.5">
                                                 <span className="absolute left-0.5 top-1 w-3 h-3 rounded-full bg-indigo-650 border border-slate-900 flex items-center justify-center"></span>
                                                 <span className="text-[9px] text-slate-550 font-mono block">{log.date} {log.time}</span>
@@ -843,7 +843,7 @@ export default function ReadingsPage() {
                                         />
                                         <select
                                             value={newClientTax}
-                                            onChange={(e) => setNewClientTax(e.target.value as any)}
+                                            onChange={(e) => setNewClientTax(e.target.value as 'Responsable Inscripto' | 'Monotributista' | 'Exento')}
                                             className="col-span-2 bg-slate-955 border border-slate-850 rounded-xl px-3 py-2 text-xs text-slate-100 outline-none"
                                         >
                                             <option value="Responsable Inscripto">Responsable Inscripto</option>

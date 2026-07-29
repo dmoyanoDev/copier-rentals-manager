@@ -121,7 +121,7 @@ export default function MachinesPage() {
             currentCounter: counter,
             lastServiceCounter: parseInt(lastServiceCounter, 10) || 0,
             preventiveInterval: parseInt(preventiveInterval, 10) || 15000,
-            status: evaluated.status as any,
+            status: evaluated.status as Machine['status'],
             clientId: clientId || null,
             abonoId: abonoId || null,
             applyIva
@@ -146,14 +146,14 @@ export default function MachinesPage() {
             if (confirm('El equipo posee registros de lecturas históricas. ¿Desea realizar una desactivación física (baja lógica) y mantener su historial técnico?')) {
                 const machObj = machines.find(m => m.id === id);
                 if (machObj) {
-                    updateMachineAction({ ...machObj, status: 'Inactiva' as any, clientId: null, abonoId: null }, 'update');
+                    updateMachineAction({ ...machObj, status: 'Inactiva' as Machine['status'], clientId: null, abonoId: null }, 'update');
                 }
             }
             return;
         }
 
         if (confirm('¿Está seguro de que desea eliminar este equipo del sistema?')) {
-            updateMachineAction({ id } as any, 'delete');
+            updateMachineAction({ id } as Machine, 'delete');
         }
     };
 
@@ -374,7 +374,7 @@ export default function MachinesPage() {
                     <Select
                         label="Tipo de Equipo"
                         value={type}
-                        onChange={(e) => setType(e.target.value as any)}
+                        onChange={(e) => setType(e.target.value as 'B&N' | 'Color')}
                         options={[
                             { value: 'B&N', label: 'Monocromática (Blanco y Negro)' },
                             { value: 'Color', label: 'Color' }
@@ -442,7 +442,7 @@ export default function MachinesPage() {
                         <Select
                             label="Estado Físico del Equipo"
                             value={status}
-                            onChange={(e) => setStatus(e.target.value as any)}
+                            onChange={(e) => setStatus(e.target.value as Machine['status'])}
                             options={[
                                 { value: 'Disponible', label: 'Disponible en Inventario' },
                                 { value: 'En Taller', label: 'En Taller de Reparaciones' },

@@ -1,4 +1,5 @@
-import { Client, Ticket } from './mockData';
+import { Client, Ticket, Reading, Machine } from './mockData';
+import type { Gestion } from '@/domain/types';
 
 // Helper to merge tailwind class names
 export function cn(...inputs: (string | undefined | null | boolean | { [key: string]: boolean })[]) {
@@ -56,7 +57,7 @@ export function playSystemSound(type: 'pago' | 'deudor' | 'vencido' | 'critico' 
     if (typeof window === 'undefined' || !config.sonidosActivos || config.volumenSonidos === 0) return;
     
     try {
-        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
         if (!AudioContextClass) return;
         const ctx = new AudioContextClass();
         const osc = ctx.createOscillator();
@@ -123,14 +124,28 @@ export function getDaysOverdue(dueDateStr: string): number {
     return Math.floor(diffTime / (1000 * 60 * 60 * 24));
 }
 
-export function getClientMovementsHelper(client: Client, readings: any[], machines: any[]) {
+export function getClientMovementsHelper(client: Client, readings: Reading[], machines: Machine[]) {
     const clientReadings = readings.filter(r => {
-        if ((r as any).clientId) return (r as any).clientId === client.id;
+        if (r.clientId) return r.clientId === client.id;
         const mach = machines.find(m => m.id === r.machineId);
         return mach && mach.clientId === client.id;
     });
 
-    const movements: any[] = [];
+    const movements: {
+        id: string;
+        date: string;
+        type: string;
+        number: string;
+        period: string;
+        concept: string;
+        original: number;
+        paid: number;
+        pending: number;
+        dueDate: string;
+        status: string;
+        daysOverdue: number;
+        notes: string;
+    }[] = [];
 
     // Initial Debt Adjustment
     if (client.debt && client.debt > 0) {
@@ -163,16 +178,16 @@ export function getClientMovementsHelper(client: Client, readings: any[], machin
             id: `fact-${r.id}`,
             date: invoiceDate,
             type: 'Factura',
-            number: `FC-${r.id.replace('r-', '00005')}`,
-            period: r.month,
+            number: `FC-${(r.id as string).replace('r-', '00005')}`,
+            period: r.month as string,
             concept: `Abono y excedente período ${r.month}`,
-            original: r.totalAmount,
-            paid: isPaid ? r.totalAmount : 0,
-            pending: isPaid ? 0 : r.totalAmount,
+            original: r.totalAmount as number,
+            paid: isPaid ? (r.totalAmount as number) : 0,
+            pending: isPaid ? 0 : (r.totalAmount as number),
             dueDate: dueDate,
             status: status,
             daysOverdue: days,
-            notes: r.readingComment || 'Facturación automatizada'
+            notes: (r.readingComment as string) || 'Facturación automatizada'
         });
 
         if (isPaid) {
@@ -180,11 +195,11 @@ export function getClientMovementsHelper(client: Client, readings: any[], machin
                 id: `rec-${r.id}`,
                 date: `${r.month}-10`,
                 type: 'Recibo',
-                number: `RC-${r.id.replace('r-', '00005')}`,
-                period: r.month,
+                number: `RC-${(r.id as string).replace('r-', '00005')}`,
+                period: r.month as string,
                 concept: `Cobro de facturación período ${r.month}`,
-                original: r.totalAmount,
-                paid: r.totalAmount,
+                original: r.totalAmount as number,
+                paid: r.totalAmount as number,
                 pending: 0,
                 dueDate: '',
                 status: 'Pagado',
@@ -197,7 +212,7 @@ export function getClientMovementsHelper(client: Client, readings: any[], machin
     return movements;
 }
 
-export function getClientFinancialSummaryHelper(client: Client, readings: any[], machines: any[]) {
+export function getClientFinancialSummaryHelper(client: Client, readings: Reading[], machines: Machine[]) {
     const movements = getClientMovementsHelper(client, readings, machines);
     
     const saldo = movements.reduce((acc, m) => {
@@ -297,7 +312,7 @@ export interface SystemAlert {
     daysOverdue?: number;
 }
 
-export function getSystemAlerts(clients: Client[], readings: any[], machines: any[], gestiones: any[], config: any): SystemAlert[] {
+export function getSystemAlerts(clients: Client[], readings: Reading[], machines: Machine[], gestiones: Gestion[], config: { diasMoraCritica: number; montoMinimoAlerta: number; diasAvisoVencimiento: number }): SystemAlert[] {
     const alerts: SystemAlert[] = [];
     
     clients.forEach(c => {

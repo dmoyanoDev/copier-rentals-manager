@@ -331,7 +331,7 @@ export default function ClientsPage() {
     };
 
     // Register dynamic collection payments
-    const handleCollectInvoice = (client: LocalClient, movement: any) => {
+    const handleCollectInvoice = (client: LocalClient, movement: { id: string; number: string }) => {
         const readingId = movement.id.replace('fact-', '').replace('rec-', '');
         
         setReadings(prev => prev.map(r => r.id === readingId ? { ...r, status: 'paid' } : r));
@@ -919,7 +919,7 @@ export default function ClientsPage() {
         }
 
         if (confirm('¿Está seguro de que desea eliminar este cliente del sistema?')) {
-            updateClientAction({ id } as any, 'delete');
+            updateClientAction({ id } as unknown as LocalClient, 'delete');
         }
     };
 
@@ -1189,7 +1189,7 @@ export default function ClientsPage() {
 
                             <select
                                 value={accFilterDebt}
-                                onChange={(e) => setAccFilterDebt(e.target.value as any)}
+                                onChange={(e) => setAccFilterDebt(e.target.value as 'all' | 'debtors' | 'overdue' | 'nodebt' | 'active')}
                                 className="w-full bg-slate-955 border border-slate-850 rounded-xl px-3 py-2 text-slate-300 text-xs focus:outline-none"
                             >
                                 <option value="all">Filtro Deuda: Todos</option>
@@ -1609,7 +1609,7 @@ export default function ClientsPage() {
                     <Select
                         label="Categoría Fiscal"
                         value={taxCategory}
-                        onChange={(e) => setTaxCategory(e.target.value as any)}
+                        onChange={(e) => setTaxCategory(e.target.value as 'Responsable Inscripto' | 'Monotributista' | 'Exento')}
                         options={[
                             { value: 'Responsable Inscripto', label: 'Responsable Inscripto' },
                             { value: 'Monotributista', label: 'Monotributista' },
@@ -1824,7 +1824,7 @@ export default function ClientsPage() {
                             <span className="text-slate-400">Versión:</span>
                             <select
                                 value={pdfVersion}
-                                onChange={(e) => setPdfVersion(e.target.value as any)}
+                                onChange={(e) => setPdfVersion(e.target.value as 'comercial' | 'interna')}
                                 className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-indigo-400 font-bold"
                             >
                                 <option value="comercial">Cliente (Comercial)</option>
@@ -2145,7 +2145,7 @@ export default function ClientsPage() {
                                                     <label className="text-[10px] uppercase font-bold text-slate-500 block">Tipo Acción</label>
                                                     <select
                                                         value={newGestionType}
-                                                        onChange={(e) => setNewGestionType(e.target.value as any)}
+                                                        onChange={(e) => setNewGestionType(e.target.value as 'WhatsApp' | 'Email' | 'Llamado' | 'Pago registrado' | 'Promesa de pago')}
                                                         className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-slate-200"
                                                     >
                                                         <option value="WhatsApp">WhatsApp</option>
@@ -2317,7 +2317,7 @@ export default function ClientsPage() {
                             <label className="text-[10px] uppercase font-bold text-slate-400 block font-bold">Seleccionar Plantilla</label>
                             <select
                                 value={emailTemplateType}
-                                onChange={(e) => handleEmailTemplateChange(e.target.value as any)}
+                                onChange={(e) => handleEmailTemplateChange(e.target.value as 'preventivo' | 'vencido' | 'segundo' | 'pago')}
                                 className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-slate-200"
                             >
                                 <option value="preventivo">Aviso Preventivo</option>
@@ -2379,7 +2379,7 @@ export default function ClientsPage() {
                             <label className="text-[10px] uppercase font-bold text-slate-400 block font-bold">Seleccionar Plantilla WhatsApp</label>
                             <select
                                 value={whatsappTemplateType}
-                                onChange={(e) => handleWhatsappTemplateChange(e.target.value as any)}
+                                onChange={(e) => handleWhatsappTemplateChange(e.target.value as 'preventivo' | 'vencido' | 'segundo' | 'pago')}
                                 className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-slate-200"
                             >
                                 <option value="preventivo">Aviso Preventivo</option>

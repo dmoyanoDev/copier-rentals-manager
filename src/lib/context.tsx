@@ -10,51 +10,23 @@ import {
     User,
     Abono,
     Rental
-} from './mockData';
+} from '@/domain/types';
 import { Budget, BudgetTemplate, MachinePreset } from '@/domain/budget/types';
 import { BRANDING } from '@/config/branding';
 import { defaultMachinePresets, defaultBudgetTemplates } from '@/domain/budget/presets';
 import type { SyncQueueItem, SyncEntityType } from '@/domain/types';
 import { MAX_SYNC_QUEUE_SIZE, MAX_SYNC_RETRIES, SYNC_DEBOUNCE_MS, SYNC_POLL_INTERVAL_MS } from '@/domain/types';
 import { showSaveSuccess, showSaveError, showOffline } from '@/components/ui/toast';
+// Import shared domain types — single source of truth
+export type { Gestion, CobranzaConfig } from '@/domain/types';
+import type { Gestion, CobranzaConfig } from '@/domain/types';
 
 // Extend Client interface locally
 export interface LocalClient extends Client {
     cobranzaNotas?: string;
 }
 
-export interface Gestion {
-    id: string;
-    clientId: string;
-    date: string;
-    type: 'WhatsApp' | 'Email' | 'Llamado' | 'Pago registrado' | 'Promesa de pago' | 'Regularización' | 'Auditoría';
-    user: string;
-    channel: string;
-    result: string;
-    observations: string;
-}
 
-export interface CobranzaConfig {
-    diasAvisoVencimiento: number;
-    montoMinimoAlerta: number;
-    diasMoraCritica: number;
-    plantillaEmail: string;
-    plantillaWhatsapp: string;
-    
-    // Multiple templates additions
-    plantillaPreventivoEmail: string;
-    plantillaPreventivoWhatsapp: string;
-    plantillaDeudaVencidaEmail: string;
-    plantillaDeudaVencidaWhatsapp: string;
-    plantillaSegundoAvisoEmail: string;
-    plantillaSegundoAvisoWhatsapp: string;
-    plantillaPagoRecibidoEmail: string;
-    plantillaPagoRecibidoWhatsapp: string;
-
-    sonidosActivos: boolean;
-    volumenSonidos: number;
-    autoAlertasActivas: boolean;
-}
 
 const defaultCobranzaConfig: CobranzaConfig = {
     diasAvisoVencimiento: 3,
@@ -1075,7 +1047,16 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }, [syncFromDatabase]);
 
     // Centralized state saver helper
-    const saveStateToLocalStorage = (customState?: any) => {
+    const saveStateToLocalStorage = useCallback((customState?: Partial<{
+        clients: Client[];
+        machines: Machine[];
+        readings: Reading[];
+        tickets: Ticket[];
+        abonos: Abono[];
+        users: User[];
+        rentals: Rental[];
+        budgets: Budget[];
+    }>) => {
         const stateToSave = {
             clients: customState?.clients ?? stateRef.current.clients,
             machines: customState?.machines ?? stateRef.current.machines,
@@ -1096,7 +1077,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         } catch (e) {
             console.error("Error saving state to localStorage:", e);
         }
-    };
+    }, [templates, machinePresets, gestiones, cobranzaConfig]);
 
     // Generic enqueue helper
     const enqueueSyncItem = useCallback((entityId: string, entityType: SyncEntityType, operation: 'create' | 'update' | 'delete', payload: any) => {
@@ -1155,7 +1136,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 enqueueSyncItem(fullMachine.id, 'machines', 'update', fullMachine);
             }
         });
-    }, [enqueueSyncItem]);
+    }, [enqueueSyncItem, saveStateToLocalStorage]);
 
     const updateRentalAction = useCallback((rental: Rental, machineUpdates?: { id: string; clientId: string | null; abonoId: string | null; status: any }[]) => {
         const nowStr = new Date().toISOString();
@@ -1189,7 +1170,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 }
             });
         }
-    }, [enqueueSyncItem]);
+    }, [enqueueSyncItem, saveStateToLocalStorage]);
 
     const updateTicketAction = useCallback((ticket: Ticket, machineUpdate?: { id: string; status: any }) => {
         const nowStr = new Date().toISOString();
@@ -1224,7 +1205,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 enqueueSyncItem(fullMachine.id, 'machines', 'update', fullMachine);
             }
         }
-    }, [enqueueSyncItem]);
+    }, [enqueueSyncItem, saveStateToLocalStorage]);
 
     const addReadingAction = useCallback((reading: Reading, machineUpdate?: { id: string; currentCounter: number }, operationOverride?: 'create' | 'update' | 'delete') => {
         const nowStr = new Date().toISOString();
@@ -1263,7 +1244,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 enqueueSyncItem(fullMachine.id, 'machines', 'update', fullMachine);
             }
         }
-    }, [enqueueSyncItem]);
+    }, [enqueueSyncItem, saveStateToLocalStorage]);
 
     const updateClientAction = useCallback((client: Client, operation: 'create' | 'update' | 'delete' = 'update') => {
         const nowStr = new Date().toISOString();
@@ -1281,7 +1262,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         saveStateToLocalStorage({ clients: updatedClients });
 
         enqueueSyncItem(client.id, 'clients', operation, operation === 'delete' ? client : clientWithTime);
-    }, [enqueueSyncItem]);
+    }, [enqueueSyncItem, saveStateToLocalStorage]);
 
     const updateMachineAction = useCallback((machine: Machine, operation: 'create' | 'update' | 'delete' = 'update') => {
         const nowStr = new Date().toISOString();
@@ -1299,7 +1280,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         saveStateToLocalStorage({ machines: updatedMachines });
 
         enqueueSyncItem(machine.id, 'machines', operation, operation === 'delete' ? machine : machineWithTime);
-    }, [enqueueSyncItem]);
+    }, [enqueueSyncItem, saveStateToLocalStorage]);
 
     const updateAbonoAction = useCallback((abono: Abono, operation: 'create' | 'update' | 'delete' = 'update') => {
         const nowStr = new Date().toISOString();
@@ -1317,7 +1298,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         saveStateToLocalStorage({ abonos: updatedAbonos });
 
         enqueueSyncItem(abono.id, 'abonos', operation, operation === 'delete' ? abono : abonoWithTime);
-    }, [enqueueSyncItem]);
+    }, [enqueueSyncItem, saveStateToLocalStorage]);
 
     const addBudgetAction = useCallback((budget: Budget, operation: 'create' | 'update' | 'delete' = 'update') => {
         const nowStr = new Date().toISOString();
@@ -1335,7 +1316,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         saveStateToLocalStorage({ budgets: updatedBudgets });
 
         enqueueSyncItem(budget.id, 'budgets', operation, operation === 'delete' ? budget : budgetWithTime);
-    }, [enqueueSyncItem]);
+    }, [enqueueSyncItem, saveStateToLocalStorage]);
 
     const updateUserAction = useCallback((user: User, operation: 'create' | 'update' | 'delete' = 'update') => {
         const nowStr = new Date().toISOString();
@@ -1353,7 +1334,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         saveStateToLocalStorage({ users: updatedUsers });
 
         enqueueSyncItem(user.id, 'users', operation, operation === 'delete' ? user : userWithTime);
-    }, [enqueueSyncItem]);
+    }, [enqueueSyncItem, saveStateToLocalStorage]);
 
     return (
         <ManagementContext.Provider

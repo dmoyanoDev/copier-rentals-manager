@@ -33,8 +33,9 @@ export default function LoginPage() {
 
       // Redirigir al dashboard tras persistir la cookie exitosamente en el navegador
       window.location.href = '/';
-    } catch (err: any) {
-      setError(err.message || 'Error de conexión con el servidor.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message || 'Error de conexión con el servidor.');
     } finally {
       setIsPending(false);
     }
