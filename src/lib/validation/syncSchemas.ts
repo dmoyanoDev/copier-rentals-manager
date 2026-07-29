@@ -269,13 +269,48 @@ export const userSyncSchema = z.object({
   updatedAt: dateSchema.optional(),
 });
 
+export const gestionSyncSchema = z.object({
+  id: z.string().min(1),
+  clientId: z.string().min(1),
+  date: z.string().min(1),
+  type: z.string().min(1),
+  user: z.string().default(''),
+  channel: z.string().default(''),
+  result: z.string().default(''),
+  observations: z.string().default(''),
+  createdAt: dateSchema.optional(),
+  updatedAt: dateSchema.optional(),
+});
+
+export const cobranzaConfigSyncSchema = z.object({
+  id: z.string().default('singleton'),
+  diasAvisoVencimiento: z.number().int().default(3),
+  montoMinimoAlerta: z.number().default(50000),
+  diasMoraCritica: z.number().int().default(15),
+  plantillaEmail: z.string().default(''),
+  plantillaWhatsapp: z.string().default(''),
+  plantillaPreventivoEmail: z.string().default(''),
+  plantillaPreventivoWhatsapp: z.string().default(''),
+  plantillaDeudaVencidaEmail: z.string().default(''),
+  plantillaDeudaVencidaWhatsapp: z.string().default(''),
+  plantillaSegundoAvisoEmail: z.string().default(''),
+  plantillaSegundoAvisoWhatsapp: z.string().default(''),
+  plantillaPagoRecibidoEmail: z.string().default(''),
+  plantillaPagoRecibidoWhatsapp: z.string().default(''),
+  sonidosActivos: z.boolean().default(true),
+  volumenSonidos: z.number().int().default(50),
+  autoAlertasActivas: z.boolean().default(true),
+  updatedAt: dateSchema.optional(),
+});
+
 export const syncQueueItemSchema = z.object({
   id: z.string().min(1),
   entityId: z.string().min(1),
-  entityType: z.enum(['clients', 'machines', 'readings', 'tickets', 'plans', 'users', 'rentals', 'budgets']),
+  entityType: z.enum(['clients', 'machines', 'readings', 'tickets', 'plans', 'users', 'rentals', 'budgets', 'gestiones', 'cobranzaConfig']),
   operation: z.enum(['create', 'update', 'delete']),
   payload: z.any(),
   updatedAt: z.string(),
   status: z.enum(['pending', 'syncing', 'synced', 'failed']),
   retryCount: z.number().int().nonnegative().default(0),
 });
+

@@ -11,6 +11,8 @@ import {
   users,
   rentals,
   budgets,
+  gestiones,
+  cobranzaConfig as cobranzaConfigTable,
 } from '@/infrastructure/db/schema';
 import {
   clientSyncSchema,
@@ -21,7 +23,10 @@ import {
   userSyncSchema,
   rentalSyncSchema,
   budgetSyncSchema,
+  gestionSyncSchema,
+  cobranzaConfigSyncSchema,
 } from '@/lib/validation/syncSchemas';
+
 
 export async function POST(request: Request) {
   try {
@@ -129,6 +134,14 @@ export async function POST(request: Request) {
           case 'budgets':
             table = budgets;
             schema = budgetSyncSchema;
+            break;
+          case 'gestiones':
+            table = gestiones;
+            schema = gestionSyncSchema;
+            break;
+          case 'cobranzaConfig':
+            table = cobranzaConfigTable;
+            schema = cobranzaConfigSyncSchema;
             break;
           default:
             results.push({

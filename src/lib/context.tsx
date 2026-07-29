@@ -116,15 +116,18 @@ interface ManagementContextType {
     resetSyncAction: () => Promise<void>;
 
     // Action-Driven mutations
-    addRentalAction: (rental: Rental, machineUpdates: { id: string; clientId: string | null; abonoId: string | null; status: any }[]) => void;
-    updateRentalAction: (rental: Rental, machineUpdates?: { id: string; clientId: string | null; abonoId: string | null; status: any }[]) => void;
-    updateTicketAction: (ticket: Ticket, machineUpdate?: { id: string; status: any }) => void;
+    addRentalAction: (rental: Rental, machineUpdates: { id: string; clientId: string | null; abonoId: string | null; status: Machine['status'] }[]) => void;
+    updateRentalAction: (rental: Rental, machineUpdates?: { id: string; clientId: string | null; abonoId: string | null; status: Machine['status'] }[]) => void;
+    updateTicketAction: (ticket: Ticket, machineUpdate?: { id: string; status: Machine['status'] }) => void;
     addReadingAction: (reading: Reading, machineUpdate?: { id: string; currentCounter: number }, operation?: 'create' | 'update' | 'delete') => void;
     updateClientAction: (client: Client, operation?: 'create' | 'update' | 'delete') => void;
     updateMachineAction: (machine: Machine, operation?: 'create' | 'update' | 'delete') => void;
     updateAbonoAction: (abono: Abono, operation?: 'create' | 'update' | 'delete') => void;
     addBudgetAction: (budget: Budget, operation?: 'create' | 'update' | 'delete') => void;
     updateUserAction: (user: User, operation?: 'create' | 'update' | 'delete') => void;
+    // Cobranza actions — backed by Turso
+    addGestionAction: (gestion: Gestion, operation?: 'create' | 'update' | 'delete') => void;
+    updateCobranzaConfigAction: (config: CobranzaConfig) => void;
 }
 
 const trackDeletions = (newState: any) => {
@@ -1338,6 +1341,47 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         enqueueSyncItem(user.id, 'users', operation, operation === 'delete' ? user : userWithTime);
     }, [enqueueSyncItem, saveStateToLocalStorage]);
 
+    // Gestion action: creates/updates/deletes a cobranza interaction record in Turso
+    const addGestionAction = useCallback((gestion: Gestion, operation: 'create' | 'update' | 'delete' = 'create') => {
+        const nowStr = new Date().toISOString();
+        const gestionWithTime = { ...gestion, updatedAt: nowStr, createdAt: (gestion as Gestion & { createdAt?: string }).createdAt || nowStr };
+
+        let updatedGestiones = gestiones;
+        if (operation === 'delete') {
+            updatedGestiones = gestiones.filter(g => g.id !== gestion.id);
+        } else if (operation === 'create') {
+            updatedGestiones = [gestionWithTime, ...gestiones];
+        } else {
+            updatedGestiones = gestiones.map(g => g.id === gestion.id ? gestionWithTime : g);
+        }
+        setGestiones(updatedGestiones);
+
+        // Persist gestiones to localStorage inside ms_data
+        try {
+            const raw = localStorage.getItem('ms_data');
+            const current = raw ? JSON.parse(raw) : {};
+            localStorage.setItem('ms_data', JSON.stringify({ ...current, gestiones: updatedGestiones }));
+        } catch (e) {}
+
+        enqueueSyncItem(gestion.id, 'gestiones', operation, operation === 'delete' ? gestion : gestionWithTime);
+    }, [gestiones, enqueueSyncItem]);
+
+    // CobranzaConfig action: saves configuration singleton to Turso
+    const updateCobranzaConfigAction = useCallback((config: CobranzaConfig) => {
+        const nowStr = new Date().toISOString();
+        const configWithTime = { ...config, id: 'singleton', updatedAt: nowStr };
+        setCobranzaConfig(config);
+
+        // Persist to localStorage
+        try {
+            const raw = localStorage.getItem('ms_data');
+            const current = raw ? JSON.parse(raw) : {};
+            localStorage.setItem('ms_data', JSON.stringify({ ...current, cobranzaConfig: configWithTime }));
+        } catch (e) {}
+
+        enqueueSyncItem('singleton', 'cobranzaConfig', 'update', configWithTime);
+    }, [enqueueSyncItem]);
+
     return (
         <ManagementContext.Provider
             value={{
@@ -1384,6 +1428,8 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 updateAbonoAction,
                 addBudgetAction,
                 updateUserAction,
+                addGestionAction,
+                updateCobranzaConfigAction,
                 resetSyncAction
             }}
         >

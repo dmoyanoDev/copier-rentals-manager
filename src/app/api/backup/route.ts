@@ -21,6 +21,9 @@ import { notificationSettings } from '@/infrastructure/db/schema/notificationSet
 import { notificationHistory } from '@/infrastructure/db/schema/notificationHistory';
 import { auditLogs } from '@/infrastructure/db/schema/auditLogs';
 import { rentals } from '@/infrastructure/db/schema/rentals';
+import { gestiones } from '@/infrastructure/db/schema/gestiones';
+import { cobranzaConfig as cobranzaConfigTable } from '@/infrastructure/db/schema/cobranzaConfig';
+
 
 // Helper to write audit logs from server route handler
 async function logServerAudit(module: string, action: string, details: string, user: string) {
@@ -121,6 +124,46 @@ async function ensureSchemaSynced(db: any) {
       } catch (e) {}
     }
 
+    // 7. Ensure gestiones table exists
+    await db.run(sql`
+      CREATE TABLE IF NOT EXISTS gestiones (
+        id TEXT PRIMARY KEY NOT NULL,
+        client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+        date TEXT NOT NULL,
+        type TEXT NOT NULL,
+        user TEXT NOT NULL DEFAULT '',
+        channel TEXT NOT NULL DEFAULT '',
+        result TEXT NOT NULL DEFAULT '',
+        observations TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
+    // 8. Ensure cobranza_config table exists (singleton)
+    await db.run(sql`
+      CREATE TABLE IF NOT EXISTS cobranza_config (
+        id TEXT PRIMARY KEY NOT NULL DEFAULT 'singleton',
+        dias_aviso_vencimiento INTEGER NOT NULL DEFAULT 3,
+        monto_minimo_alerta REAL NOT NULL DEFAULT 50000,
+        dias_mora_critica INTEGER NOT NULL DEFAULT 15,
+        plantilla_email TEXT NOT NULL DEFAULT '',
+        plantilla_whatsapp TEXT NOT NULL DEFAULT '',
+        plantilla_preventivo_email TEXT NOT NULL DEFAULT '',
+        plantilla_preventivo_whatsapp TEXT NOT NULL DEFAULT '',
+        plantilla_deuda_vencida_email TEXT NOT NULL DEFAULT '',
+        plantilla_deuda_vencida_whatsapp TEXT NOT NULL DEFAULT '',
+        plantilla_segundo_aviso_email TEXT NOT NULL DEFAULT '',
+        plantilla_segundo_aviso_whatsapp TEXT NOT NULL DEFAULT '',
+        plantilla_pago_recibido_email TEXT NOT NULL DEFAULT '',
+        plantilla_pago_recibido_whatsapp TEXT NOT NULL DEFAULT '',
+        sonidos_activos INTEGER NOT NULL DEFAULT 1,
+        volumen_sonidos INTEGER NOT NULL DEFAULT 50,
+        auto_alertas_activas INTEGER NOT NULL DEFAULT 1,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
     isDbSchemaSynced = true;
     console.log("Database schema auto-sync completed successfully.");
   } catch (err) {
@@ -161,7 +204,9 @@ export async function GET(request: Request) {
       dbNotifSettings,
       dbNotifHistory,
       dbAuditLogs,
-      dbRentals
+      dbRentals,
+      dbGestiones,
+      dbCobranzaConfig
     ] = await Promise.all([
       isValidSince ? db.select().from(users).where(sql`${users.updatedAt} > ${sinceMs}`) : db.select().from(users),
       isValidSince ? db.select().from(clients).where(sql`${clients.updatedAt} > ${sinceMs}`) : db.select().from(clients),
@@ -175,8 +220,12 @@ export async function GET(request: Request) {
       isValidSince ? Promise.resolve([]) : db.select().from(notificationSettings),
       isSystemSync || isValidSince ? Promise.resolve([]) : db.select().from(notificationHistory),
       isSystemSync || isValidSince ? Promise.resolve([]) : db.select().from(auditLogs),
-      isValidSince ? db.select().from(rentals).where(sql`${rentals.updatedAt} > ${sinceMs}`) : db.select().from(rentals)
+      isValidSince ? db.select().from(rentals).where(sql`${rentals.updatedAt} > ${sinceMs}`) : db.select().from(rentals),
+      // Always fetch gestiones and cobranzaConfig (incremental by updatedAt when possible)
+      isValidSince ? db.select().from(gestiones).where(sql`${gestiones.updatedAt} > ${sinceMs}`) : db.select().from(gestiones),
+      db.select().from(cobranzaConfigTable).limit(1),
     ]);
+
 
     const backupPayload = {
       users: dbUsers,
@@ -192,12 +241,16 @@ export async function GET(request: Request) {
       notificationHistory: dbNotifHistory,
       auditLogs: dbAuditLogs,
       rentals: dbRentals,
+      gestiones: dbGestiones,
+      // Return singleton config object directly (not array) for easy consumption
+      cobranzaConfig: dbCobranzaConfig[0] ?? null,
       backupMeta: {
         exportDate: new Date().toISOString(),
         version: '2.0.0',
         engine: 'Turso SQLite Cloud'
       }
     };
+
 
     // Only log audit for manual (non-sync) backups to avoid flooding the audit_logs table
     if (!isSystemSync) {
@@ -513,6 +566,51 @@ export async function POST(request: Request) {
             updatedAt: r.updatedAt ? new Date(r.updatedAt) : new Date()
           });
         }
+      }
+
+      // Restore gestiones (cobranza history)
+      if (payload.gestiones?.length) {
+        await tx.delete(gestiones);
+        for (const g of payload.gestiones) {
+          await tx.insert(gestiones).values({
+            id: g.id,
+            clientId: g.clientId || 'unknown',
+            date: g.date || new Date().toISOString().split('T')[0],
+            type: g.type || 'Llamado',
+            user: g.user || '',
+            channel: g.channel || '',
+            result: g.result || '',
+            observations: g.observations || '',
+            createdAt: g.createdAt ? new Date(g.createdAt) : new Date(),
+            updatedAt: g.updatedAt ? new Date(g.updatedAt) : new Date(),
+          });
+        }
+      }
+
+      // Restore cobranzaConfig singleton — upsert so we never lose it
+      if (payload.cobranzaConfig) {
+        const cfg = payload.cobranzaConfig;
+        await tx.delete(cobranzaConfigTable);
+        await tx.insert(cobranzaConfigTable).values({
+          id: 'singleton',
+          diasAvisoVencimiento: cfg.diasAvisoVencimiento ?? 3,
+          montoMinimoAlerta: cfg.montoMinimoAlerta ?? 50000,
+          diasMoraCritica: cfg.diasMoraCritica ?? 15,
+          plantillaEmail: cfg.plantillaEmail || '',
+          plantillaWhatsapp: cfg.plantillaWhatsapp || '',
+          plantillaPreventivoEmail: cfg.plantillaPreventivoEmail || '',
+          plantillaPreventivoWhatsapp: cfg.plantillaPreventivoWhatsapp || '',
+          plantillaDeudaVencidaEmail: cfg.plantillaDeudaVencidaEmail || '',
+          plantillaDeudaVencidaWhatsapp: cfg.plantillaDeudaVencidaWhatsapp || '',
+          plantillaSegundoAvisoEmail: cfg.plantillaSegundoAvisoEmail || '',
+          plantillaSegundoAvisoWhatsapp: cfg.plantillaSegundoAvisoWhatsapp || '',
+          plantillaPagoRecibidoEmail: cfg.plantillaPagoRecibidoEmail || '',
+          plantillaPagoRecibidoWhatsapp: cfg.plantillaPagoRecibidoWhatsapp || '',
+          sonidosActivos: cfg.sonidosActivos ?? true,
+          volumenSonidos: cfg.volumenSonidos ?? 50,
+          autoAlertasActivas: cfg.autoAlertasActivas ?? true,
+          updatedAt: cfg.updatedAt ? new Date(cfg.updatedAt) : new Date(),
+        });
       }
 
       if (payload.emailLogs?.length) {

@@ -13,3 +13,5 @@ export * from './auditLogs';
 export * from './sessions';
 export * from './passwordResetTokens';
 export * from './rentals';
+export * from './gestiones';
+export * from './cobranzaConfig';
