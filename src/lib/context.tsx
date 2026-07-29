@@ -638,7 +638,11 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     const merged = mergeData(currentLocalState, parsed, stateRef.current.lastSyncTime, isIncremental);
 
                     setClients(merged.clients || []);
-                    setMachines(merged.machines || []);
+                    // Normalize DB field name 'machineCounter' → frontend field 'currentCounter'
+                    setMachines((merged.machines || []).map((m: Machine & { machineCounter?: number }) => ({
+                        ...m,
+                        currentCounter: m.currentCounter ?? m.machineCounter ?? 0,
+                    })));
                     setReadings(merged.readings || []);
                     setTickets(merged.tickets || []);
                     setAbonos(merged.abonos || []);
@@ -692,11 +696,9 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         }
                     }
 
-                    const isMaster = (stateRef.current.currentUser as any)?.role === 'master' || 
-                                     (stateRef.current.currentUser as any)?.isMaster || 
-                                     stateRef.current.currentUser?.username === 'dmoyano';
-
-                    if (localChangesExist && isMaster) {
+                    // Push merged state back to server for all authenticated users.
+                    // This ensures cross-device data is consistent regardless of user role.
+                    if (localChangesExist) {
                         const mergedRaw = JSON.stringify(stateToSave);
                         fetch('/api/backup?user=autosave', {
                             method: 'POST',

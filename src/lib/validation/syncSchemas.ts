@@ -100,11 +100,16 @@ export const machineSyncSchema = z.object({
   serial: z.string().min(1),
   type: z.string().default('B&N'),
   status: z.string().default('Usado'),
+  // Accept both 'machineCounter' (DB name) and 'currentCounter' (frontend name)
   machineCounter: z.number().int().default(0),
+  currentCounter: z.number().int().optional(), // frontend alias — used in transform below
   clientId: z.string().nullable().optional(),
   abonoId: z.string().nullable().optional(),
   installationDate: z.string().nullable().optional(),
   initialCounter: z.number().int().default(0),
+  // lastServiceCounter and preventiveInterval exist in frontend but not in DB — accepted and stripped
+  lastServiceCounter: z.number().int().optional(),
+  preventiveInterval: z.number().int().optional(),
   applyIva: z.boolean().default(false),
   readingDay: z.number().int().default(10),
   isAvailable: z.boolean().default(true),
@@ -112,7 +117,13 @@ export const machineSyncSchema = z.object({
   features: z.string().nullable().optional(),
   createdAt: dateSchema.optional(),
   updatedAt: dateSchema.optional(),
+}).transform((data) => {
+  // Normalize: if frontend sends currentCounter, use it as machineCounter
+  const counter = data.currentCounter !== undefined ? data.currentCounter : data.machineCounter;
+  const { currentCounter, lastServiceCounter, preventiveInterval, ...rest } = data;
+  return { ...rest, machineCounter: counter };
 });
+
 
 export const readingSyncSchema = z.object({
   id: z.string().min(1),
@@ -122,6 +133,12 @@ export const readingSyncSchema = z.object({
   month: z.string().min(1),
   initial: z.number().int().default(0),
   final: z.number().int().default(0),
+  // Financial fields — CRITICAL: must be persisted to DB, not defaulted to 0
+  excessCount: z.number().int().default(0),
+  excessPrice: z.number().default(0),
+  netAmount: z.number().default(0),
+  ivaAmount: z.number().default(0),
+  totalAmount: z.number().default(0),
   readingStatus: z.string().default('Lectura tomada'),
   billingStatus: z.string().default('No facturado'),
   collectionStatus: z.string().default('Impago'),
@@ -141,6 +158,7 @@ export const readingSyncSchema = z.object({
   createdAt: dateSchema.optional(),
   updatedAt: dateSchema.optional(),
 });
+
 
 export const ticketSyncSchema = z.object({
   id: z.string().min(1),
@@ -231,7 +249,9 @@ export const userSyncSchema = z.object({
   username: z.string().min(1),
   fullname: z.string().min(1),
   email: z.string().min(1),
-  role: z.string().default('tecnico'),
+  // passwordHash is required (NOT NULL in DB, no default) — must be present on user create
+  passwordHash: z.string().default(''),
+  role: z.string().default('administrativo'), // matches DB default
   isMaster: z.number().int().default(0),
   phone: z.string().nullable().optional(),
   whatsapp: z.string().nullable().optional(),
@@ -241,6 +261,12 @@ export const userSyncSchema = z.object({
   active: z.number().int().default(1),
   workHours: z.string().nullable().optional(),
   internalNotes: z.string().nullable().optional(),
+  // Audit / login tracking fields
+  lastLoginAt: dateSchema.nullable().optional(),
+  failedLoginAttempts: z.number().int().default(0),
+  lockedUntil: dateSchema.nullable().optional(),
+  createdAt: dateSchema.optional(),
+  updatedAt: dateSchema.optional(),
 });
 
 export const syncQueueItemSchema = z.object({
