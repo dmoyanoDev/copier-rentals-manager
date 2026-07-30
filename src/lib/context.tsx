@@ -405,7 +405,9 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             readings: 4,
             rentals: 5,
             tickets: 6,
-            budgets: 7
+            budgets: 7,
+            gestiones: 8,      // must be after clients (FK on client_id)
+            cobranzaConfig: 9, // standalone singleton
         };
 
         const getOrder = (item: SyncQueueItem) => {

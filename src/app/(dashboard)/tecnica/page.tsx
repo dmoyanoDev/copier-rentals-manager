@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 export default function TechnicalPage() {
-    const { tickets, setTickets, currentUser, users, setUsers, clients, machines, setMachines, updateTicketAction, updateUserAction, updateMachineAction } = useManagement();
+    const { tickets, currentUser, users, clients, machines, updateTicketAction, updateUserAction, updateMachineAction } = useManagement();
     const isTech = currentUser?.role === 'tecnico';
 
     // Core Navigation Tabs: 'bitacora' | 'tecnicos' | 'config' | 'historial_envios' | 'metricas'
@@ -192,7 +192,13 @@ export default function TechnicalPage() {
             });
             const data = await response.json();
             if (data.success) {
-                setTickets(data.tickets);
+                // Persist each updated ticket to Turso via sync queue
+                (data.tickets as Ticket[]).forEach(updatedTicket => {
+                    const existing = tickets.find(t => t.id === updatedTicket.id);
+                    if (existing && JSON.stringify(existing) !== JSON.stringify(updatedTicket)) {
+                        updateTicketAction(updatedTicket);
+                    }
+                });
                 fetchLogs();
                 if (data.logs.length > 0) {
                     alert(`¡Cron de automatización ejecutado!\n\nAcciones realizadas:\n${data.logs.join('\n')}`);

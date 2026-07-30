@@ -22,7 +22,10 @@ export default function RespaldoPage() {
         abonos, setAbonos, 
         users, setUsers, 
         rentals, setRentals,
-        currentUser 
+        currentUser,
+        updateClientAction,
+        updateMachineAction,
+        addReadingAction,
     } = useManagement();
 
     const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
@@ -255,22 +258,37 @@ export default function RespaldoPage() {
             setIsImporting(true);
             try {
                 if (importModule === 'clientes') {
+                    const cleanedValids = validItems.map(({ isValid, errors, isDuplicate, ...rest }: any) => rest);
                     setClients(prev => {
-                        const filtered = prev.filter(c => !validItems.some(v => v.cuit === c.cuit));
-                        const cleanedValids = validItems.map(({ isValid, errors, isDuplicate, ...rest }) => rest);
+                        const filtered = prev.filter(c => !cleanedValids.some((v: any) => v.cuit === c.cuit));
                         return [...filtered, ...cleanedValids];
+                    });
+                    // Sync each imported client to Turso
+                    cleanedValids.forEach((client: any) => {
+                        const exists = clients.some(c => c.cuit === client.cuit);
+                        updateClientAction(client, exists ? 'update' : 'create');
                     });
                 } else if (importModule === 'maquinas') {
+                    const cleanedValids = validItems.map(({ isValid, errors, isDuplicate, ...rest }: any) => rest);
                     setMachines(prev => {
-                        const filtered = prev.filter(m => !validItems.some(v => v.serial === m.serial));
-                        const cleanedValids = validItems.map(({ isValid, errors, isDuplicate, ...rest }) => rest);
+                        const filtered = prev.filter(m => !cleanedValids.some((v: any) => v.serial === m.serial));
                         return [...filtered, ...cleanedValids];
                     });
+                    // Sync each imported machine to Turso
+                    cleanedValids.forEach((machine: any) => {
+                        const exists = machines.some(m => m.serial === machine.serial);
+                        updateMachineAction(machine, exists ? 'update' : 'create');
+                    });
                 } else if (importModule === 'lecturas') {
+                    const cleanedValids = validItems.map(({ isValid, errors, isDuplicate, ...rest }: any) => rest);
                     setReadings(prev => {
-                        const filtered = prev.filter(r => !validItems.some(v => v.machineId === r.machineId && v.month === r.month));
-                        const cleanedValids = validItems.map(({ isValid, errors, isDuplicate, ...rest }) => rest);
+                        const filtered = prev.filter(r => !cleanedValids.some((v: any) => v.machineId === r.machineId && v.month === r.month));
                         return [...filtered, ...cleanedValids];
+                    });
+                    // Sync each imported reading to Turso
+                    cleanedValids.forEach((reading: any) => {
+                        const exists = readings.some(r => r.machineId === reading.machineId && r.month === reading.month);
+                        addReadingAction(reading, undefined, exists ? 'update' : 'create');
                     });
                 }
 

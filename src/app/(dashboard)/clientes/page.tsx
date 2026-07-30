@@ -47,9 +47,9 @@ const LocalBadge = ({ variant, children, className = '' }: { variant: 'success' 
 
 export default function ClientsPage() {
     const { 
-        clients, setClients, machines, readings, setReadings, abonos, rentals,
-        gestiones, setGestiones, cobranzaConfig, setCobranzaConfig,
-        updateClientAction
+        clients, machines, readings, abonos, rentals,
+        gestiones, cobranzaConfig, setCobranzaConfig,
+        updateClientAction, addReadingAction, addGestionAction, updateCobranzaConfigAction
     } = useManagement();
     
     // Tabs setup
@@ -306,8 +306,9 @@ export default function ClientsPage() {
             result,
             observations
         };
-        setGestiones(prev => [newGestion, ...(prev || [])]);
-    }, []);
+        // Use action to persist gestion to Turso via sync queue
+        addGestionAction(newGestion, 'create');
+    }, [addGestionAction]);
 
     const handleQuickAction = (client: LocalClient, type: 'whatsapp' | 'email' | 'promesa' | 'llamado') => {
         if (type === 'whatsapp') {
@@ -333,8 +334,11 @@ export default function ClientsPage() {
     // Register dynamic collection payments
     const handleCollectInvoice = (client: LocalClient, movement: { id: string; number: string }) => {
         const readingId = movement.id.replace('fact-', '').replace('rec-', '');
-        
-        setReadings(prev => prev.map(r => r.id === readingId ? { ...r, status: 'paid' } : r));
+        const targetReading = readings.find(r => r.id === readingId);
+        if (targetReading) {
+            // Use action to persist payment status to Turso via sync queue
+            addReadingAction({ ...targetReading, collectionStatus: 'Pagado' as const }, undefined, 'update');
+        }
 
         const updatedReadings = readings.map(r => r.id === readingId ? { ...r, status: 'paid' as const } : r);
         const nextSummary = getClientFinancialSummaryHelper(client, updatedReadings, machines);
@@ -358,18 +362,19 @@ export default function ClientsPage() {
     // Save customized configurations
     const handleSaveConfig = (e: React.FormEvent) => {
         e.preventDefault();
-        alert('Configuraciones de automatización y sonidos guardadas con éxito localmente.');
+        // Persist cobranzaConfig to Turso via sync queue
+        updateCobranzaConfigAction(cobranzaConfig);
+        alert('Configuraciones de automatización y sonidos guardadas con éxito.');
         playSystemSound('recordatorio', cobranzaConfig);
     };
 
     // Save internal comments
     const handleSaveInternalNotes = () => {
         if (!accountClient) return;
-        setClients(prev => prev.map(c => c.id === accountClient.id ? { ...c, cobranzaNotas: tempInternalNotes } : c));
-        
-        // Update local object
+        const updatedClient = { ...accountClient, cobranzaNotas: tempInternalNotes };
+        // Use action to persist client notes to Turso via sync queue
+        updateClientAction(updatedClient, 'update');
         setAccountClient(prev => prev ? { ...prev, cobranzaNotas: tempInternalNotes } : null);
-
         registerCobranzaGestion(accountClient.id, 'Auditoría', 'Notas actualizadas', 'Se actualizaron las notas internas de cobranza.');
         playSystemSound('recordatorio', cobranzaConfig);
         alert('Notas internas comerciales guardadas con éxito.');
