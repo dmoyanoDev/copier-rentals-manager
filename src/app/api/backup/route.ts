@@ -187,7 +187,6 @@ export async function GET(request: Request) {
     const sinceParam = searchParams.get('since');
     const sinceDate = sinceParam ? new Date(sinceParam) : null;
     const isValidSince = sinceDate && !isNaN(sinceDate.getTime());
-    const sinceMs = isValidSince ? sinceDate!.getTime() : 0;
 
     const isSystemSync = user === 'system' || user === 'autosave';
 
@@ -208,21 +207,21 @@ export async function GET(request: Request) {
       dbGestiones,
       dbCobranzaConfig
     ] = await Promise.all([
-      isValidSince ? db.select().from(users).where(sql`${users.updatedAt} > ${sinceMs}`) : db.select().from(users),
-      isValidSince ? db.select().from(clients).where(sql`${clients.updatedAt} > ${sinceMs}`) : db.select().from(clients),
-      isValidSince ? db.select().from(plans).where(sql`${plans.updatedAt} > ${sinceMs}`) : db.select().from(plans),
-      isValidSince ? db.select().from(machines).where(sql`${machines.updatedAt} > ${sinceMs}`) : db.select().from(machines),
-      isValidSince ? db.select().from(readings).where(sql`${readings.updatedAt} > ${sinceMs}`) : db.select().from(readings),
-      isValidSince ? db.select().from(tickets).where(sql`${tickets.updatedAt} > ${sinceMs}`) : db.select().from(tickets),
-      isValidSince ? db.select().from(budgets).where(sql`${budgets.updatedAt} > ${sinceMs}`) : db.select().from(budgets),
+      isValidSince ? db.select().from(users).where(gt(users.updatedAt, sinceDate!)) : db.select().from(users),
+      isValidSince ? db.select().from(clients).where(gt(clients.updatedAt, sinceDate!)) : db.select().from(clients),
+      isValidSince ? db.select().from(plans).where(gt(plans.updatedAt, sinceDate!)) : db.select().from(plans),
+      isValidSince ? db.select().from(machines).where(gt(machines.updatedAt, sinceDate!)) : db.select().from(machines),
+      isValidSince ? db.select().from(readings).where(gt(readings.updatedAt, sinceDate!)) : db.select().from(readings),
+      isValidSince ? db.select().from(tickets).where(gt(tickets.updatedAt, sinceDate!)) : db.select().from(tickets),
+      isValidSince ? db.select().from(budgets).where(gt(budgets.updatedAt, sinceDate!)) : db.select().from(budgets),
       isSystemSync || isValidSince ? Promise.resolve([]) : db.select().from(emailLogs),
       isSystemSync || isValidSince ? Promise.resolve([]) : db.select().from(sharedPdfs),
       isValidSince ? Promise.resolve([]) : db.select().from(notificationSettings),
       isSystemSync || isValidSince ? Promise.resolve([]) : db.select().from(notificationHistory),
       isSystemSync || isValidSince ? Promise.resolve([]) : db.select().from(auditLogs),
-      isValidSince ? db.select().from(rentals).where(sql`${rentals.updatedAt} > ${sinceMs}`) : db.select().from(rentals),
+      isValidSince ? db.select().from(rentals).where(gt(rentals.updatedAt, sinceDate!)) : db.select().from(rentals),
       // Always fetch gestiones and cobranzaConfig (incremental by updatedAt when possible)
-      isValidSince ? db.select().from(gestiones).where(sql`${gestiones.updatedAt} > ${sinceMs}`) : db.select().from(gestiones),
+      isValidSince ? db.select().from(gestiones).where(gt(gestiones.updatedAt, sinceDate!)) : db.select().from(gestiones),
       db.select().from(cobranzaConfigTable).limit(1),
     ]);
 
