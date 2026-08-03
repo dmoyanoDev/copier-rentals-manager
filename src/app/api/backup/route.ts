@@ -3,6 +3,20 @@ import { NextResponse } from 'next/server';
 // Always query Turso — never serve cached responses from CDN or Next.js ISR
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+// Defensive de-duplication: the client sends its full local dataset (from localStorage)
+// on every autosave/restore. If a stale/duplicate entry with a repeated id ever slips into
+// local state, a plain INSERT on the second occurrence violates the primary key and aborts
+// the WHOLE transaction (nothing gets restored, not even the valid rows). Deduping by id
+// here (keeping the last occurrence) makes this endpoint resilient to that class of bug.
+function dedupeById<T extends { id?: string }>(arr: T[] | undefined | null): T[] {
+  if (!arr || !arr.length) return [];
+  const map = new Map<string, T>();
+  for (const item of arr) {
+    if (item && item.id) map.set(item.id, item);
+  }
+  return Array.from(map.values());
+}
 import { db } from '@/infrastructure/db/client';
 import { sql, gt, ne, eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
@@ -187,6 +201,12 @@ export async function GET(request: Request) {
     const sinceParam = searchParams.get('since');
     const sinceDate = sinceParam ? new Date(sinceParam) : null;
     const isValidSince = sinceDate && !isNaN(sinceDate.getTime());
+    // IMPORTANT: pass the Date object itself (not .getTime() in ms) to Drizzle's gt().
+    // Columns are defined with mode: 'timestamp', which Drizzle stores as SECONDS since epoch.
+    // Using gt(column, Date) lets Drizzle's own column mapping do the ms -> s conversion.
+    // A raw `sql` template with a millisecond number compared directly against the stored
+    // (seconds) integer would always evaluate to false, silently breaking incremental sync.
+    const sinceValue = isValidSince ? sinceDate! : new Date(0);
 
     const isSystemSync = user === 'system' || user === 'autosave';
 
@@ -207,21 +227,21 @@ export async function GET(request: Request) {
       dbGestiones,
       dbCobranzaConfig
     ] = await Promise.all([
-      isValidSince ? db.select().from(users).where(gt(users.updatedAt, sinceDate!)) : db.select().from(users),
-      isValidSince ? db.select().from(clients).where(gt(clients.updatedAt, sinceDate!)) : db.select().from(clients),
-      isValidSince ? db.select().from(plans).where(gt(plans.updatedAt, sinceDate!)) : db.select().from(plans),
-      isValidSince ? db.select().from(machines).where(gt(machines.updatedAt, sinceDate!)) : db.select().from(machines),
-      isValidSince ? db.select().from(readings).where(gt(readings.updatedAt, sinceDate!)) : db.select().from(readings),
-      isValidSince ? db.select().from(tickets).where(gt(tickets.updatedAt, sinceDate!)) : db.select().from(tickets),
-      isValidSince ? db.select().from(budgets).where(gt(budgets.updatedAt, sinceDate!)) : db.select().from(budgets),
+      isValidSince ? db.select().from(users).where(gt(users.updatedAt, sinceValue)) : db.select().from(users),
+      isValidSince ? db.select().from(clients).where(gt(clients.updatedAt, sinceValue)) : db.select().from(clients),
+      isValidSince ? db.select().from(plans).where(gt(plans.updatedAt, sinceValue)) : db.select().from(plans),
+      isValidSince ? db.select().from(machines).where(gt(machines.updatedAt, sinceValue)) : db.select().from(machines),
+      isValidSince ? db.select().from(readings).where(gt(readings.updatedAt, sinceValue)) : db.select().from(readings),
+      isValidSince ? db.select().from(tickets).where(gt(tickets.updatedAt, sinceValue)) : db.select().from(tickets),
+      isValidSince ? db.select().from(budgets).where(gt(budgets.updatedAt, sinceValue)) : db.select().from(budgets),
       isSystemSync || isValidSince ? Promise.resolve([]) : db.select().from(emailLogs),
       isSystemSync || isValidSince ? Promise.resolve([]) : db.select().from(sharedPdfs),
       isValidSince ? Promise.resolve([]) : db.select().from(notificationSettings),
       isSystemSync || isValidSince ? Promise.resolve([]) : db.select().from(notificationHistory),
       isSystemSync || isValidSince ? Promise.resolve([]) : db.select().from(auditLogs),
-      isValidSince ? db.select().from(rentals).where(gt(rentals.updatedAt, sinceDate!)) : db.select().from(rentals),
+      isValidSince ? db.select().from(rentals).where(gt(rentals.updatedAt, sinceValue)) : db.select().from(rentals),
       // Always fetch gestiones and cobranzaConfig (incremental by updatedAt when possible)
-      isValidSince ? db.select().from(gestiones).where(gt(gestiones.updatedAt, sinceDate!)) : db.select().from(gestiones),
+      isValidSince ? db.select().from(gestiones).where(gt(gestiones.updatedAt, sinceValue)) : db.select().from(gestiones),
       db.select().from(cobranzaConfigTable).limit(1),
     ]);
 
@@ -298,6 +318,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'El archivo JSON de respaldo no contiene las tablas mínimas para la restauración de la base de datos.' }, { status: 400 });
     }
 
+    // De-duplicate every id-keyed collection up front so a corrupted/duplicated local
+    // dataset can never crash the restore transaction (see dedupeById above).
+    const dedupedUsers = dedupeById<any>(payload.users);
+    const dedupedClients = dedupeById<any>(payload.clients);
+    const dedupedPlans = dedupeById<any>(payload.plans || payload.abonos);
+    const dedupedMachines = dedupeById<any>(payload.machines);
+    const dedupedReadings = dedupeById<any>(payload.readings);
+    const dedupedTickets = dedupeById<any>(payload.tickets);
+    const dedupedBudgets = dedupeById<any>(payload.budgets);
+    const dedupedRentals = dedupeById<any>(payload.rentals);
+    const dedupedGestiones = dedupeById<any>(payload.gestiones);
+    const dedupedSharedPdfs = dedupeById<any>(payload.sharedPdfs);
+    const dedupedNotificationSettings = dedupeById<any>(payload.notificationSettings);
+    const dedupedNotificationHistory = dedupeById<any>(payload.notificationHistory);
+    const dedupedAuditLogs = dedupeById<any>(payload.auditLogs);
+
     // Process database restore inside a transaction block
     await db.transaction(async (tx) => {
       // 1. Delete all rows from target tables only if they are present in the payload to preserve logs during autosaves
@@ -318,8 +354,8 @@ export async function POST(request: Request) {
       if (payload.auditLogs !== undefined) await tx.delete(auditLogs);
 
       // 2. Insert new rows if present
-      if (!isAutosave && payload.users?.length) {
-        for (const u of payload.users) {
+      if (!isAutosave && dedupedUsers.length) {
+        for (const u of dedupedUsers) {
           const hasInvalidPassword = !u.passwordHash || u.passwordHash.length < 10;
           // If the user already has a valid hash, keep it. Never hardcode passwords in source.
           const finalPasswordHash = hasInvalidPassword ? '' : u.passwordHash;
@@ -365,8 +401,8 @@ export async function POST(request: Request) {
         }
       }
 
-      if (payload.clients?.length) {
-        for (const c of payload.clients) {
+      if (dedupedClients.length) {
+        for (const c of dedupedClients) {
           await tx.insert(clients).values({
             id: c.id,
             name: c.name || 'Cliente sin nombre',
@@ -384,9 +420,8 @@ export async function POST(request: Request) {
         }
       }
 
-      const targetPlans = payload.plans || payload.abonos || [];
-      if (targetPlans.length) {
-        for (const p of targetPlans) {
+      if (dedupedPlans.length) {
+        for (const p of dedupedPlans) {
           await tx.insert(plans).values({
             id: p.id,
             name: p.name || 'Plan Comercial',
@@ -400,8 +435,8 @@ export async function POST(request: Request) {
         }
       }
 
-      if (payload.machines?.length) {
-        for (const m of payload.machines) {
+      if (dedupedMachines.length) {
+        for (const m of dedupedMachines) {
           await tx.insert(machines).values({
             id: m.id,
             brand: m.brand || 'Desconocida',
@@ -425,8 +460,8 @@ export async function POST(request: Request) {
         }
       }
 
-      if (payload.readings?.length) {
-        for (const r of payload.readings) {
+      if (dedupedReadings.length) {
+        for (const r of dedupedReadings) {
           const mach = payload.machines?.find((m: any) => m.id === r.machineId);
           await tx.insert(readings).values({
             id: r.id,
@@ -458,8 +493,8 @@ export async function POST(request: Request) {
         }
       }
 
-      if (payload.tickets?.length) {
-        for (const t of payload.tickets) {
+      if (dedupedTickets.length) {
+        for (const t of dedupedTickets) {
           await tx.insert(tickets).values({
             id: t.id,
             clientType: t.clientType || 'existente',
@@ -495,8 +530,8 @@ export async function POST(request: Request) {
         }
       }
 
-      if (payload.budgets?.length) {
-        for (const b of payload.budgets) {
+      if (dedupedBudgets.length) {
+        for (const b of dedupedBudgets) {
           await tx.insert(budgets).values({
             id: b.id,
             numero: b.numero,
@@ -536,8 +571,8 @@ export async function POST(request: Request) {
         }
       }
 
-      if (payload.rentals?.length) {
-        for (const r of payload.rentals) {
+      if (dedupedRentals.length) {
+        for (const r of dedupedRentals) {
           await tx.insert(rentals).values({
             id: r.id,
             clientId: r.clientId || 'unknown',
@@ -568,9 +603,9 @@ export async function POST(request: Request) {
       }
 
       // Restore gestiones (cobranza history)
-      if (payload.gestiones?.length) {
+      if (dedupedGestiones.length) {
         await tx.delete(gestiones);
-        for (const g of payload.gestiones) {
+        for (const g of dedupedGestiones) {
           await tx.insert(gestiones).values({
             id: g.id,
             clientId: g.clientId || 'unknown',
@@ -625,8 +660,8 @@ export async function POST(request: Request) {
         }
       }
 
-      if (payload.sharedPdfs?.length) {
-        for (const sp of payload.sharedPdfs) {
+      if (dedupedSharedPdfs.length) {
+        for (const sp of dedupedSharedPdfs) {
           await tx.insert(sharedPdfs).values({
             id: sp.id,
             filename: sp.filename || sp.pdfName || '',
@@ -636,8 +671,8 @@ export async function POST(request: Request) {
         }
       }
 
-      if (payload.notificationSettings?.length) {
-        for (const ns of payload.notificationSettings) {
+      if (dedupedNotificationSettings.length) {
+        for (const ns of dedupedNotificationSettings) {
           await tx.insert(notificationSettings).values({
             id: ns.id,
             whatsappEnabled: ns.whatsappEnabled ? 1 : 0,
@@ -649,8 +684,8 @@ export async function POST(request: Request) {
         }
       }
 
-      if (payload.notificationHistory?.length) {
-        for (const nh of payload.notificationHistory) {
+      if (dedupedNotificationHistory.length) {
+        for (const nh of dedupedNotificationHistory) {
           await tx.insert(notificationHistory).values({
             id: nh.id,
             ticketId: nh.ticketId,
@@ -666,8 +701,8 @@ export async function POST(request: Request) {
         }
       }
 
-      if (payload.auditLogs?.length) {
-        for (const al of payload.auditLogs) {
+      if (dedupedAuditLogs.length) {
+        for (const al of dedupedAuditLogs) {
           await tx.insert(auditLogs).values({
             id: al.id,
             createdAt: al.createdAt ? new Date(al.createdAt) : new Date(),
