@@ -18,6 +18,22 @@ import {
 import { Budget, BudgetClientSnapshot, BudgetItem, BudgetItemCategory, BudgetMachineConfig, BudgetTemplate, MachinePreset, TaxMode, DiscountType } from '@/domain/budget/types';
 import { BRANDING } from '@/config/branding';
 
+// Deriva el próximo número a partir del máximo "numero" existente, no de la cantidad
+// de presupuestos cargados: budgets.length se desincroniza del máximo real apenas se
+// borra un presupuesto o el conteo local no coincide con el histórico en Turso,
+// generando un numero duplicado que viola la restricción UNIQUE de la tabla.
+function getNextBudgetNumero(budgets: Budget[]): string {
+    let max = 1000;
+    for (const b of budgets) {
+        const match = /^PRE-(\d+)$/.exec(b.numero || '');
+        if (match) {
+            const n = parseInt(match[1], 10);
+            if (n > max) max = n;
+        }
+    }
+    return 'PRE-' + (max + 1);
+}
+
 export default function PresupuestosPage() {
     const { 
         clients, 
@@ -132,7 +148,7 @@ export default function PresupuestosPage() {
         if (activeTab === 'create' && !formBudgetId) {
             if (!hasInitializedForm.current) {
                 hasInitializedForm.current = true;
-                setNumero('PRE-' + (1000 + budgets.length + 1));
+                setNumero(getNextBudgetNumero(budgets));
                 setFecha(new Date().toISOString().split('T')[0]);
                 handleClientSelect('');
                 
@@ -575,7 +591,7 @@ export default function PresupuestosPage() {
         const duplicated: Budget = {
             ...b,
             id: 'budget-' + Date.now(),
-            numero: 'PRE-' + (1000 + budgets.length + 1),
+            numero: getNextBudgetNumero(budgets),
             fecha: new Date().toISOString().split('T')[0],
             estado: 'borrador',
             sendLogs: [],
