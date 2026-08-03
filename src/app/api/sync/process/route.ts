@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/infrastructure/db/client';
 import { getSession } from '@/infrastructure/auth/session';
 import { eq, sql } from 'drizzle-orm';
+import { ensureSchemaSynced } from '@/app/api/backup/route';
 import {
   clients,
   machines,
@@ -13,6 +14,7 @@ import {
   budgets,
   gestiones,
   cobranzaConfig as cobranzaConfigTable,
+  syncTombstones,
 } from '@/infrastructure/db/schema';
 import {
   clientSyncSchema,
@@ -26,6 +28,7 @@ import {
   gestionSyncSchema,
   cobranzaConfigSyncSchema,
 } from '@/lib/validation/syncSchemas';
+import { notifyDatabaseChange } from '../signal/route';
 
 
 export async function POST(request: Request) {
@@ -37,6 +40,8 @@ export async function POST(request: Request) {
         code: 'UNAUTHORIZED'
       }, { status: 401 });
     }
+
+    await ensureSchemaSynced(db);
 
     const body = await request.json();
     const { items } = body;
@@ -157,6 +162,18 @@ export async function POST(request: Request) {
         if (operation === 'delete') {
           try {
             await tx.delete(table).where(eq(table.id, entityId));
+            // Record a tombstone so other devices' incremental pulls learn this
+            // row is gone (a hard DELETE leaves nothing for `since` to find).
+            const tombstoneId = `${entityType}:${entityId}`;
+            await tx.insert(syncTombstones).values({
+              id: tombstoneId,
+              entityType,
+              entityId,
+              deletedAt: new Date(),
+            }).onConflictDoUpdate({
+              target: syncTombstones.id,
+              set: { deletedAt: new Date() },
+            });
             results.push({ id, status: 'synced' });
           } catch (e: any) {
             console.error(`Error deleting entity ${entityType} ID ${entityId}:`, e);
@@ -236,6 +253,7 @@ export async function POST(request: Request) {
       }
     });
 
+    notifyDatabaseChange();
     return NextResponse.json({ success: true, results });
   } catch (error: any) {
     console.error('Error en API de procesamiento de sincronización:', error.message || error);

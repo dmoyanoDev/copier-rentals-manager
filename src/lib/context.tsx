@@ -218,11 +218,11 @@ const autoTimestampState = (newState: any) => {
     }
 };
 
-const mergeData = (local: any, server: any, lastSyncTime: Date | null, isIncremental: boolean = false) => {
+const mergeData = (local: any, server: any, lastSyncTime: Date | null, isIncremental: boolean = false, tombstonesByTable: Record<string, string[]> = {}) => {
     const merged = { ...local };
-    const tables = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets'];
+    const tables = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets', 'gestiones'];
     const lastSync = lastSyncTime ? lastSyncTime.getTime() : 0;
-    
+
     let deletedIds: string[] = [];
     if (typeof window !== 'undefined') {
         try {
@@ -232,23 +232,29 @@ const mergeData = (local: any, server: any, lastSyncTime: Date | null, isIncreme
         }
     }
     const deletedSet = new Set(deletedIds);
-    
+
     for (const table of tables) {
         const localList = local[table] || [];
         let serverList = server[table] || [];
         if (table === 'abonos' && !server.abonos && server.plans) {
             serverList = server.plans;
         }
-        
+
         const localMap = new Map<string, any>(localList.map((item: any) => [item.id, item]));
         const serverMap = new Map<string, any>(serverList.map((item: any) => [item.id, item]));
-        
+        const tombstoneSet = new Set(tombstonesByTable[table] || []);
+
         const mergedList = [];
-        
+
         // 1. Process all local items
         for (const localItem of localList) {
             const serverItem: any = serverMap.get(localItem.id);
             if (!serverItem) {
+                if (tombstoneSet.has(localItem.id)) {
+                    // Another device deleted this entity — the server confirmed it via
+                    // a tombstone, so drop it locally instead of assuming "unchanged".
+                    continue;
+                }
                 // Only exists locally.
                 if (isIncremental) {
                     // Incremental sync: keep local item — server didn't return it so it hasn't changed remotely
@@ -336,6 +342,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         users: [] as User[],
         rentals: [] as Rental[],
         budgets: [] as Budget[],
+        gestiones: [] as Gestion[],
         currentUser: null as User | null,
         lastSyncTime: null as Date | null,
     });
@@ -343,7 +350,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // Keep stateRef current
     useEffect(() => {
         stateRef.current = {
-            clients, machines, readings, tickets, abonos, users, rentals, budgets,
+            clients, machines, readings, tickets, abonos, users, rentals, budgets, gestiones,
             currentUser, lastSyncTime,
         };
     });
@@ -617,7 +624,8 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         abonos: stateRef.current.abonos || [],
                         users: stateRef.current.users || [],
                         rentals: stateRef.current.rentals || [],
-                        budgets: stateRef.current.budgets || []
+                        budgets: stateRef.current.budgets || [],
+                        gestiones: stateRef.current.gestiones || []
                     };
                     if (!isInitialLoadDoneRef.current && typeof window !== 'undefined') {
                         try {
@@ -632,7 +640,8 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                                     abonos: parsedLocal.abonos || parsedLocal.plans || [],
                                     users: parsedLocal.users || [],
                                     rentals: parsedLocal.rentals || [],
-                                    budgets: parsedLocal.budgets || []
+                                    budgets: parsedLocal.budgets || [],
+                                    gestiones: parsedLocal.gestiones || []
                                 };
                             }
                         } catch (e) {
@@ -640,7 +649,15 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         }
                     }
 
-                    const merged = mergeData(currentLocalState, parsed, stateRef.current.lastSyncTime, isIncremental);
+                    // Group tombstones (entities hard-deleted since `since`) by table so
+                    // mergeData can drop them locally instead of assuming "unchanged".
+                    const tombstonesByTable: Record<string, string[]> = {};
+                    for (const t of (parsed.tombstones || [])) {
+                        const key = t.entityType === 'plans' ? 'abonos' : t.entityType;
+                        (tombstonesByTable[key] ||= []).push(t.entityId);
+                    }
+
+                    const merged = mergeData(currentLocalState, parsed, stateRef.current.lastSyncTime, isIncremental, tombstonesByTable);
 
                     setClients(merged.clients || []);
                     // Normalize DB field name 'machineCounter' → frontend field 'currentCounter'
@@ -654,15 +671,15 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     setUsers(merged.users || []);
                     if (merged.rentals) setRentals(merged.rentals);
                     setBudgets(merged.budgets || []);
-                    
+                    setGestiones(merged.gestiones || []);
+
                     const loadedTemplates = parsed.templates || [];
                     const defaultIds = defaultBudgetTemplates.map(t => t.id);
                     const customTemplates = loadedTemplates.filter((t: any) => !defaultIds.includes(t.id));
                     setTemplates([...defaultBudgetTemplates, ...customTemplates]);
-                    
+
                     if (parsed.machinePresets) setMachinePresets(parsed.machinePresets);
-                    if (parsed.gestiones) setGestiones(parsed.gestiones);
-                    
+
                     if (parsed.cobranzaConfig) {
                         setCobranzaConfig({
                             ...defaultCobranzaConfig,
@@ -682,42 +699,52 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         budgets: merged.budgets || [],
                         templates: parsed.templates || templates || [],
                         machinePresets: parsed.machinePresets || machinePresets || [],
-                        gestiones: parsed.gestiones || gestiones || [],
+                        gestiones: merged.gestiones || [],
                         cobranzaConfig: parsed.cobranzaConfig || cobranzaConfig || defaultCobranzaConfig
                     };
                     try {
                         localStorage.setItem('ms_data', JSON.stringify(stateToSave));
                     } catch (e) {}
 
-                    // Compare only key business tables to decide if a server sync is needed
-                    const tablesToCompare = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets'];
-                    let localChangesExist = false;
-                    for (const table of tablesToCompare) {
-                        const serverList = parsed[table] || (table === 'abonos' ? parsed.plans || [] : []);
-                        const mergedList = merged[table] || [];
-                        if (JSON.stringify(serverList) !== JSON.stringify(mergedList)) {
-                            localChangesExist = true;
-                            break;
-                        }
-                    }
-
-                    // Push merged state back to server for all authenticated users.
-                    // This ensures cross-device data is consistent regardless of user role.
-                    if (localChangesExist) {
-                        const mergedRaw = JSON.stringify(stateToSave);
-                        fetch('/api/backup?user=autosave', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: mergedRaw
-                        }).then((res) => {
-                            if (res.ok) {
-                                localStorage.removeItem('ms_deleted_ids');
+                    // Reconciliation safety-net: only meaningful on a FULL sync. During an
+                    // incremental sync, `parsed[table]` is just the tiny delta since last
+                    // poll (often []), so comparing it against the full merged list would
+                    // almost always "detect" a difference — triggering a full delete+reinsert
+                    // of every table on every ~1.5s poll from every open device. That was
+                    // hammering Turso and could resurrect items another device just deleted
+                    // (this device's stale full snapshot overwriting the real deletion).
+                    // Regular create/update/delete already goes through the per-item sync
+                    // queue (processSyncQueue) regardless of this block.
+                    if (!isIncremental) {
+                        const tablesToCompare = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets'];
+                        let localChangesExist = false;
+                        for (const table of tablesToCompare) {
+                            const serverList = parsed[table] || (table === 'abonos' ? parsed.plans || [] : []);
+                            const mergedList = merged[table] || [];
+                            if (JSON.stringify(serverList) !== JSON.stringify(mergedList)) {
+                                localChangesExist = true;
+                                break;
                             }
-                        }).catch((err) => {
-                            console.error("Error al persistir fusión en el servidor:", err);
-                        });
+                        }
+
+                        // Push merged state back to server for all authenticated users.
+                        // This ensures cross-device data is consistent regardless of user role.
+                        if (localChangesExist) {
+                            const mergedRaw = JSON.stringify(stateToSave);
+                            fetch('/api/backup?user=autosave', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: mergedRaw
+                            }).then((res) => {
+                                if (res.ok) {
+                                    localStorage.removeItem('ms_deleted_ids');
+                                }
+                            }).catch((err) => {
+                                console.error("Error al persistir fusión en el servidor:", err);
+                            });
+                        }
                     }
                 } else {
                     // The server database is clean/empty (hasServerData is false).

@@ -37,6 +37,7 @@ import { auditLogs } from '@/infrastructure/db/schema/auditLogs';
 import { rentals } from '@/infrastructure/db/schema/rentals';
 import { gestiones } from '@/infrastructure/db/schema/gestiones';
 import { cobranzaConfig as cobranzaConfigTable } from '@/infrastructure/db/schema/cobranzaConfig';
+import { syncTombstones } from '@/infrastructure/db/schema/syncTombstones';
 
 
 // Helper to write audit logs from server route handler
@@ -58,7 +59,7 @@ async function logServerAudit(module: string, action: string, details: string, u
 
 let isDbSchemaSynced = false;
 
-async function ensureSchemaSynced(db: any) {
+export async function ensureSchemaSynced(db: any) {
   if (isDbSchemaSynced) return;
   try {
     // 1. Ensure rentals table exists
@@ -178,6 +179,20 @@ async function ensureSchemaSynced(db: any) {
       )
     `);
 
+    // 9. Ensure sync_tombstones table exists (records hard deletes so incremental
+    // sync on other devices can learn a row disappeared — see syncTombstones.ts)
+    await db.run(sql`
+      CREATE TABLE IF NOT EXISTS sync_tombstones (
+        id TEXT PRIMARY KEY NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        deleted_at INTEGER NOT NULL
+      )
+    `);
+    await db.run(sql`
+      CREATE INDEX IF NOT EXISTS idx_tombstones_type_deleted ON sync_tombstones(entity_type, deleted_at)
+    `);
+
     isDbSchemaSynced = true;
     console.log("Database schema auto-sync completed successfully.");
   } catch (err) {
@@ -225,7 +240,8 @@ export async function GET(request: Request) {
       dbAuditLogs,
       dbRentals,
       dbGestiones,
-      dbCobranzaConfig
+      dbCobranzaConfig,
+      dbTombstones
     ] = await Promise.all([
       isValidSince ? db.select().from(users).where(gt(users.updatedAt, sinceValue)) : db.select().from(users),
       isValidSince ? db.select().from(clients).where(gt(clients.updatedAt, sinceValue)) : db.select().from(clients),
@@ -243,6 +259,9 @@ export async function GET(request: Request) {
       // Always fetch gestiones and cobranzaConfig (incremental by updatedAt when possible)
       isValidSince ? db.select().from(gestiones).where(gt(gestiones.updatedAt, sinceValue)) : db.select().from(gestiones),
       db.select().from(cobranzaConfigTable).limit(1),
+      // Tombstones only matter for incremental pulls — a full sync's server lists are
+      // already authoritative (a deleted row simply isn't in them).
+      isValidSince ? db.select().from(syncTombstones).where(gt(syncTombstones.deletedAt, sinceValue)) : Promise.resolve([]),
     ]);
 
 
@@ -261,6 +280,9 @@ export async function GET(request: Request) {
       auditLogs: dbAuditLogs,
       rentals: dbRentals,
       gestiones: dbGestiones,
+      // Only populated on incremental pulls — tells other devices which entities were
+      // hard-deleted since `since` so they can drop them from local state too.
+      tombstones: dbTombstones.map((t: any) => ({ entityType: t.entityType, entityId: t.entityId })),
       // Return singleton config object directly (not array) for easy consumption
       cobranzaConfig: dbCobranzaConfig[0] ?? null,
       backupMeta: {

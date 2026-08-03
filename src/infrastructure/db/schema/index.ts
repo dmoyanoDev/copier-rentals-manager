@@ -15,3 +15,4 @@ export * from './passwordResetTokens';
 export * from './rentals';
 export * from './gestiones';
 export * from './cobranzaConfig';
+export * from './syncTombstones';
