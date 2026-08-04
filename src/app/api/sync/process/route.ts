@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/infrastructure/db/client';
 import { getSession } from '@/infrastructure/auth/session';
 import { eq, sql, and } from 'drizzle-orm';
-import { ensureSchemaSynced } from '@/app/api/backup/route';
+import { ensureSchemaSynced, logServerAudit } from '@/app/api/backup/route';
 import {
   clients,
   machines,
@@ -42,6 +42,7 @@ export async function POST(request: Request) {
     }
 
     await ensureSchemaSynced(db);
+    const user = session.username || 'system';
 
     const body = await request.json();
     const { items } = body;
@@ -87,6 +88,28 @@ export async function POST(request: Request) {
     });
 
     const results: any[] = [];
+
+    // Registro de auditoria: la pestana "Auditoria" en Datos y Respaldo ya tenia los
+    // filtros de modulo/accion armados (clientes, maquinas, alquileres, abonos, lecturas,
+    // tickets / crear, editar, eliminar) pero nada los alimentaba — logServerAudit solo se
+    // llamaba desde backup/restore, asi que la pantalla siempre mostraba vacio para
+    // cualquier accion real del dia a dia. Se junta la lista durante el loop y se escribe
+    // DESPUES de que la transaccion confirma, para no sumar queries dentro de ella.
+    const ENTITY_TO_MODULE: Record<string, string> = {
+      clients: 'clientes',
+      machines: 'maquinas',
+      rentals: 'alquileres',
+      plans: 'abonos',
+      abonos: 'abonos',
+      readings: 'lecturas',
+      tickets: 'tickets',
+    };
+    const OPERATION_TO_ACTION: Record<string, string> = {
+      create: 'crear',
+      update: 'editar',
+      delete: 'eliminar',
+    };
+    const auditEntries: { entityType: string; operation: string; entityId: string }[] = [];
 
     await db.transaction(async (tx) => {
       for (const item of sortedItems) {
@@ -175,6 +198,9 @@ export async function POST(request: Request) {
               set: { deletedAt: new Date() },
             });
             results.push({ id, status: 'synced' });
+            if (ENTITY_TO_MODULE[entityType]) {
+              auditEntries.push({ entityType, operation: 'delete', entityId });
+            }
           } catch (e: any) {
             console.error(`Error deleting entity ${entityType} ID ${entityId}:`, e);
             results.push({
@@ -259,9 +285,15 @@ export async function POST(request: Request) {
 
               // Actualizar registro existente con timestamp del servidor
               await tx.update(table).set(payloadWithServerTime).where(eq(table.id, entityId));
+              if (ENTITY_TO_MODULE[entityType]) {
+                auditEntries.push({ entityType, operation: 'update', entityId });
+              }
             } else {
               // Crear nuevo registro con timestamp del servidor
               await tx.insert(table).values(payloadWithServerTime);
+              if (ENTITY_TO_MODULE[entityType]) {
+                auditEntries.push({ entityType, operation: 'create', entityId });
+              }
             }
             results.push({ id, status: 'synced' });
           } catch (e: any) {
@@ -275,6 +307,14 @@ export async function POST(request: Request) {
           }
       }
     });
+
+    // Escribir el registro de auditoria fuera de la transaccion (no es critico que se
+    // pierda si falla; no debe poder tumbar una sincronizacion ya confirmada).
+    for (const entry of auditEntries) {
+      const moduleLabel = ENTITY_TO_MODULE[entry.entityType];
+      const actionLabel = OPERATION_TO_ACTION[entry.operation];
+      await logServerAudit(moduleLabel, actionLabel, `${entry.entityType} ${actionLabel} (ID: ${entry.entityId})`, user);
+    }
 
     notifyDatabaseChange();
     return NextResponse.json({ success: true, results });

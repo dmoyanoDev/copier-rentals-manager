@@ -41,7 +41,7 @@ import { syncTombstones } from '@/infrastructure/db/schema/syncTombstones';
 
 
 // Helper to write audit logs from server route handler
-async function logServerAudit(module: string, action: string, details: string, user: string) {
+export async function logServerAudit(module: string, action: string, details: string, user: string) {
   try {
     const id = 'log-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
     await db.insert(auditLogs).values({
