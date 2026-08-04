@@ -42,5 +42,9 @@ local.db*
 *.tsbuildinfo
 next-env.d.ts
 
+# generated lint reports (embed full source snapshots — should never be committed)
+.audit_lint.json
+*.audit_lint.json
+
 # scratch folders
 /scratch
