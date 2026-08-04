@@ -41,6 +41,17 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* No `forwards`: once the 0.2s entrance finishes, the element must return to
+   its normal (non-animated) computed style — `transform: none` — rather than
+   keep a lingering `translateY(0)`. Any non-"none" transform (even a
+   visually-identical-to-none one) creates a new containing block for
+   `position: fixed` descendants, which was trapping every modal rendered
+   inside a `.animate-fade-in` page wrapper to that wrapper's box instead of
+   the real viewport. `to` already matches the element's natural resting
+   state (opacity: 1, no transform), so dropping `forwards` causes no visual
+   snap/flicker — it only changes the computed `transform` after the
+   animation ends from a matrix back to `none`.
+*/
 .animate-fade-in {
-  animation: fadeIn 0.2s ease-out forwards;
+  animation: fadeIn 0.2s ease-out;
 }

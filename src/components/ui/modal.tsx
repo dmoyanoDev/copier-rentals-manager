@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 export interface ModalProps {
@@ -10,9 +11,16 @@ export interface ModalProps {
 }
 
 export const Modal = ({ isOpen, onClose, title, children, footer }: ModalProps) => {
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === 'undefined') return null;
 
-  return (
+  // Rendered via a portal straight into <body>. Any ancestor with a
+  // non-"none" `transform` creates a new containing block for `position:
+  // fixed` descendants — page wrappers using `.animate-fade-in` used to keep
+  // one after their entrance animation ended (fixed separately in
+  // globals.css), which sized/positioned this modal relative to the PAGE's
+  // box instead of the real viewport. The portal sidesteps that entirely
+  // regardless of what any ancestor's CSS does, now or in the future.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm animate-fade-in">
       <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden">
         {/* Header */}
@@ -38,6 +46,7 @@ export const Modal = ({ isOpen, onClose, title, children, footer }: ModalProps) 
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
