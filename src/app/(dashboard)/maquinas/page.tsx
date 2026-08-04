@@ -15,7 +15,7 @@ import { Machine } from '@/lib/mockData';
 import { formatCurrency, formatPeriod } from '@/lib/utils';
 
 export default function MachinesPage() {
-    const { machines, setMachines, clients, abonos, readings, setReadings, rentals, updateMachineAction } = useManagement();
+    const { machines, setMachines, clients, abonos, readings, setReadings, rentals, tickets, updateMachineAction } = useManagement();
     const [searchQuery, setSearchQuery] = useState('');
     const [filterStatus, setFilterStatus] = useState('');
     
@@ -141,7 +141,11 @@ export default function MachinesPage() {
     };
 
     const handleDeleteMachine = (id: string) => {
-        const hasHistory = readings.some(r => r.machineId === id);
+        // tickets.machine_id no tiene cascada en el schema (igual que readings.machine_id) —
+        // sin este chequeo, borrar una maquina con tickets de soporte asociados fallaba en
+        // Turso con FOREIGN KEY constraint failed pese a no tener lecturas. Mismo patron
+        // encontrado y confirmado en produccion para clientes con tickets asociados.
+        const hasHistory = readings.some(r => r.machineId === id) || tickets.some(t => t.machineId === id);
         if (hasHistory) {
             if (confirm('El equipo posee registros de lecturas históricas. ¿Desea realizar una desactivación física (baja lógica) y mantener su historial técnico?')) {
                 const machObj = machines.find(m => m.id === id);

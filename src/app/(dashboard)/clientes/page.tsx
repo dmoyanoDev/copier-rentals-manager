@@ -46,8 +46,8 @@ const LocalBadge = ({ variant, children, className = '' }: { variant: 'success' 
 };
 
 export default function ClientsPage() {
-    const { 
-        clients, machines, readings, abonos, rentals,
+    const {
+        clients, machines, readings, abonos, rentals, tickets,
         gestiones, cobranzaConfig, setCobranzaConfig,
         updateClientAction, addReadingAction, addGestionAction, updateCobranzaConfigAction
     } = useManagement();
@@ -925,6 +925,27 @@ export default function ClientsPage() {
         const clientMachines = machines.filter(m => m.clientId === id);
         if (clientMachines.length > 0) {
             alert(`No es posible eliminar el cliente porque tiene ${clientMachines.length} máquina(s) asignada(s). Por favor desasigne los equipos primero.`);
+            return;
+        }
+
+        // readings.client_id es NOT NULL y no tiene cascada en el schema — a diferencia de
+        // rentals/gestiones (que sí cascadean), Turso SIEMPRE rechaza el borrado si hay
+        // lecturas asociadas. Sin este chequeo, la app borraba el cliente de forma optimista
+        // en la pantalla, el DELETE real fallaba en el servidor, y el cliente quedaba
+        // "fantasma" (desaparecido localmente pero sigue existiendo en la base) con la cola
+        // de sync reintentando y mostrando error sin parar. Confirmado en produccion.
+        const clientReadings = readings.filter(r => r.clientId === id);
+        if (clientReadings.length > 0) {
+            alert(`No es posible eliminar el cliente porque tiene ${clientReadings.length} lectura(s) facturada(s) en su historial. Ese historial no se puede desvincular.`);
+            return;
+        }
+
+        // tickets.client_id tampoco tiene cascada (mismo problema que readings) — confirmado
+        // en produccion: este fue el bloqueo real en el primer caso reportado (el cliente no
+        // tenia lecturas ni maquinas, pero si 4 tickets de soporte tecnico asociados).
+        const clientTickets = tickets.filter(t => t.clientId === id);
+        if (clientTickets.length > 0) {
+            alert(`No es posible eliminar el cliente porque tiene ${clientTickets.length} ticket(s) de soporte técnico en su historial. Ese historial no se puede desvincular.`);
             return;
         }
 
