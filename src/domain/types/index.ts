@@ -58,9 +58,10 @@ export interface Reading {
     netAmount: number;
     ivaAmount: number;
     totalAmount: number;
-    status: 'pending' | 'paid';
     readingStatus: 'cargada' | 'observada' | 'validada' | 'facturada';
-    collectionStatus?: 'Impago' | 'Pagado';
+    collectionStatus?: 'Impago' | 'Parcial' | 'Pagado';
+    paymentAmount?: number;
+    paymentDate?: string;
     billingStatus?: 'No facturado' | 'Facturado';
     readingComment?: string;
     history?: { date: string; time: string; action: string; user: string; }[];

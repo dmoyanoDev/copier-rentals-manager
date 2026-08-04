@@ -599,9 +599,9 @@ export default function RentalsPage() {
                                                     <div className="text-right">
                                                         <span className="font-bold text-slate-205 font-mono-tabular block">{formatCurrency(r.totalAmount)}</span>
                                                         <span className={`px-1.5 py-0.2 rounded text-[8px] font-extrabold uppercase ${
-                                                            r.status === 'paid' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
+                                                            r.collectionStatus === 'Pagado' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
                                                         }`}>
-                                                            {r.status === 'paid' ? 'COBRADO' : 'PENDIENTE'}
+                                                            {r.collectionStatus === 'Pagado' ? 'COBRADO' : 'PENDIENTE'}
                                                         </span>
                                                     </div>
                                                 </div>

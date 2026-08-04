@@ -1153,7 +1153,10 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const updatedMachines = stateRef.current.machines.map(m => {
             const up = machineUpdates.find(u => u.id === m.id);
             if (up) {
-                return { ...m, clientId: up.clientId, abonoId: up.abonoId, status: up.status, updatedAt: nowStr };
+                // Keep isAvailable consistent with status — it was previously only set once at
+                // machine creation and never updated again, leaving it stale for every machine
+                // that got rented or freed afterwards (confirmed against real Turso data).
+                return { ...m, clientId: up.clientId, abonoId: up.abonoId, status: up.status, isAvailable: up.status === 'Disponible', updatedAt: nowStr };
             }
             return m;
         });

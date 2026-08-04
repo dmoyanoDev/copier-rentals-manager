@@ -147,7 +147,8 @@ export default function RespaldoPage() {
                 } else if (exportModule === 'alquileres') {
                     targetData = targetData.filter(r => r.status === exportStatusFilter);
                 } else if (exportModule === 'lecturas') {
-                    targetData = targetData.filter(rd => rd.status === exportStatusFilter);
+                    const wantsPaid = exportStatusFilter === 'paid';
+                    targetData = targetData.filter(rd => (rd.collectionStatus === 'Pagado') === wantsPaid);
                 } else if (exportModule === 'tickets') {
                     targetData = targetData.filter(t => t.status === exportStatusFilter);
                 }

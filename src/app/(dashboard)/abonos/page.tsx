@@ -14,7 +14,7 @@ import { Plus, Trash2, Edit, FileText, CheckCircle, ShieldAlert, Sparkles } from
 import { Abono } from '@/lib/mockData';
 
 export default function AbonosPage() {
-    const { abonos, setAbonos, machines, clients, rentals, updateAbonoAction } = useManagement();
+    const { abonos, setAbonos, machines, clients, rentals, readings, updateAbonoAction } = useManagement();
     const [searchQuery, setSearchQuery] = useState('');
     const [filterActive, setFilterActive] = useState('');
     
@@ -98,9 +98,25 @@ export default function AbonosPage() {
             return;
         }
 
-        if (confirm('¿Está seguro de que desea eliminar este plan de abono del catálogo?')) {
-            updateAbonoAction({ id } as unknown as Abono, 'delete');
+        // Lecturas facturadas con este plan bloquean el borrado en la base (FK NOT NULL sin
+        // cascada), y contratos de alquiler HISTÓRICOS (ya finalizados, sin ninguna máquina
+        // usando el plan hoy) se borrarían en cascada sin aviso. Ninguno de los dos casos
+        // quedaba cubierto por el chequeo de "máquinas usándolo actualmente".
+        const planReadings = readings.filter(r => r.abonoId === id).length;
+        const historicalRentals = rentals.filter(r => r.abonoId === id).length;
+        if (planReadings > 0) {
+            alert(`No se puede eliminar el plan porque tiene ${planReadings} lectura(s) facturada(s) asociadas en el historial. Ese historial no se puede desvincular.`);
+            return;
         }
+        if (historicalRentals > 0) {
+            if (!confirm(`Este plan tiene ${historicalRentals} contrato(s) de alquiler en su historial (aunque ninguna máquina lo use hoy). Al eliminarlo, esos contratos se borrarán PERMANENTEMENTE. ¿Confirmás que querés continuar?`)) {
+                return;
+            }
+        } else if (!confirm('¿Está seguro de que desea eliminar este plan de abono del catálogo?')) {
+            return;
+        }
+
+        updateAbonoAction({ id } as unknown as Abono, 'delete');
     };
 
     const handleOpenDetail = (abono: Abono) => {

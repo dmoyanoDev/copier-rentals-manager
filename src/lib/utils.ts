@@ -147,32 +147,26 @@ export function getClientMovementsHelper(client: Client, readings: Reading[], ma
         notes: string;
     }[] = [];
 
-    // Initial Debt Adjustment
-    if (client.debt && client.debt > 0) {
-        movements.push({
-            id: `init-debt-${client.id}`,
-            date: '2026-05-01',
-            type: 'Ajuste',
-            number: 'AJ-000001',
-            period: 'Saldo Inicial',
-            concept: 'Saldo deudor inicial pendiente de cobro',
-            original: client.debt,
-            paid: 0,
-            pending: client.debt,
-            dueDate: '2026-05-15',
-            status: 'Vencido',
-            daysOverdue: getDaysOverdue('2026-05-15'),
-            notes: 'Carga contable de apertura'
-        });
-    }
-
-    // Map readings as Facturas & Recibos
+    // Map readings as Facturas & Recibos.
+    // IMPORTANT: `collectionStatus` (persisted in Turso) is the source of truth for whether
+    // a reading is paid — NOT the old `Reading.status` field, which was never part of the DB
+    // schema or the sync schema and therefore never actually persisted (always undefined after
+    // any reload/sync). `paymentAmount` lets a 'Parcial' payment show correctly instead of
+    // being treated as all-or-nothing.
     clientReadings.forEach(r => {
-        const isPaid = r.status === 'paid';
+        const totalAmt = Number(r.totalAmount) || 0;
+        const paidAmt = Number((r as any).paymentAmount) || 0;
+        const isFullyPaid = r.collectionStatus === 'Pagado';
+        const isPartial = !isFullyPaid && (r.collectionStatus === 'Parcial' || paidAmt > 0);
+        const pendingAmt = isFullyPaid ? 0 : Math.max(0, totalAmt - paidAmt);
+        const paidForDisplay = isFullyPaid ? totalAmt : paidAmt;
+
         const invoiceDate = `${r.month}-01`;
         const dueDate = `${r.month}-15`;
-        const days = isPaid ? 0 : getDaysOverdue(dueDate);
-        const status = isPaid ? 'Pagado' : (days > 0 ? 'Vencido' : 'Pendiente');
+        const days = isFullyPaid ? 0 : getDaysOverdue(dueDate);
+        // Overdue takes priority over "Parcial" — a partially-paid invoice that's also past
+        // its due date still needs to count as mora, not just get an informational label.
+        const status = isFullyPaid ? 'Pagado' : (days > 0 ? 'Vencido' : (isPartial ? 'Parcial' : 'Pendiente'));
 
         movements.push({
             id: `fact-${r.id}`,
@@ -181,33 +175,61 @@ export function getClientMovementsHelper(client: Client, readings: Reading[], ma
             number: `FC-${(r.id as string).replace('r-', '00005')}`,
             period: r.month as string,
             concept: `Abono y excedente período ${r.month}`,
-            original: r.totalAmount as number,
-            paid: isPaid ? (r.totalAmount as number) : 0,
-            pending: isPaid ? 0 : (r.totalAmount as number),
+            original: totalAmt,
+            paid: paidForDisplay,
+            pending: pendingAmt,
             dueDate: dueDate,
             status: status,
             daysOverdue: days,
             notes: (r.readingComment as string) || 'Facturación automatizada'
         });
 
-        if (isPaid) {
+        if (paidForDisplay > 0) {
             movements.push({
                 id: `rec-${r.id}`,
-                date: `${r.month}-10`,
+                date: r.paymentDate ? (r.paymentDate as string) : `${r.month}-10`,
                 type: 'Recibo',
                 number: `RC-${(r.id as string).replace('r-', '00005')}`,
                 period: r.month as string,
                 concept: `Cobro de facturación período ${r.month}`,
-                original: r.totalAmount as number,
-                paid: r.totalAmount as number,
+                original: totalAmt,
+                paid: paidForDisplay,
                 pending: 0,
                 dueDate: '',
-                status: 'Pagado',
+                status: isFullyPaid ? 'Pagado' : 'Parcial',
                 daysOverdue: 0,
                 notes: 'Recibido por transferencia bancaria'
             });
         }
     });
+
+    // Saldo inicial: `client.debt` es un campo editable a mano que, en los datos actuales,
+    // ya coincide con la suma de lecturas impagas de arriba. Sumarlo siempre como un
+    // movimiento aparte duplicaba la deuda mostrada. Ahora solo se muestra el remanente que
+    // NO está explicado por las facturas de lecturas (ajustes manuales reales).
+    const pendingFromReadings = movements.reduce((acc, m) => m.type === 'Factura' ? acc + m.pending : acc, 0);
+    const manualAdjustment = Math.max(0, (client.debt || 0) - pendingFromReadings);
+    if (manualAdjustment > 0) {
+        // Usa la fecha de alta del cliente como referencia de mora en vez de una fecha fija
+        // global (que hacía crecer la mora de TODOS los clientes al mismo ritmo para siempre).
+        const originDate = client.createdAt ? client.createdAt.split('T')[0] : new Date().toISOString().split('T')[0];
+        const dueDate = originDate;
+        movements.unshift({
+            id: `init-debt-${client.id}`,
+            date: originDate,
+            type: 'Ajuste',
+            number: 'AJ-000001',
+            period: 'Saldo Inicial',
+            concept: 'Ajuste manual de saldo (no explicado por lecturas facturadas)',
+            original: manualAdjustment,
+            paid: 0,
+            pending: manualAdjustment,
+            dueDate,
+            status: 'Vencido',
+            daysOverdue: getDaysOverdue(dueDate),
+            notes: 'Carga contable de apertura o ajuste manual'
+        });
+    }
 
     return movements;
 }

@@ -30,14 +30,14 @@ export default function HistoryPage() {
     // Extract unique months from all readings (sorted descending)
     const uniqueMonths = Array.from(new Set(readings.map(r => r.month))).sort((a, b) => b.localeCompare(a));
 
-    const handleTogglePaymentStatus = (id: string, currentStatus: 'pending' | 'paid') => {
-        const nextStatus = currentStatus === 'paid' ? 'pending' : 'paid';
+    const handleTogglePaymentStatus = (id: string, isCurrentlyPaid: boolean) => {
         const targetReading = readings.find(r => r.id === id);
         if (targetReading) {
             const updatedReading: Reading = {
                 ...targetReading,
-                status: nextStatus,
-                collectionStatus: nextStatus === 'paid' ? 'Pagado' as const : 'Impago' as const
+                collectionStatus: isCurrentlyPaid ? 'Impago' as const : 'Pagado' as const,
+                paymentAmount: isCurrentlyPaid ? 0 : (Number(targetReading.totalAmount) || 0),
+                paymentDate: isCurrentlyPaid ? undefined : new Date().toISOString().split('T')[0]
             };
             addReadingAction(updatedReading);
         }
@@ -139,7 +139,8 @@ export default function HistoryPage() {
 
         const matchesPeriod = !filterPeriodState || r.month === filterPeriodState;
         const matchesClient = !filterClient || (mach && mach.clientId === filterClient);
-        const matchesPayment = !filterPayment || r.status === filterPayment;
+        const isPaidReading = r.collectionStatus === 'Pagado';
+        const matchesPayment = !filterPayment || (filterPayment === 'paid' ? isPaidReading : !isPaidReading);
 
         return matchesSearch && matchesPeriod && matchesClient && matchesPayment;
     }).sort((a, b) => b.month.localeCompare(a.month));
@@ -148,8 +149,8 @@ export default function HistoryPage() {
     const summaryTotalNet = filteredReadings.reduce((sum, r) => sum + (Number(r.netAmount) || 0), 0);
     const summaryTotalIva = filteredReadings.reduce((sum, r) => sum + (Number(r.ivaAmount) || 0), 0);
     const summaryTotalBilled = filteredReadings.reduce((sum, r) => sum + (Number(r.totalAmount) || 0), 0);
-    const summaryPaidCount = filteredReadings.filter(r => r.status === 'paid').length;
-    const summaryPendingCount = filteredReadings.filter(r => r.status === 'pending').length;
+    const summaryPaidCount = filteredReadings.filter(r => r.collectionStatus === 'Pagado').length;
+    const summaryPendingCount = filteredReadings.filter(r => r.collectionStatus !== 'Pagado').length;
     const summaryUniqueMachines = new Set(filteredReadings.map(r => r.machineId)).size;
 
     return (
@@ -312,19 +313,19 @@ export default function HistoryPage() {
                                         <TableCell className="font-mono-tabular text-xs font-bold text-slate-200">{formatCurrency(totalVal)}</TableCell>
                                         <TableCell className="text-xs">
                                             <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
-                                                r.status === 'paid' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
+                                                r.collectionStatus === 'Pagado' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
                                             }`}>
-                                                {r.status === 'paid' ? 'PAGADO' : 'PENDIENTE'}
+                                                {r.collectionStatus === 'Pagado' ? 'PAGADO' : 'PENDIENTE'}
                                             </span>
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <div className="flex justify-end gap-1.5">
-                                                <Button 
-                                                    variant="secondary" 
-                                                    size="sm" 
-                                                    onClick={() => handleTogglePaymentStatus(r.id, r.status)}
+                                                <Button
+                                                    variant="secondary"
+                                                    size="sm"
+                                                    onClick={() => handleTogglePaymentStatus(r.id, r.collectionStatus === 'Pagado')}
                                                 >
-                                                    {r.status === 'paid' ? (
+                                                    {r.collectionStatus === 'Pagado' ? (
                                                         <span className="flex items-center text-[10px] font-bold text-red-400"><Clock size={11} className="mr-1" /> Impagar</span>
                                                     ) : (
                                                         <span className="flex items-center text-[10px] font-bold text-emerald-450"><Check size={11} className="mr-1" /> Cobrar</span>

@@ -162,7 +162,6 @@ export default function ReadingsPage() {
             netAmount,
             ivaAmount,
             totalAmount,
-            status: 'pending',
             readingStatus: warning ? 'observada' : 'cargada',
             readingComment: warning || undefined
         };

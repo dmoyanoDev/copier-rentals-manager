@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/infrastructure/db/client';
 import { getSession } from '@/infrastructure/auth/session';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, and } from 'drizzle-orm';
 import { ensureSchemaSynced } from '@/app/api/backup/route';
 import {
   clients,
@@ -201,6 +201,29 @@ export async function POST(request: Request) {
         }
 
         const cleanPayload = parsed.data;
+
+        // Impedir que una misma máquina quede con dos alquileres activos simultáneos.
+        // El único filtro que existía antes era del lado del cliente (lista de "máquinas
+        // disponibles" en la UI), que puede quedar desactualizada en un dispositivo que
+        // todavía no sincronizó el cambio de estado hecho en otro — confirmado en datos
+        // reales de Turso antes de este fix.
+        if (entityType === 'rentals' && (cleanPayload as any).status === 'activo') {
+          const rPayload = cleanPayload as any;
+          const conflicting = await tx
+            .select({ id: rentals.id })
+            .from(rentals)
+            .where(and(eq(rentals.machineId, rPayload.machineId), eq(rentals.status, 'activo')));
+          const hasOtherActiveRental = conflicting.some(r => r.id !== entityId);
+          if (hasOtherActiveRental) {
+            results.push({
+              id,
+              status: 'failed',
+              reason: 'conflict',
+              message: 'La máquina ya tiene otro alquiler activo. Finalizá o reasigná el contrato existente antes de activar uno nuevo.'
+            });
+            continue;
+          }
+        }
 
         // Auto-reparar clientId y abonoId huérfanos para lecturas
         if (entityType === 'readings') {

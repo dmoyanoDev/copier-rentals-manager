@@ -607,9 +607,9 @@ export default function MachinesPage() {
                                             <div className="text-right space-y-0.5">
                                                 <span className="font-extrabold text-slate-205 block font-mono-tabular">{formatCurrency(r.totalAmount)}</span>
                                                 <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${
-                                                    r.status === 'paid' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
+                                                    r.collectionStatus === 'Pagado' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
                                                 }`}>
-                                                    {r.status === 'paid' ? 'PAGADO' : 'PENDIENTE'}
+                                                    {r.collectionStatus === 'Pagado' ? 'PAGADO' : 'PENDIENTE'}
                                                 </span>
                                             </div>
                                         </div>

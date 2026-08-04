@@ -337,10 +337,15 @@ export default function ClientsPage() {
         const targetReading = readings.find(r => r.id === readingId);
         if (targetReading) {
             // Use action to persist payment status to Turso via sync queue
-            addReadingAction({ ...targetReading, collectionStatus: 'Pagado' as const }, undefined, 'update');
+            addReadingAction({
+                ...targetReading,
+                collectionStatus: 'Pagado' as const,
+                paymentAmount: Number(targetReading.totalAmount) || 0,
+                paymentDate: new Date().toISOString().split('T')[0]
+            }, undefined, 'update');
         }
 
-        const updatedReadings = readings.map(r => r.id === readingId ? { ...r, status: 'paid' as const } : r);
+        const updatedReadings = readings.map(r => r.id === readingId ? { ...r, collectionStatus: 'Pagado' as const } : r);
         const nextSummary = getClientFinancialSummaryHelper(client, updatedReadings, machines);
 
         if (nextSummary.saldo === 0) {
@@ -923,9 +928,24 @@ export default function ClientsPage() {
             return;
         }
 
-        if (confirm('¿Está seguro de que desea eliminar este cliente del sistema?')) {
-            updateClientAction({ id } as unknown as LocalClient, 'delete');
+        // rentals y gestiones se borran EN CASCADA junto con el cliente (onDelete: 'cascade'
+        // en el schema) — a diferencia de máquinas, que solo se desvinculan. Sin este aviso,
+        // el usuario podía borrar un cliente sin equipos asignados y perder, sin darse
+        // cuenta, todo su historial de alquileres y de gestiones de cobranza.
+        const clientRentals = rentals.filter(r => r.clientId === id);
+        const clientGestiones = gestiones.filter(g => g.clientId === id);
+        if (clientRentals.length > 0 || clientGestiones.length > 0) {
+            const parts = [];
+            if (clientRentals.length > 0) parts.push(`${clientRentals.length} contrato(s) de alquiler`);
+            if (clientGestiones.length > 0) parts.push(`${clientGestiones.length} gestión(es) de cobranza`);
+            if (!confirm(`Este cliente tiene ${parts.join(' y ')} en su historial. Al eliminarlo, esos registros se borrarán PERMANENTEMENTE junto con el cliente. ¿Confirmás que querés continuar?`)) {
+                return;
+            }
+        } else if (!confirm('¿Está seguro de que desea eliminar este cliente del sistema?')) {
+            return;
         }
+
+        updateClientAction({ id } as unknown as LocalClient, 'delete');
     };
 
     const handleRegisterGestionSubmit = (e: React.FormEvent) => {
@@ -1800,9 +1820,9 @@ export default function ClientsPage() {
                                                     <div className="text-right space-y-1">
                                                         <span className="font-bold text-slate-200 block font-mono-tabular">{formatCurrency(r.totalAmount)}</span>
                                                         <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${
-                                                            r.status === 'paid' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
+                                                            r.collectionStatus === 'Pagado' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
                                                         }`}>
-                                                            {r.status === 'paid' ? 'PAGADO' : 'PENDIENTE'}
+                                                            {r.collectionStatus === 'Pagado' ? 'PAGADO' : 'PENDIENTE'}
                                                         </span>
                                                     </div>
                                                 </div>

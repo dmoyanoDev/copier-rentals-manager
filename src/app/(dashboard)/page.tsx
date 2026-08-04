@@ -64,16 +64,18 @@ export default function DashboardPage() {
         currentMonthReadings.forEach(r => {
             totalRevenueMonth += Number(r.totalAmount) || 0;
 
-            const machine = machines.find(m => m.id === r.machineId);
-            const abono = (abonos || []).find(a => a.id === machine?.abonoId);
-            const consumed = (r.final || 0) - (r.initial || 0);
-            if (abono && consumed > abono.limit) {
-                const excessCount = consumed - abono.limit;
-                const excessPrice = Number(r.excessPrice) || Number(abono.excessPrice) || 0;
-                const excessAmount = excessCount * excessPrice;
-                const hasIva = (r.ivaAmount || 0) > 0;
-                const ivaRate = hasIva ? 21 : 0;
-                totalExcessInvoiced += excessAmount * (1 + ivaRate / 100);
+            // Use the excess amount actually stored on the reading (excessCount/excessPrice,
+            // computed and persisted when the reading was billed) instead of re-deriving it
+            // from the machine's CURRENT plan — if the plan changed since, re-deriving here
+            // would silently disagree with what was actually invoiced (r.totalAmount above).
+            const excessCount = Number(r.excessCount) || 0;
+            if (excessCount > 0) {
+                const excessPrice = Number(r.excessPrice) || 0;
+                const excessBase = excessCount * excessPrice;
+                const netAmount = Number(r.netAmount) || 0;
+                const ivaAmount = Number(r.ivaAmount) || 0;
+                const effectiveIvaRate = netAmount > 0 ? (ivaAmount / netAmount) : 0;
+                totalExcessInvoiced += excessBase * (1 + effectiveIvaRate);
             }
         });
 
@@ -106,11 +108,13 @@ export default function DashboardPage() {
 
         currentMonthReadings.forEach(r => {
             const amt = Number(r.totalAmount) || 0;
-            if (r.status === 'paid') {
-                collectedAmt += amt;
-            } else {
-                pendingAmt += amt;
-            }
+            // collectionStatus/paymentAmount are the fields actually persisted to Turso —
+            // the old `r.status` field was never part of the DB schema, so it was always
+            // undefined after any reload/sync and made "Cobrado" always show ~$0.
+            const paid = Number(r.paymentAmount) || 0;
+            const collected = r.collectionStatus === 'Pagado' ? amt : paid;
+            collectedAmt += collected;
+            pendingAmt += Math.max(0, amt - collected);
         });
 
         // Add accrued but unbilled base fees as pending

@@ -58,10 +58,10 @@ export const mockMachines: Machine[] = [
 ];
 
 export const mockReadings: Reading[] = [
-    { id: 'r-1', machineId: 'm-1', month: '2026-06', initial: 12100, final: 13900, excessCount: 0, excessPrice: 15.5, netAmount: 45000, ivaAmount: 9450, totalAmount: 54450, status: 'paid', readingStatus: 'validada' },
-    { id: 'r-2', machineId: 'm-2', month: '2026-06', initial: 235000, final: 252000, excessCount: 2000, excessPrice: 9.0, netAmount: 258000, ivaAmount: 54180, totalAmount: 312180, status: 'pending', readingStatus: 'validada' },
-    { id: 'r-3', machineId: 'm-3', month: '2026-06', initial: 84100, final: 89600, excessCount: 500, excessPrice: 12.0, netAmount: 101000, ivaAmount: 0, totalAmount: 101000, status: 'paid', readingStatus: 'cargada' },
-    { id: 'r-4', machineId: 'm-4', month: '2026-06', initial: 61200, final: 67320, excessCount: 1120, excessPrice: 28.0, netAmount: 211360, ivaAmount: 44385.6, totalAmount: 255745.6, status: 'pending', readingStatus: 'observada', readingComment: 'Consumo saltó un 80% respecto al mes anterior' }
+    { id: 'r-1', machineId: 'm-1', month: '2026-06', initial: 12100, final: 13900, excessCount: 0, excessPrice: 15.5, netAmount: 45000, ivaAmount: 9450, totalAmount: 54450, collectionStatus: 'Pagado', readingStatus: 'validada' },
+    { id: 'r-2', machineId: 'm-2', month: '2026-06', initial: 235000, final: 252000, excessCount: 2000, excessPrice: 9.0, netAmount: 258000, ivaAmount: 54180, totalAmount: 312180, collectionStatus: 'Impago', readingStatus: 'validada' },
+    { id: 'r-3', machineId: 'm-3', month: '2026-06', initial: 84100, final: 89600, excessCount: 500, excessPrice: 12.0, netAmount: 101000, ivaAmount: 0, totalAmount: 101000, collectionStatus: 'Pagado', readingStatus: 'cargada' },
+    { id: 'r-4', machineId: 'm-4', month: '2026-06', initial: 61200, final: 67320, excessCount: 1120, excessPrice: 28.0, netAmount: 211360, ivaAmount: 44385.6, totalAmount: 255745.6, collectionStatus: 'Impago', readingStatus: 'observada', readingComment: 'Consumo saltó un 80% respecto al mes anterior' }
 ];
 
 export const mockTickets: Ticket[] = [
