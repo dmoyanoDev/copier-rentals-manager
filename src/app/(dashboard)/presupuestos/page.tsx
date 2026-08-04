@@ -1186,7 +1186,7 @@ export default function PresupuestosPage() {
                                                 <span className="font-mono-tabular">-{formatCurrency(selectedBudget.discountAmount)}</span>
                                             </div>
                                         )}
-                                        {selectedBudget.ivaMode === 'ADD_21' && (
+                                        {(selectedBudget.ivaMode === 'ADD_21' || selectedBudget.ivaMode === 'PLUS_IVA') && (
                                             <div className="flex justify-between w-64 text-slate-400 border-t border-slate-900 pt-1">
                                                 <span>IVA (21%):</span>
                                                 <span className="font-mono-tabular">{formatCurrency(selectedBudget.ivaAmount)}</span>
@@ -1822,10 +1822,7 @@ export default function PresupuestosPage() {
                                         options={[
                                             { value: 'ADD_21', label: 'Sumar IVA 21% al final' },
                                             { value: 'INCLUDED', label: 'Precios con IVA Incluido' },
-                                            // 'PLUS_IVA' deshabilitada: el texto legal le dice al cliente que el
-                                            // precio lleva + IVA, pero calculateBudget() nunca suma nada para este
-                                            // modo — usarla generaba presupuestos que cobran de menos. Deshabilitada
-                                            // hasta confirmar la tasa/logica real que debe aplicar.
+                                            { value: 'PLUS_IVA', label: 'Leyenda Comercial (+ IVA)' },
                                             { value: 'EXEMPT', label: 'Exento' }
                                         ]}
                                     />
@@ -2004,7 +2001,7 @@ export default function PresupuestosPage() {
                                             <span className="font-mono-tabular">-{formatCurrency(financialResults.discountAmount)}</span>
                                         </div>
                                     )}
-                                    {ivaMode === 'ADD_21' && (
+                                    {(ivaMode === 'ADD_21' || ivaMode === 'PLUS_IVA') && (
                                         <div className="flex justify-between w-64 text-slate-400 border-t border-slate-900 pt-1">
                                             <span>IVA (21%):</span>
                                             <span className="font-mono-tabular">{formatCurrency(financialResults.ivaAmount)}</span>
@@ -2248,7 +2245,7 @@ export default function PresupuestosPage() {
                                     <span className="font-mono-tabular">-{formatCurrency(selectedBudget.discountAmount)}</span>
                                 </div>
                             )}
-                            {selectedBudget.ivaMode === 'ADD_21' && (
+                            {(selectedBudget.ivaMode === 'ADD_21' || selectedBudget.ivaMode === 'PLUS_IVA') && (
                                 <div className="flex justify-between w-64 border-t pt-1">
                                     <span>IVA (21%):</span>
                                     <span className="font-mono-tabular">{formatCurrency(selectedBudget.ivaAmount)}</span>

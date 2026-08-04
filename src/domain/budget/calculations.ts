@@ -59,7 +59,9 @@ export function calculateBudget(params: {
 
     // 4. Calcular IVA
     let ivaAmount = 0;
-    if (ivaMode === 'ADD_21') {
+    if (ivaMode === 'ADD_21' || ivaMode === 'PLUS_IVA') {
+        // PLUS_IVA es la misma leyenda comercial que ADD_21 ("los precios no
+        // incluyen IVA") con otro texto legal — mismo calculo, 21% sobre el neto.
         ivaAmount = subtotalNeto * 0.21;
     } else if (ivaMode === 'INCLUDED') {
         // El precio ya incluye el 21% — se muestra el componente de IVA ya
@@ -69,7 +71,7 @@ export function calculateBudget(params: {
 
     // 5. Total
     let total = subtotalNeto;
-    if (ivaMode === 'ADD_21') {
+    if (ivaMode === 'ADD_21' || ivaMode === 'PLUS_IVA') {
         total = subtotalNeto + ivaAmount;
     }
 
