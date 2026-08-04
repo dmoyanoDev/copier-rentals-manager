@@ -301,8 +301,16 @@ export default function TechnicalPage() {
     };
 
     // Parse SLA limit remaining time
-    const getSlaStatus = (slaDateStr: string, status: string) => {
+    const getSlaStatus = (slaDateStr: string, status: string, resolvedAt?: number) => {
         if (status === 'resuelto' || status === 'cerrado') {
+            // A ticket resolved AFTER its SLA deadline missed it — showing "Cumplido" here
+            // regardless of timing contradicted the SLA compliance % already computed
+            // correctly per-technician in getTechMetrics() using this same comparison.
+            const sla = new Date(slaDateStr);
+            const wasLate = resolvedAt && !isNaN(sla.getTime()) && resolvedAt > sla.getTime();
+            if (wasLate) {
+                return { text: 'Vencido (fuera de plazo)', color: 'text-red-500 bg-red-500/10 border-red-500/20 font-bold', status: 'vencido_resuelto' };
+            }
             return { text: 'Cumplido', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', status: 'ok' };
         }
         const now = new Date();
@@ -520,8 +528,12 @@ export default function TechnicalPage() {
             }
         }
 
-        const isResolvedState = editStatus === 'resuelto';
-        const isClosedState = editStatus === 'cerrado';
+        // Stamp resolvedAt/closedAt only on the TRANSITION into that state, not on every save
+        // while already resuelto/cerrado — otherwise editing a resolved ticket days later
+        // (e.g. adding a note) would push resolvedAt forward and silently corrupt the SLA
+        // compliance calculation (resolvedAt <= slaDate) used in getTechMetrics/getSlaStatus.
+        const enteringResolved = editStatus === 'resuelto' && selectedTicket.status !== 'resuelto';
+        const enteringClosed = editStatus === 'cerrado' && selectedTicket.status !== 'cerrado';
 
         const updated: Ticket = {
             ...selectedTicket,
@@ -534,8 +546,8 @@ export default function TechnicalPage() {
             technicalCost: Number(editTechnicalCost) || 0,
             observations: editObservations,
             history: newHistory,
-            resolvedAt: isResolvedState ? Date.now() : selectedTicket.resolvedAt,
-            closedAt: isClosedState ? Date.now() : selectedTicket.closedAt
+            resolvedAt: enteringResolved ? Date.now() : selectedTicket.resolvedAt,
+            closedAt: enteringClosed ? Date.now() : selectedTicket.closedAt
         };
 
         if (notificationPromise) {
@@ -812,7 +824,7 @@ export default function TechnicalPage() {
     const partsWaitCount = tickets.filter(t => t.status === 'esperando-repuesto').length;
     const resolvedCount = tickets.filter(t => ['resuelto', 'cerrado'].includes(t.status)).length;
     const criticalCount = tickets.filter(t => {
-        const slaState = getSlaStatus(t.slaDate, t.status);
+        const slaState = getSlaStatus(t.slaDate, t.status, t.resolvedAt);
         return slaState.status === 'vencido' || slaState.status === 'por_vencer';
     }).length;
 
@@ -829,7 +841,7 @@ export default function TechnicalPage() {
         const matchesPriority = !filterPriority || t.priority === filterPriority;
         const matchesStatus = !filterStatus || t.status === filterStatus;
 
-        const slaState = getSlaStatus(t.slaDate, t.status);
+        const slaState = getSlaStatus(t.slaDate, t.status, t.resolvedAt);
         const matchesSla = !filterSla || slaState.status === filterSla;
 
         let matchesTab = true;
@@ -1174,7 +1186,7 @@ export default function TechnicalPage() {
                                 ) : (
                                     filteredTickets.map(t => {
                                         const tech = users.find(u => u.id === t.assignedTechId);
-                                        const sla = getSlaStatus(t.slaDate, t.status);
+                                        const sla = getSlaStatus(t.slaDate, t.status, t.resolvedAt);
 
                                         return (
                                             <TableRow key={t.id} className="hover:bg-slate-900/45 cursor-pointer transition-colors" onClick={() => handleOpenDetail(t)}>
