@@ -3,6 +3,7 @@
 import { db } from '@/infrastructure/db/client';
 import { auditLogs } from '@/infrastructure/db/schema/auditLogs';
 import { desc } from 'drizzle-orm';
+import { verifyAuth, verifyMaster } from '@/lib/auth/authService';
 
 export interface AuditLogInsert {
   module: string;
@@ -13,8 +14,14 @@ export interface AuditLogInsert {
 
 /**
  * Registra una acción crítica en el log de auditoría.
+ * Requiere sesión (no master-only: /api/export también llama esto para cualquier rol).
  */
 export async function addAuditLogAction(log: AuditLogInsert) {
+  try {
+    await verifyAuth();
+  } catch {
+    return { error: 'Sesión no válida.' };
+  }
   try {
     const id = 'log-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
     await db.insert(auditLogs).values({
@@ -34,8 +41,15 @@ export async function addAuditLogAction(log: AuditLogInsert) {
 
 /**
  * Obtiene todos los registros del log de auditoría ordenados por fecha descendente.
+ * Master-only: es el backend del tab "Auditoría" en /respaldo, oculto a otros roles
+ * en el menú pero antes sin ningún chequeo real del lado servidor.
  */
 export async function getAuditLogsAction() {
+  try {
+    await verifyMaster();
+  } catch {
+    return { error: 'No tenés permisos para consultar la auditoría.' };
+  }
   try {
     const logs = await db
       .select()

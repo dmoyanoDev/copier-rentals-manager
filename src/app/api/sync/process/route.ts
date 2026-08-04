@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/infrastructure/db/client';
 import { getSession } from '@/infrastructure/auth/session';
+import { isMasterUser } from '@/lib/auth/sessionDecrypt';
 import { eq, sql, and } from 'drizzle-orm';
 import { ensureSchemaSynced, logServerAudit } from '@/app/api/backup/route';
 import {
@@ -181,6 +182,51 @@ export async function POST(request: Request) {
             continue;
         }
 
+        // 1b. Autorización especial para la entidad 'users': este es el canal genérico
+        // usado para todas las escrituras cotidianas, a diferencia de /api/users (REST
+        // dedicado, siempre master-only, con su propia validación). Sin este chequeo,
+        // cualquier sesión autenticada podía escribir role/isMaster/passwordHash de
+        // cualquier usuario — incluida la suya propia — y auto-promoverse a master.
+        // Confirmado en vivo contra Turso antes de este fix.
+        if (entityType === 'users' && !isMasterUser(session)) {
+          if (session.role !== 'administrativo' || operation === 'delete') {
+            results.push({
+              id,
+              status: 'failed',
+              reason: 'forbidden',
+              message: 'No tenés permisos para modificar usuarios.'
+            });
+            continue;
+          }
+          // Un administrativo solo puede mantener las fichas operativas de técnicos
+          // (nombre/contacto/zona/disponibilidad, etc. — la pestaña "Personal Técnico"
+          // en /tecnica). Nunca puede otorgarse ni otorgar rol/master, ni tocar
+          // credenciales — eso sigue siendo exclusivo de /api/users (master-only).
+          const p = payload as any;
+          const isPrivilegeEscalation = p?.role !== 'tecnico' || Number(p?.isMaster) !== 0;
+          if (isPrivilegeEscalation) {
+            results.push({
+              id,
+              status: 'failed',
+              reason: 'forbidden',
+              message: 'Solo un usuario Maestro puede asignar roles administrativos o de master.'
+            });
+            continue;
+          }
+          if (operation === 'update') {
+            const existingTarget = await tx.select({ role: users.role }).from(users).where(eq(users.id, entityId)).limit(1);
+            if (existingTarget.length > 0 && existingTarget[0].role !== 'tecnico') {
+              results.push({
+                id,
+                status: 'failed',
+                reason: 'forbidden',
+                message: 'No podés modificar una cuenta que no pertenece a un técnico.'
+              });
+              continue;
+            }
+          }
+        }
+
         // 2. Procesar operación de eliminación
         if (operation === 'delete') {
           try {
@@ -281,6 +327,16 @@ export async function POST(request: Request) {
                 // El servidor tiene una versión más nueva. Omitimos escritura de forma exitosa.
                 results.push({ id, status: 'synced', skipped: true, reason: 'server_has_newer_version' });
                 continue;
+              }
+
+              // GET /api/backup ya no envía passwordHash al cliente (ver backup/route.ts),
+              // así que un dispositivo editando la ficha de un usuario (p. ej. datos de
+              // contacto de un técnico) nunca tiene el hash real en su estado local — el
+              // payload trae passwordHash vacío por el default de userSyncSchema. Sin este
+              // resguardo, cada edición legítima pisaría el hash real con '' y dejaría a
+              // ese usuario sin poder iniciar sesión nunca más.
+              if (entityType === 'users' && !(payloadWithServerTime as any).passwordHash) {
+                (payloadWithServerTime as any).passwordHash = (dbItem as any).passwordHash;
               }
 
               // Actualizar registro existente con timestamp del servidor

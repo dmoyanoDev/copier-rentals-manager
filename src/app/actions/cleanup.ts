@@ -1,6 +1,7 @@
 'use server';
 
 import { addAuditLogAction } from './audit';
+import { verifyMaster } from '@/lib/auth/authService';
 
 export interface DiagnosedIssue {
   id: string; // Issue id
@@ -13,7 +14,8 @@ export interface DiagnosedIssue {
 }
 
 /**
- * Server Action para diagnosticar inconsistencias en los datos actuales
+ * Server Action para diagnosticar inconsistencias en los datos actuales.
+ * Master-only: única llamadora es la herramienta de limpieza en /respaldo.
  */
 export async function diagnoseDataAction(state: {
   clients: any[];
@@ -23,6 +25,11 @@ export async function diagnoseDataAction(state: {
   rentals: any[];
   abonos: any[];
 }) {
+  try {
+    await verifyMaster();
+  } catch {
+    return { error: 'No tenés permisos para ejecutar el diagnóstico.' };
+  }
   const issues: DiagnosedIssue[] = [];
   const { clients, machines, readings, tickets, rentals, abonos } = state;
 
@@ -188,9 +195,15 @@ export async function diagnoseDataAction(state: {
 }
 
 /**
- * Server Action para registrar un log de auditoría por una operación de limpieza ejecutada en la UI
+ * Server Action para registrar un log de auditoría por una operación de limpieza ejecutada en la UI.
+ * Master-only: única llamadora es la herramienta de limpieza en /respaldo.
  */
 export async function logCleanupOperationAction(details: string, user: string) {
+  try {
+    await verifyMaster();
+  } catch {
+    return { error: 'No tenés permisos para registrar esta operación.' };
+  }
   await addAuditLogAction({
     module: 'datos',
     action: 'limpieza',

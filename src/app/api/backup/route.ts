@@ -21,6 +21,7 @@ import { db } from '@/infrastructure/db/client';
 import { sql, gt, ne, eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { getSession } from '@/infrastructure/auth/session';
+import { isMasterUser } from '@/lib/auth/sessionDecrypt';
 
 import { users } from '@/infrastructure/db/schema/users';
 import { clients } from '@/infrastructure/db/schema/clients';
@@ -264,9 +265,14 @@ export async function GET(request: Request) {
       isValidSince ? db.select().from(syncTombstones).where(gt(syncTombstones.deletedAt, sinceValue)) : Promise.resolve([]),
     ]);
 
+    // Every authenticated role (not just master) hits this endpoint for routine
+    // offline-sync pulls, so the response must never carry bcrypt hashes down to the
+    // client — no legitimate caller needs them, and any authenticated session (e.g. a
+    // técnico) could otherwise read every user's password hash from a normal poll.
+    const safeUsers = dbUsers.map(({ passwordHash, ...rest }: any) => rest);
 
     const backupPayload = {
-      users: dbUsers,
+      users: safeUsers,
       clients: dbClients,
       plans: dbPlans,
       machines: dbMachines,
@@ -333,6 +339,18 @@ export async function POST(request: Request) {
     await ensureSchemaSynced(db);
     const { searchParams } = new URL(request.url);
     const isAutosave = searchParams.get('user') === 'autosave';
+
+    // The routine autosave/reconciliation push (triggered automatically by every
+    // authenticated role as part of normal offline-first sync — see context.tsx) never
+    // touches the users table and is safe for anyone with a valid session. A named
+    // restore — uploading a full backup JSON from /respaldo, which also replaces the
+    // users table wholesale — wipes the entire database and is master-only in the UI's
+    // own nav; that intent was never enforced server-side, so any authenticated session
+    // could trigger it. Enforced here now.
+    if (!isAutosave && !isMasterUser(session)) {
+      return NextResponse.json({ error: 'Acceso denegado: se requiere el usuario Maestro para restaurar la base de datos.' }, { status: 403 });
+    }
+
     const user = session.username || 'system';
     const payload = await request.json();
 
