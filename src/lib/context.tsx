@@ -563,14 +563,18 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             setSyncQueue(currentQueue);
         }
 
-        const pendingItems = currentQueue.filter((item) => 
+        const pendingItems = currentQueue.filter((item) =>
             (item.status === 'pending' || item.status === 'failed') && item.retryCount < MAX_SYNC_RETRIES
         );
         if (pendingItems.length > 0) {
             await processSyncQueue(currentQueue);
-            if (hasSyncQueueFailedRef.current) {
-                return;
-            }
+            // NOTE: previously this bailed out of the whole function (`return`) when the local
+            // push failed, which meant a SINGLE stuck/failing item in this device's own write
+            // queue permanently blocked it from ever pulling other devices' changes again — the
+            // only way out was clearing localStorage (wiping the queue) to unblock it. Pushing
+            // and pulling are independent concerns: a failed push already surfaces its own error
+            // (processSyncQueue already called setSyncError/showOffline above), so it must not
+            // also prevent the read-only GET refresh below from running.
         }
 
         isSyncingRef.current = true;
