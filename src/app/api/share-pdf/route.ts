@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/infrastructure/db/client';
 import { sharedPdfs } from '@/infrastructure/db/schema/sharedPdfs';
+import { getSession } from '@/infrastructure/auth/session';
 
 export async function POST(req: NextRequest) {
   try {
+    // Sin este chequeo, cualquiera podia subir un PDF arbitrario y obtener un
+    // link publico alojado bajo el dominio de la empresa por 30 dias (hosting
+    // gratuito de archivos anonimo). El GET en pdf/[id] sigue siendo publico
+    // a proposito — es el link que se comparte con el cliente.
+    const session = await getSession(req);
+    if (!session) {
+      return NextResponse.json({ error: 'Sesión no válida.' }, { status: 401 });
+    }
+
     const { pdfBase64, filename } = await req.json();
 
     if (!pdfBase64 || !filename) {

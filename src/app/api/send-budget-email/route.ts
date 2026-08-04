@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
+import { getSession } from '@/infrastructure/auth/session';
 
 export async function POST(req: NextRequest) {
   try {
+    // Sin este chequeo, cualquiera en internet podia mandar emails con adjuntos
+    // arbitrarios usando las credenciales SMTP de la empresa (open relay).
+    const session = await getSession(req);
+    if (!session) {
+      return NextResponse.json({ error: 'Sesión no válida.' }, { status: 401 });
+    }
+
     const { to, subject, body, pdfBase64, filename } = await req.json();
 
     if (!to || !subject || !body || !pdfBase64 || !filename) {

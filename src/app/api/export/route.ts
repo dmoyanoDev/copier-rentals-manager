@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { addAuditLogAction } from '@/app/actions/audit';
+import { getSession } from '@/infrastructure/auth/session';
 
 function escapeCSVCell(val: any): string {
   if (val === null || val === undefined) return '';
@@ -18,8 +19,15 @@ function escapeCSVCell(val: any): string {
  */
 export async function POST(request: Request) {
   try {
+    const session = await getSession(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Sesión no válida.' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
-    const user = searchParams.get('user') || 'dmoyano';
+    // Antes se tomaba de la query string sin validar sesion — cualquiera podia
+    // atribuir la entrada de auditoria a cualquier usuario (spoofing).
+    const user = session.username || searchParams.get('user') || 'dmoyano';
 
     const payload = await request.json();
     const { module, format, data } = payload;

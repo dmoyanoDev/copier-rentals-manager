@@ -2,8 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import { db } from '@/infrastructure/db/client';
 import { emailLogs } from '@/infrastructure/db/schema/emailLogs';
+import { getSession } from '@/infrastructure/auth/session';
 
 export async function POST(req: NextRequest) {
+  // Sin este chequeo, cualquiera en internet podia mandar emails con adjuntos
+  // arbitrarios usando las credenciales de Yahoo de la empresa (open relay).
+  const session = await getSession(req);
+  if (!session) {
+    return NextResponse.json({ success: false, error: 'Sesión no válida.' }, { status: 401 });
+  }
+
   let requestData: any = {};
   try {
     requestData = await req.json();

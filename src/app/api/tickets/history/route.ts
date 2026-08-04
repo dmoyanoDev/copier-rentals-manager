@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/infrastructure/db/client';
 import { notificationHistory } from '@/infrastructure/db/schema/notificationHistory';
 import { desc } from 'drizzle-orm';
+import { getSession } from '@/infrastructure/auth/session';
 
 // Always read live notification history from database
 export const dynamic = 'force-dynamic';
@@ -15,8 +16,13 @@ const NO_CACHE_HEADERS = {
   'Netlify-CDN-Cache-Control': 'no-store',
 };
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const session = await getSession(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Sesión no válida.' }, { status: 401 });
+    }
+
     const logs = await db.select().from(notificationHistory).orderBy(desc(notificationHistory.createdAt));
     return NextResponse.json(logs, { headers: NO_CACHE_HEADERS });
   } catch (error: any) {

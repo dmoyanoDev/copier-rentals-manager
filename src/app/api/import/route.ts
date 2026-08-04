@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getSession } from '@/infrastructure/auth/session';
 
 function parseCSV(text: string): string[][] {
   const lines: string[][] = [];
@@ -48,6 +49,11 @@ function parseCSV(text: string): string[][] {
  */
 export async function POST(request: Request) {
   try {
+    const session = await getSession(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Sesión no válida.' }, { status: 401 });
+    }
+
     const payload = await request.json();
     const { module, csvText, existingData } = payload;
 

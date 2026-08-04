@@ -2,9 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sendTechNotification, NotificationEvent } from '@/infrastructure/notifications/notificationService';
 import { autoAssignTech } from '@/domain/ticket/assignment';
 import { Ticket, User } from '@/lib/mockData';
+import { getSession } from '@/infrastructure/auth/session';
 
 export async function POST(req: NextRequest) {
   try {
+    // Pese al nombre, este endpoint solo lo llama el navegador desde
+    // tecnica/page.tsx (no hay ningun cron externo real apuntandole) — se le
+    // agrega el mismo chequeo de sesion que el resto de la app.
+    const session = await getSession(req);
+    if (!session) {
+      return NextResponse.json({ error: 'Sesión no válida.' }, { status: 401 });
+    }
+
     const body = await req.json();
     const { tickets, users } = body as { tickets: Ticket[]; users: User[] };
 

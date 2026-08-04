@@ -3,6 +3,7 @@ import { db } from '@/infrastructure/db/client';
 import { notificationSettings } from '@/infrastructure/db/schema/notificationSettings';
 import { getOrCreateNotificationSettings } from '@/infrastructure/notifications/notificationService';
 import { eq } from 'drizzle-orm';
+import { getSession } from '@/infrastructure/auth/session';
 
 // Always read live config from database
 export const dynamic = 'force-dynamic';
@@ -16,8 +17,13 @@ const NO_CACHE_HEADERS = {
   'Netlify-CDN-Cache-Control': 'no-store',
 };
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const session = await getSession(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Sesión no válida.' }, { status: 401 });
+    }
+
     const settings = await getOrCreateNotificationSettings();
     return NextResponse.json(settings, { headers: NO_CACHE_HEADERS });
 
@@ -29,6 +35,11 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await getSession(req);
+    if (!session) {
+      return NextResponse.json({ error: 'Sesión no válida.' }, { status: 401 });
+    }
+
     const body = await req.json();
     const { whatsappEnabled, emailEnabled, eventsConfig, templatesConfig } = body;
 
