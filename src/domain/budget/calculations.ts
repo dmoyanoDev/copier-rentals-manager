@@ -61,6 +61,10 @@ export function calculateBudget(params: {
     let ivaAmount = 0;
     if (ivaMode === 'ADD_21') {
         ivaAmount = subtotalNeto * 0.21;
+    } else if (ivaMode === 'INCLUDED') {
+        // El precio ya incluye el 21% — se muestra el componente de IVA ya
+        // embebido (no se suma al total, que se mantiene igual).
+        ivaAmount = subtotalNeto - (subtotalNeto / 1.21);
     }
 
     // 5. Total

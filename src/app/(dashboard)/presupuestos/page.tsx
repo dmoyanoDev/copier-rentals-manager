@@ -1822,7 +1822,10 @@ export default function PresupuestosPage() {
                                         options={[
                                             { value: 'ADD_21', label: 'Sumar IVA 21% al final' },
                                             { value: 'INCLUDED', label: 'Precios con IVA Incluido' },
-                                            { value: 'PLUS_IVA', label: 'Leyenda Comercial (+ IVA)' },
+                                            // 'PLUS_IVA' deshabilitada: el texto legal le dice al cliente que el
+                                            // precio lleva + IVA, pero calculateBudget() nunca suma nada para este
+                                            // modo — usarla generaba presupuestos que cobran de menos. Deshabilitada
+                                            // hasta confirmar la tasa/logica real que debe aplicar.
                                             { value: 'EXEMPT', label: 'Exento' }
                                         ]}
                                     />
