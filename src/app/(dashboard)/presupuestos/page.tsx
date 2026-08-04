@@ -770,17 +770,13 @@ export default function PresupuestosPage() {
                 throw new Error(errorData.error || 'Error al enviar el correo.');
             }
             const data = await res.json();
-            
+
+            // logSendEvent ya marca estado='enviado' y agrega la entrada a sendLogs
+            // (y persiste via addBudgetAction). Repetir esa actualizacion aca abajo con
+            // el `selectedBudget` original (sin la nueva entrada de sendLogs, todavia no
+            // reflejada por el setState asincrono) pisaba ese log recien agregado.
             logSendEvent('email', shareEmail);
-            
-            // Actualizar localmente el estado del presupuesto a "enviado"
-            const updatedBudget = {
-                ...selectedBudget,
-                estado: 'enviado' as const
-            };
-            addBudgetAction(updatedBudget, 'update');
-            setSelectedBudget(updatedBudget);
-            
+
             setIsEmailModalOpen(false);
             setPdfStatus('sent');
             
