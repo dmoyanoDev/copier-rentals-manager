@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/infrastructure/db/client';
 import { users } from '@/infrastructure/db/schema/users';
+import { tickets } from '@/infrastructure/db/schema/tickets';
 import { eq, and, ne } from 'drizzle-orm';
 import { verifyMaster } from '@/lib/auth/authService';
 import { hashPassword, validatePasswordStrength } from '@/lib/auth/passwordService';
@@ -145,6 +146,86 @@ export async function PATCH(request: Request, props: { params: Promise<{ id: str
     return NextResponse.json({ ok: true, data: { user: safeUser } });
   } catch (error: any) {
     console.error('Error en PATCH /api/users/[id]:', error);
+    return NextResponse.json({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error interno.' }
+    }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request, props: { params: Promise<{ id: string }> }) {
+  const { id: targetUserId } = await props.params;
+  let masterUser;
+  const ip = request.headers.get('x-forwarded-for') || '127.0.0.1';
+
+  try {
+    masterUser = await verifyMaster(request);
+  } catch (e: any) {
+    await logSecurityEvent('forbidden_access', 'Unknown', `Intento no autorizado de eliminar usuario. IP: ${ip}`);
+    const code = e.code === 'FORBIDDEN' ? 'FORBIDDEN' : 'UNAUTHORIZED';
+    const status = e.code === 'FORBIDDEN' ? 403 : 401;
+    const message = e.code === 'FORBIDDEN'
+      ? 'No tenés permisos para acceder a usuarios.'
+      : 'Sesión no válida.';
+    return NextResponse.json({ ok: false, error: { code, message } }, { status });
+  }
+
+  try {
+    const results = await db.select().from(users).where(eq(users.id, targetUserId)).limit(1);
+    const targetUser = results[0];
+
+    if (!targetUser) {
+      return NextResponse.json({
+        ok: false,
+        error: { code: 'NOT_FOUND', message: 'Usuario no encontrado.' }
+      }, { status: 404 });
+    }
+
+    if (targetUser.username === 'dmoyano') {
+      await logSecurityEvent(
+        'protected_master_modification_attempt',
+        masterUser.username,
+        `Intento de eliminar al usuario maestro dmoyano. IP: ${ip}`
+      );
+      return NextResponse.json({
+        ok: false,
+        error: { code: 'FORBIDDEN', message: 'El usuario maestro dmoyano no puede ser eliminado.' }
+      }, { status: 403 });
+    }
+
+    if (targetUserId === masterUser.userId) {
+      return NextResponse.json({
+        ok: false,
+        error: { code: 'FORBIDDEN', message: 'No podés eliminar tu propia cuenta.' }
+      }, { status: 403 });
+    }
+
+    // tickets.assignedTechId referencia a users.id sin onDelete: si el usuario tiene
+    // tickets asignados, Turso rechaza el DELETE directamente por la restricción de
+    // clave foránea. En vez de bloquear la operación, se desvinculan esos tickets
+    // (quedan sin técnico asignado, un estado normal y recuperable) y se informa
+    // cuántos se vieron afectados.
+    const assignedTickets = await db
+      .select({ id: tickets.id })
+      .from(tickets)
+      .where(eq(tickets.assignedTechId, targetUserId));
+
+    if (assignedTickets.length > 0) {
+      await db.update(tickets).set({ assignedTechId: null }).where(eq(tickets.assignedTechId, targetUserId));
+    }
+
+    // sessions y password_reset_tokens tienen onDelete: 'cascade' — se limpian solos.
+    await db.delete(users).where(eq(users.id, targetUserId));
+
+    await logSecurityEvent(
+      'user_deleted',
+      masterUser.username,
+      `Usuario eliminado: ${targetUser.username} (${targetUser.fullname}). Tickets desvinculados: ${assignedTickets.length}. IP: ${ip}`
+    );
+
+    return NextResponse.json({ ok: true, data: { unassignedTickets: assignedTickets.length } });
+  } catch (error: any) {
+    console.error('Error en DELETE /api/users/[id]:', error);
     return NextResponse.json({
       ok: false,
       error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error interno.' }

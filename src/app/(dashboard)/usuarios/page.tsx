@@ -6,8 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Modal } from '@/components/ui/modal';
-import { Plus, Edit, ShieldAlert, Check, X, Shield, RefreshCw } from 'lucide-react';
-import { getUsers, createUser, updateUser, ApiUser } from '@/lib/api/users';
+import { Plus, Edit, ShieldAlert, Check, X, Shield, RefreshCw, Trash2 } from 'lucide-react';
+import { getUsers, createUser, updateUser, deleteUser, ApiUser } from '@/lib/api/users';
 import { logger } from '@/lib/logger';
 
 export default function UsersPage() {
@@ -31,6 +31,7 @@ export default function UsersPage() {
   const [role, setRole] = useState<'administrativo' | 'tecnico' | 'master'>('tecnico');
   const [isActive, setIsActive] = useState<boolean>(true);
   const [formError, setFormError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function checkAuthAndFetchUsers() {
     try {
@@ -152,6 +153,29 @@ export default function UsersPage() {
       setUsersList(prev => prev.map(u => u.id === user.id ? { ...u, active: nextActive } : u));
     } catch (err: any) {
       alert('Error: ' + err.message);
+    }
+  };
+
+  const handleDeleteUser = async (user: ApiUser) => {
+    if (user.username === 'dmoyano') {
+      alert('El usuario maestro dmoyano no puede ser eliminado.');
+      return;
+    }
+
+    const confirmMsg = `¿Eliminar permanentemente al usuario "${user.fullname}" (${user.username})?\n\nEsta acción NO se puede deshacer. Si tiene tickets técnicos asignados, quedarán sin técnico asignado.`;
+    if (!confirm(confirmMsg)) return;
+
+    setDeletingId(user.id);
+    try {
+      const result = await deleteUser(user.id);
+      setUsersList(prev => prev.filter(u => u.id !== user.id));
+      if (result.unassignedTickets > 0) {
+        alert(`Usuario eliminado. Se desvincularon ${result.unassignedTickets} ticket(s) técnico(s) que tenía asignados.`);
+      }
+    } catch (err: any) {
+      alert('Error al eliminar el usuario: ' + err.message);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -288,6 +312,16 @@ export default function UsersPage() {
                   <TableCell className="text-right space-x-1.5">
                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleOpenForm(u)}>
                       <Edit size={14} className="text-slate-400 hover:text-slate-200" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      disabled={u.username === 'dmoyano' || deletingId === u.id}
+                      onClick={() => handleDeleteUser(u)}
+                      title={u.username === 'dmoyano' ? 'El usuario maestro no puede eliminarse' : 'Eliminar usuario'}
+                    >
+                      <Trash2 size={14} className={u.username === 'dmoyano' ? 'text-slate-700' : 'text-red-400 hover:text-red-300'} />
                     </Button>
                   </TableCell>
                 </TableRow>

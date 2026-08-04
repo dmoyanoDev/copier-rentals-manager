@@ -5,7 +5,7 @@ import { auditLogs } from '@/infrastructure/db/schema/auditLogs';
  * Registra un evento de seguridad en la tabla audit_logs de forma consistente y compatible.
  */
 export async function logSecurityEvent(
-  action: 'login_success' | 'login_failed' | 'logout' | 'forgot_password_requested' | 'password_reset_success' | 'password_change_success' | 'session_revoked' | 'user_created' | 'user_updated' | 'user_deactivated' | 'forbidden_access' | 'role_change_attempt' | 'protected_master_modification_attempt',
+  action: 'login_success' | 'login_failed' | 'logout' | 'forgot_password_requested' | 'password_reset_success' | 'password_change_success' | 'session_revoked' | 'user_created' | 'user_updated' | 'user_deactivated' | 'user_deleted' | 'forbidden_access' | 'role_change_attempt' | 'protected_master_modification_attempt',
   user: string,
   details: string
 ) {

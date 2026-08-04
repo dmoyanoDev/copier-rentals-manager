@@ -41,3 +41,9 @@ export async function updateUser(id: string, payload: Partial<ApiUser> & { passw
   });
   return data.user;
 }
+
+export async function deleteUser(id: string): Promise<{ unassignedTickets: number }> {
+  return safeFetch<{ unassignedTickets: number }>(`/api/users/${id}`, {
+    method: 'DELETE',
+  });
+}
