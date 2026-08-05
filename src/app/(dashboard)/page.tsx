@@ -3,7 +3,7 @@
 import React from 'react';
 import { useManagement } from '@/lib/context';
 import { Card, CardContent } from '@/components/ui/card';
-import { formatCurrency, formatPeriod, getSystemAlerts } from '@/lib/utils';
+import { formatCurrency, formatPeriod, getSystemAlerts, getAlertSoundForNewAlerts, playSystemSound } from '@/lib/utils';
 import type { Machine } from '@/domain/types';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -208,6 +208,20 @@ export default function DashboardPage() {
         criticalMachinesList,
         alerts
     } = memoizedData;
+
+    // playSystemSound already had 'critico'/'vencido' audio built — it just never got
+    // triggered by anything. Plays once per alert the first time it appears (tracked by id
+    // in a ref, not state, so this doesn't itself cause a re-render); does not replay on
+    // every render/~1.5s sync poll for an alert that's still there from before. Gated to
+    // the admin/master view only — técnicos get the tech dashboard branch above and never
+    // see the "Centro de Alertas de Cobranzas" panel this is announcing.
+    const announcedAlertIdsRef = React.useRef<Set<string>>(new Set());
+    React.useEffect(() => {
+        if (isTech) return;
+        const sound = getAlertSoundForNewAlerts(alerts, announcedAlertIdsRef.current);
+        if (sound) playSystemSound(sound, cobranzaConfig);
+        alerts.forEach(a => announcedAlertIdsRef.current.add(a.id));
+    }, [isTech, alerts, cobranzaConfig]);
 
     return (
         <div className="space-y-6 animate-fade-in">

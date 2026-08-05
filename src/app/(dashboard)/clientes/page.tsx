@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useManagement } from '@/lib/context';
 import { Card, CardContent } from '@/components/ui/card';
 import { TableContainer, Table, TableHeader, TableRow, TableHeaderCell, TableBody, TableCell } from '@/components/ui/table';
@@ -8,14 +8,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Modal } from '@/components/ui/modal';
-import { 
-    formatCurrency, 
-    formatPeriod, 
-    playSystemSound, 
-    getClientMovementsHelper, 
-    getClientFinancialSummaryHelper, 
-    getSystemAlerts, 
-    SystemAlert 
+import {
+    formatCurrency,
+    formatPeriod,
+    playSystemSound,
+    getClientMovementsHelper,
+    getClientFinancialSummaryHelper,
+    getSystemAlerts,
+    getAlertSoundForNewAlerts,
+    SystemAlert
 } from '@/lib/utils';
 import { 
     Plus, Trash2, Edit, FileText, CheckCircle, AlertTriangle, ShieldCheck, 
@@ -134,8 +135,26 @@ export default function ClientsPage() {
     const [newGestionResult, setNewGestionResult] = useState('');
     const [newGestionObs, setNewGestionObs] = useState('');
 
-    // Dynamic Alerts
-    const alerts = getSystemAlerts(clients, readings, machines, gestiones || [], cobranzaConfig);
+    // Dynamic Alerts. getSystemAlerts returns all four severities (crit/imp/prev/info) —
+    // 'info' covers positive/neutral events like "cuenta regularizada" or "pago recibido",
+    // not a problem needing attention. The banner below is titled "Notificaciones Críticas"
+    // and only has room for 4 items, so it must only ever contain real, actionable debt
+    // problems (vencido/mora); prev/info belong in the Dashboard's broader, severity-badged
+    // "Centro de Alertas" instead, not here.
+    const allAlerts = getSystemAlerts(clients, readings, machines, gestiones || [], cobranzaConfig);
+    const alerts = allAlerts.filter(a => a.tipo === 'crit' || a.tipo === 'imp');
+
+    // playSystemSound already had 'critico'/'vencido' audio built — it just never got
+    // triggered by anything. Plays once per alert the first time it appears (tracked by id
+    // in a ref, not state, so this doesn't itself cause a re-render); does not replay on
+    // every render/~1.5s sync poll for an alert that's still there from before.
+    const announcedAlertIdsRef = useRef<Set<string>>(new Set());
+    useEffect(() => {
+        const sound = getAlertSoundForNewAlerts(alerts, announcedAlertIdsRef.current);
+        if (sound) playSystemSound(sound, cobranzaConfig);
+        alerts.forEach(a => announcedAlertIdsRef.current.add(a.id));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [alerts.map(a => a.id).join(','), cobranzaConfig.sonidosActivos, cobranzaConfig.volumenSonidos]);
 
     // ==========================================
     // ACCOUNTING HELPERS USING CENTRALISED UTILS

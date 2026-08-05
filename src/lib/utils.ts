@@ -509,6 +509,19 @@ export function getSystemAlerts(clients: Client[], readings: Reading[], machines
     return alerts;
 }
 
+// playSystemSound already has 'critico'/'vencido' sound patterns built (see below), but
+// nothing ever called them — the audio existed without being wired to the alerts that were
+// supposed to trigger it. This decides which sound (if any) a *newly appeared* crit/imp
+// alert should play, given the set of alert ids the caller has already announced this
+// session — so a page doesn't replay the sound on every render/sync poll for the same
+// still-open alert, only when something new actually shows up.
+export function getAlertSoundForNewAlerts(alerts: SystemAlert[], previouslySeenIds: Set<string>): 'critico' | 'vencido' | null {
+    const newAlerts = alerts.filter(a => !previouslySeenIds.has(a.id));
+    if (newAlerts.some(a => a.tipo === 'crit')) return 'critico';
+    if (newAlerts.some(a => a.tipo === 'imp')) return 'vencido';
+    return null;
+}
+
 function getDaysToDueHelper(dueDateStr: string): number {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
