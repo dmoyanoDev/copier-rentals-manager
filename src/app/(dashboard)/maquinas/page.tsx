@@ -15,7 +15,7 @@ import { Machine } from '@/lib/mockData';
 import { formatCurrency, formatPeriod } from '@/lib/utils';
 
 export default function MachinesPage() {
-    const { machines, setMachines, clients, abonos, readings, setReadings, rentals, tickets, updateMachineAction } = useManagement();
+    const { machines, setMachines, clients, abonos, readings, setReadings, rentals, tickets, updateMachineAction, addRentalAction, updateRentalAction, currentUser } = useManagement();
     const [searchQuery, setSearchQuery] = useState('');
     const [filterStatus, setFilterStatus] = useState('');
     
@@ -70,6 +70,27 @@ export default function MachinesPage() {
             setApplyIva(false);
         }
         setIsFormOpen(true);
+    };
+
+    // Cerrar el contrato activo de un equipo, si tiene uno — usado tanto al reasignar/quitar
+    // cliente desde este formulario como al dar de baja lógica un equipo. Antes, estas
+    // acciones solo tocaban machines.clientId/status y dejaban el contrato en 'rentals'
+    // colgado como 'activo' para siempre.
+    const finalizeActiveRental = (machineId: string, reason: string) => {
+        const activeRental = rentals.find(r => r.machineId === machineId && r.status === 'activo');
+        if (!activeRental) return;
+        const nowStr = new Date().toISOString();
+        updateRentalAction({
+            ...activeRental,
+            status: 'finalizado',
+            endDate: nowStr.split('T')[0],
+            history: [...(activeRental.history || []), {
+                date: nowStr.split('T')[0],
+                time: nowStr.split('T')[1].substring(0, 5),
+                action: reason,
+                user: currentUser?.fullname || 'Administrativo'
+            }]
+        });
     };
 
     const handleClientIdChange = (id: string) => {
@@ -133,6 +154,45 @@ export default function MachinesPage() {
             updateMachineAction(machineData, 'create');
         }
 
+        // Mantener 'rentals' consistente con lo que este formulario acaba de definir —
+        // mismo efecto que el asistente de "Nuevo Alquiler", para que Historial Contratos
+        // y la protección contra doble-alquiler vean esta asignación también, sin importar
+        // desde qué pantalla se hizo.
+        const previousClientId = editingMachine?.clientId || null;
+        const newClientId = clientId || null;
+        const newAbonoId = abonoId || '';
+
+        if (newClientId && newClientId !== previousClientId) {
+            // Finalizar el contrato anterior (si hay uno) y crear el nuevo en una sola
+            // transacción de estado — ver el comentario en addRentalAction sobre por qué
+            // hacer esto como dos llamadas separadas pierde el finalizado en el estado local.
+            const activeRental = rentals.find(r => r.machineId === machineData.id && r.status === 'activo');
+            const nowStr = new Date().toISOString();
+            addRentalAction({
+                id: `rental-${Date.now()}`,
+                clientId: newClientId,
+                machineId: machineData.id,
+                abonoId: newAbonoId,
+                startDate: nowStr.split('T')[0],
+                status: 'activo',
+                history: [{
+                    date: nowStr.split('T')[0],
+                    time: nowStr.split('T')[1].substring(0, 5),
+                    action: editingMachine ? 'Contrato de alquiler activado desde Editar Máquina' : 'Contrato de alquiler activado al registrar el equipo',
+                    user: currentUser?.fullname || 'Administrativo'
+                }],
+                createdAt: nowStr,
+                updatedAt: nowStr
+            }, [], activeRental ? [activeRental.id] : []); // el equipo ya se actualizó arriba — no reencolar el mismo cambio
+        } else if (!newClientId && previousClientId) {
+            finalizeActiveRental(machineData.id, 'Contrato finalizado desde Editar Máquina');
+        } else if (newClientId && newClientId === previousClientId) {
+            const activeRental = rentals.find(r => r.machineId === machineData.id && r.status === 'activo');
+            if (activeRental && activeRental.abonoId !== newAbonoId) {
+                updateRentalAction({ ...activeRental, abonoId: newAbonoId });
+            }
+        }
+
         if (evaluated.alertMessage) {
             alert(evaluated.alertMessage);
         }
@@ -151,6 +211,7 @@ export default function MachinesPage() {
                 const machObj = machines.find(m => m.id === id);
                 if (machObj) {
                     updateMachineAction({ ...machObj, status: 'Inactiva' as Machine['status'], clientId: null, abonoId: null }, 'update');
+                    finalizeActiveRental(id, 'Contrato finalizado: equipo dado de baja lógica');
                 }
             }
             return;

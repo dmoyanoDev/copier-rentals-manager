@@ -164,7 +164,13 @@ export async function POST(request: Request) {
         const model = row[modelIdx]?.trim() || '';
         const serial = row[serialIdx]?.trim() || '';
         const type = row[typeIdx]?.trim() || 'B&N';
-        const status = row[statusIdx]?.trim() || 'Disponible';
+        // El CSV no tiene forma de indicar a qué cliente pertenece el equipo, así que un
+        // Estado "Alquilada" importado tal cual queda sin cliente asociado ni contrato —
+        // un equipo que dice estar alquilado pero no a nadie. Se importa como Disponible;
+        // el alquiler real se asigna después desde Editar Máquina o Nuevo Alquiler, que sí
+        // vinculan el cliente correctamente.
+        const csvStatus = row[statusIdx]?.trim() || 'Disponible';
+        const status = csvStatus === 'Alquilada' ? 'Disponible' : csvStatus;
         const currentCounter = parseInt(row[counterIdx]?.trim() || '0', 10);
         const preventiveInterval = parseInt(row[intervalIdx]?.trim() || '15000', 10);
         const applyIva = row[applyIvaIdx]?.trim().toLowerCase() === 'si' || row[applyIvaIdx]?.trim().toLowerCase() === 'true';

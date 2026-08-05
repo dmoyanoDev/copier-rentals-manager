@@ -118,7 +118,7 @@ interface ManagementContextType {
     resetSyncAction: () => Promise<void>;
 
     // Action-Driven mutations
-    addRentalAction: (rental: Rental, machineUpdates: { id: string; clientId: string | null; abonoId: string | null; status: Machine['status'] }[]) => void;
+    addRentalAction: (rental: Rental, machineUpdates: { id: string; clientId: string | null; abonoId: string | null; status: Machine['status'] }[], finalizeRentalIds?: string[]) => void;
     updateRentalAction: (rental: Rental, machineUpdates?: { id: string; clientId: string | null; abonoId: string | null; status: Machine['status'] }[]) => void;
     updateTicketAction: (ticket: Ticket, machineUpdate?: { id: string; status: Machine['status'] }) => void;
     addReadingAction: (reading: Reading, machineUpdate?: { id: string; currentCounter: number }, operation?: 'create' | 'update' | 'delete') => void;
@@ -1186,12 +1186,38 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }, [processSyncQueue]);
 
     // Explicit Action methods to mutate state & schedule sync
-    const addRentalAction = useCallback((rental: Rental, machineUpdates: { id: string; clientId: string | null; abonoId: string | null; status: any }[]) => {
+    const addRentalAction = useCallback((rental: Rental, machineUpdates: { id: string; clientId: string | null; abonoId: string | null; status: any }[], finalizeRentalIds: string[] = []) => {
         const nowStr = new Date().toISOString();
         const rentalWithTime = { ...rental, createdAt: rental.createdAt || nowStr, updatedAt: nowStr };
-        
+
+        // Finalizar contratos existentes (p. ej. al reasignar un equipo a otro cliente) en la
+        // MISMA transacción de estado que la creación del nuevo — hacerlo como dos llamadas
+        // separadas (updateRentalAction + addRentalAction) compite por stateRef.current.rentals:
+        // el ref solo se refresca en un useEffect, un tick después de cada setState, así que la
+        // segunda llamada lee la misma foto previa a la primera y su propio setRentals(...) pisa
+        // en silencio el cambio recién hecho — confirmado en vivo (el contrato "finalizado" volvía
+        // a aparecer como ACTIVO en el estado local, aunque el servidor sí quedaba bien).
+        const finalizedNow: Rental[] = [];
+        const baseRentals = stateRef.current.rentals.map(r => {
+            if (!finalizeRentalIds.includes(r.id)) return r;
+            const finalized: Rental = {
+                ...r,
+                status: 'finalizado',
+                endDate: nowStr.split('T')[0],
+                updatedAt: nowStr,
+                history: [...(r.history || []), {
+                    date: nowStr.split('T')[0],
+                    time: nowStr.split('T')[1].substring(0, 5),
+                    action: 'Contrato finalizado: equipo reasignado',
+                    user: rental.history?.[0]?.user || 'Sistema'
+                }]
+            };
+            finalizedNow.push(finalized);
+            return finalized;
+        });
+
         // Update rentals state
-        const updatedRentals = [rentalWithTime, ...stateRef.current.rentals];
+        const updatedRentals = [rentalWithTime, ...baseRentals];
         setRentals(updatedRentals);
 
         // Update machines state
@@ -1212,6 +1238,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
         // Enqueue sync actions
         enqueueSyncItem(rentalWithTime.id, 'rentals', 'create', rentalWithTime);
+        finalizedNow.forEach(r => enqueueSyncItem(r.id, 'rentals', 'update', r));
         machineUpdates.forEach(up => {
             const fullMachine = updatedMachines.find(m => m.id === up.id);
             if (fullMachine) {
