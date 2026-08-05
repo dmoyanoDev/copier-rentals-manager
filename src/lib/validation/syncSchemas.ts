@@ -143,7 +143,9 @@ export const readingSyncSchema = z.object({
   readingStatus: z.string().default('Lectura tomada'),
   billingStatus: z.string().default('No facturado'),
   collectionStatus: z.string().default('Impago'),
+  // Accept both 'comments' (DB name) and 'readingComment' (frontend name)
   comments: z.string().nullable().optional(),
+  readingComment: z.string().nullable().optional(), // frontend alias — used in transform below
   invoiceNumber: z.string().nullable().optional(),
   invoiceDate: z.string().nullable().optional(),
   dueDate: z.string().nullable().optional(),
@@ -158,6 +160,11 @@ export const readingSyncSchema = z.object({
   history: z.array(historyEntrySchema).default([]),
   createdAt: dateSchema.optional(),
   updatedAt: dateSchema.optional(),
+}).transform((data) => {
+  // Normalize: if frontend sends readingComment, use it as comments
+  const comments = data.readingComment !== undefined ? data.readingComment : data.comments;
+  const { readingComment, ...rest } = data;
+  return { ...rest, comments };
 });
 
 

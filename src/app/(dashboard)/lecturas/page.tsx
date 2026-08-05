@@ -7,7 +7,23 @@ import { TableContainer, Table, TableHeader, TableRow, TableHeaderCell, TableBod
 import { Button } from '@/components/ui/button';
 import { formatCurrency, formatPeriod, getClientIvaRate } from '@/lib/utils';
 import { Reading, Machine, Client, Abono, Rental } from '@/lib/mockData';
+import { auditReading } from '@/domain/reading/audit';
 import { Search, Filter, PlusCircle, CheckCircle, AlertTriangle, FileText, UserPlus, FileCheck, Layers, Clipboard } from 'lucide-react';
+
+// Same client-side max+1 scan as getNextBudgetNumero (presupuestos/page.tsx) and
+// getNextReceiptNumber (receipts.ts) — correlative instead of random, so two
+// invoices can't land on the same number by chance.
+function getNextInvoiceNumber(allReadings: Reading[]): string {
+    let max = 0;
+    for (const r of allReadings) {
+        const match = /^FAC-0001-(\d+)$/.exec(r.invoiceNumber || '');
+        if (match) {
+            const n = parseInt(match[1], 10);
+            if (n > max) max = n;
+        }
+    }
+    return 'FAC-0001-' + String(max + 1).padStart(6, '0');
+}
 
 export default function ReadingsPage() {
     const { 
@@ -91,9 +107,11 @@ export default function ReadingsPage() {
             return pastReadings[0].final || 0;
         }
 
-        // Fallback: si no hay lecturas anteriores, usar la lectura más reciente de cualquier mes cargada
-        const anyPast = [...machineReadings].sort((a, b) => b.month.localeCompare(a.month));
-        return anyPast[0].final || machine.currentCounter || 0;
+        // No hay lecturas de meses anteriores a monthStr (puede pasar al cargar un mes
+        // fuera de orden, ya que el selector de mes es libre). Usar el final de una
+        // lectura de un mes POSTERIOR sería incorrecto (no representa el contador al
+        // inicio de este ciclo), así que se cae al contador físico actual del equipo.
+        return machine.currentCounter || 0;
     };
 
     const handleOpenLogModal = (m: Machine) => {
@@ -119,16 +137,6 @@ export default function ReadingsPage() {
 
         const consumed = finalVal - initialVal;
         const abono = abonos.find(a => a.id === selectedMachine.abonoId);
-        
-        let warning = '';
-        if (abono && consumed > abono.limit * 1.8) {
-            warning = `Advertencia: Consumo potencialmente anómalo. Se registraron ${consumed.toLocaleString()} copias (excede el plan en un 80%+).`;
-        }
-
-        if (warning && !anomalousWarning) {
-            setAnomalousWarning(warning);
-            return; // Let user confirm anomalous warning
-        }
 
         // Calculations (ensuring clean numbers)
         const client = clients.find(c => c.id === selectedMachine.clientId);
@@ -141,6 +149,33 @@ export default function ReadingsPage() {
         const ivaRate = selectedMachine.applyIva && client ? getClientIvaRate(client.taxCategory) : 0;
         const ivaAmount = netAmount * (ivaRate / 100);
         const totalAmount = netAmount + ivaAmount;
+
+        const priorReadings = readings
+            .filter(r => r.machineId === selectedMachine.id && r.month < currentMonth)
+            .map(r => ({ initial: r.initial, final: r.final }));
+
+        const auditAlerts = auditReading({
+            initial: initialVal,
+            final: finalVal,
+            limit: abono?.limit || 0,
+            price: basePrice,
+            excessPrice,
+            applyIva: !!selectedMachine.applyIva,
+            ivaRate,
+            isUnofficial: false,
+            creditNote: 0,
+            debitNote: 0,
+            billingStatus: 'No facturado',
+            invoiceNumber: null,
+            invoiceDate: null,
+            historicalReadings: priorReadings,
+        });
+        const warning = auditAlerts.map(a => a.message).join(' ');
+
+        if (warning && !anomalousWarning) {
+            setAnomalousWarning(warning);
+            return; // Let user confirm anomalous warning
+        }
 
         const initialHistory = [{
             date: new Date().toISOString().split('T')[0],
@@ -189,7 +224,7 @@ export default function ReadingsPage() {
     // Open Billing Modal
     const handleOpenInvoiceModal = (r: Reading) => {
         setShowInvoiceModal(r);
-        setInvoiceNumberInput(`FAC-0001-${String(Math.floor(100000 + Math.random() * 900000))}`);
+        setInvoiceNumberInput(getNextInvoiceNumber(readings));
         setInvoiceError('');
     };
 
@@ -204,6 +239,9 @@ export default function ReadingsPage() {
         const updated: Reading = {
             ...showInvoiceModal,
             readingStatus: 'facturada',
+            billingStatus: 'Facturado',
+            invoiceNumber: invoiceNumberInput,
+            invoiceDate: new Date().toISOString().split('T')[0],
             readingComment: `Factura: ${invoiceNumberInput}`
         };
         updated.history = nextHistory;
@@ -234,7 +272,7 @@ export default function ReadingsPage() {
                 taxCategory: newClientTax,
                 address: 'Dirección no especificada',
                 phone: 'Sin teléfono',
-                email: `${newClientName.toLowerCase().replace(/ /g, '')}@example.com`,
+                email: '',
                 debt: 0,
                 active: true,
                 createdAt: nowStr,

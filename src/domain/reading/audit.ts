@@ -83,7 +83,7 @@ export function auditReading(input: ReadingAuditInput): ReadingAlert[] {
   }
 
   // 6. Datos faltantes para facturación
-  if (input.billingStatus === 'facturada' && (!input.invoiceNumber || !input.invoiceDate)) {
+  if (input.billingStatus === 'Facturado' && (!input.invoiceNumber || !input.invoiceDate)) {
     alerts.push({
       type: 'warning',
       message: 'Estado es Facturada pero no se ingresó número de factura o fecha de emisión.',

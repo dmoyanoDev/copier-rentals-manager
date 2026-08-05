@@ -304,9 +304,29 @@ export async function POST(request: Request) {
           }
         }
 
-        // Auto-reparar clientId y abonoId huérfanos para lecturas
         if (entityType === 'readings') {
           const rPayload = cleanPayload as any;
+
+          // Impedir que un mismo equipo quede con dos lecturas para el mismo mes —
+          // la UI ya oculta el botón "Cargar" en cuanto existe una lectura, pero eso
+          // no protege contra dos dispositivos cargándola en simultáneo (mismo tipo
+          // de problema que el de alquileres duplicados de arriba).
+          const conflictingReadings = await tx
+            .select({ id: readings.id })
+            .from(readings)
+            .where(and(eq(readings.machineId, rPayload.machineId), eq(readings.month, rPayload.month)));
+          const hasDuplicateReading = conflictingReadings.some(r => r.id !== entityId);
+          if (hasDuplicateReading) {
+            results.push({
+              id,
+              status: 'failed',
+              reason: 'conflict',
+              message: 'Ya existe una lectura cargada para este equipo en este período. Actualizá la lectura existente en vez de crear una nueva.'
+            });
+            continue;
+          }
+
+          // Auto-reparar clientId y abonoId huérfanos para lecturas
           if (!rPayload.clientId || !rPayload.abonoId) {
             const mach = await tx.select().from(machines).where(eq(machines.id, rPayload.machineId)).limit(1);
             if (mach.length > 0) {

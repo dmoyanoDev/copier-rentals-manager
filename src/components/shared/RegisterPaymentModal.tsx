@@ -35,7 +35,7 @@ export const RegisterPaymentModal: React.FC<RegisterPaymentModalProps> = ({ isOp
       setAmount(pendingAmount > 0 ? String(pendingAmount) : '');
       setMethod('Efectivo');
       setDate(new Date().toISOString().split('T')[0]);
-      setInvoiceReference((reading as any)?.invoiceNumber || '');
+      setInvoiceReference(reading?.invoiceNumber || '');
       setNotes('');
       setError(null);
     }

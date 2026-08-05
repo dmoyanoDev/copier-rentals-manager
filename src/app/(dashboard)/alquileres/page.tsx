@@ -134,7 +134,7 @@ export default function RentalsPage() {
                 taxCategory: newClientTax,
                 address: 'Dirección no especificada',
                 phone: 'Sin teléfono',
-                email: `${newClientName.toLowerCase().replace(/ /g, '')}@example.com`,
+                email: '',
                 debt: 0,
                 active: true
             };

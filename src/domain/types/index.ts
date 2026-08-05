@@ -63,6 +63,8 @@ export interface Reading {
     paymentAmount?: number;
     paymentDate?: string;
     billingStatus?: 'No facturado' | 'Facturado';
+    invoiceNumber?: string | null;
+    invoiceDate?: string | null;
     readingComment?: string;
     history?: { date: string; time: string; action: string; user: string; }[];
     createdAt?: string;

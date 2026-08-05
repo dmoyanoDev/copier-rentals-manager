@@ -40,7 +40,7 @@ export function buildPaymentRecord(params: {
     amount,
     method,
     date,
-    invoiceReference: invoiceReference || (reading ? (reading as any).invoiceNumber || null : null),
+    invoiceReference: invoiceReference || (reading ? reading.invoiceNumber || null : null),
     receivedByUserId: currentUser?.id || null,
     receivedByName: currentUser?.fullname || currentUser?.username || 'Administrador',
     clientNameSnapshot: client.name,

@@ -14,7 +14,7 @@ describe('auditReading', () => {
       isUnofficial: false,
       creditNote: 0,
       debitNote: 0,
-      billingStatus: 'no-facturado',
+      billingStatus: 'No facturado',
       historicalReadings: [],
     });
 
@@ -33,7 +33,7 @@ describe('auditReading', () => {
       isUnofficial: false,
       creditNote: 0,
       debitNote: 0,
-      billingStatus: 'no-facturado',
+      billingStatus: 'No facturado',
       historicalReadings: [],
     });
 
@@ -52,7 +52,7 @@ describe('auditReading', () => {
       isUnofficial: false,
       creditNote: 0,
       debitNote: 0,
-      billingStatus: 'no-facturado',
+      billingStatus: 'No facturado',
       historicalReadings: [],
     });
 
@@ -71,7 +71,7 @@ describe('auditReading', () => {
       isUnofficial: false,
       creditNote: 0,
       debitNote: 0,
-      billingStatus: 'no-facturado',
+      billingStatus: 'No facturado',
       historicalReadings: [
         { initial: 0, final: 1000 },   // consumo = 1000
         { initial: 1000, final: 2000 },  // consumo = 1000
@@ -93,7 +93,7 @@ describe('auditReading', () => {
       isUnofficial: false,
       creditNote: 0,
       debitNote: 0,
-      billingStatus: 'facturada',
+      billingStatus: 'Facturado',
       invoiceNumber: '',
       invoiceDate: '',
       historicalReadings: [],
