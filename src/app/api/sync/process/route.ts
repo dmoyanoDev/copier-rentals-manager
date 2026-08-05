@@ -16,6 +16,7 @@ import {
   gestiones,
   cobranzaConfig as cobranzaConfigTable,
   syncTombstones,
+  payments,
 } from '@/infrastructure/db/schema';
 import {
   clientSyncSchema,
@@ -28,6 +29,7 @@ import {
   budgetSyncSchema,
   gestionSyncSchema,
   cobranzaConfigSyncSchema,
+  paymentSyncSchema,
 } from '@/lib/validation/syncSchemas';
 import { notifyDatabaseChange } from '../signal/route';
 
@@ -65,7 +67,8 @@ export async function POST(request: Request) {
       'readings': 4,
       'rentals': 5,
       'tickets': 6,
-      'budgets': 7
+      'budgets': 7,
+      'payments': 8
     };
 
     const getOrder = (item: any) => {
@@ -167,6 +170,10 @@ export async function POST(request: Request) {
           case 'gestiones':
             table = gestiones;
             schema = gestionSyncSchema;
+            break;
+          case 'payments':
+            table = payments;
+            schema = paymentSyncSchema;
             break;
           case 'cobranzaConfig':
             table = cobranzaConfigTable;

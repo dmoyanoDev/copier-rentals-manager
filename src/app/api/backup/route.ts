@@ -39,6 +39,7 @@ import { rentals } from '@/infrastructure/db/schema/rentals';
 import { gestiones } from '@/infrastructure/db/schema/gestiones';
 import { cobranzaConfig as cobranzaConfigTable } from '@/infrastructure/db/schema/cobranzaConfig';
 import { syncTombstones } from '@/infrastructure/db/schema/syncTombstones';
+import { payments } from '@/infrastructure/db/schema/payments';
 
 
 // Helper to write audit logs from server route handler
@@ -194,6 +195,32 @@ export async function ensureSchemaSynced(db: any) {
       CREATE INDEX IF NOT EXISTS idx_tombstones_type_deleted ON sync_tombstones(entity_type, deleted_at)
     `);
 
+    // 10. Ensure payments table exists (cobros ledger — one row per payment
+    // transaction, possibly several per reading if paid in installments)
+    await db.run(sql`
+      CREATE TABLE IF NOT EXISTS payments (
+        id TEXT PRIMARY KEY NOT NULL,
+        receipt_number TEXT NOT NULL UNIQUE,
+        client_id TEXT REFERENCES clients(id) ON DELETE SET NULL,
+        reading_id TEXT REFERENCES readings(id) ON DELETE SET NULL,
+        amount REAL NOT NULL DEFAULT 0,
+        method TEXT NOT NULL DEFAULT 'Efectivo',
+        date TEXT NOT NULL,
+        invoice_reference TEXT,
+        received_by_user_id TEXT,
+        received_by_name TEXT NOT NULL DEFAULT '',
+        client_name_snapshot TEXT NOT NULL DEFAULT '',
+        client_cuit_snapshot TEXT,
+        period TEXT,
+        concept TEXT,
+        reading_total_snapshot REAL,
+        balance_after REAL NOT NULL DEFAULT 0,
+        notes TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
     isDbSchemaSynced = true;
     console.log("Database schema auto-sync completed successfully.");
   } catch (err) {
@@ -241,6 +268,7 @@ export async function GET(request: Request) {
       dbAuditLogs,
       dbRentals,
       dbGestiones,
+      dbPayments,
       dbCobranzaConfig,
       dbTombstones
     ] = await Promise.all([
@@ -259,6 +287,7 @@ export async function GET(request: Request) {
       isValidSince ? db.select().from(rentals).where(gt(rentals.updatedAt, sinceValue)) : db.select().from(rentals),
       // Always fetch gestiones and cobranzaConfig (incremental by updatedAt when possible)
       isValidSince ? db.select().from(gestiones).where(gt(gestiones.updatedAt, sinceValue)) : db.select().from(gestiones),
+      isValidSince ? db.select().from(payments).where(gt(payments.updatedAt, sinceValue)) : db.select().from(payments),
       db.select().from(cobranzaConfigTable).limit(1),
       // Tombstones only matter for incremental pulls — a full sync's server lists are
       // already authoritative (a deleted row simply isn't in them).
@@ -286,6 +315,7 @@ export async function GET(request: Request) {
       auditLogs: dbAuditLogs,
       rentals: dbRentals,
       gestiones: dbGestiones,
+      payments: dbPayments,
       // Only populated on incremental pulls — tells other devices which entities were
       // hard-deleted since `since` so they can drop them from local state too.
       tombstones: dbTombstones.map((t: any) => ({ entityType: t.entityType, entityId: t.entityId })),
@@ -369,6 +399,7 @@ export async function POST(request: Request) {
     const dedupedBudgets = dedupeById<any>(payload.budgets);
     const dedupedRentals = dedupeById<any>(payload.rentals);
     const dedupedGestiones = dedupeById<any>(payload.gestiones);
+    const dedupedPayments = dedupeById<any>(payload.payments);
     const dedupedSharedPdfs = dedupeById<any>(payload.sharedPdfs);
     const dedupedNotificationSettings = dedupeById<any>(payload.notificationSettings);
     const dedupedNotificationHistory = dedupeById<any>(payload.notificationHistory);
@@ -657,6 +688,35 @@ export async function POST(request: Request) {
             observations: g.observations || '',
             createdAt: g.createdAt ? new Date(g.createdAt) : new Date(),
             updatedAt: g.updatedAt ? new Date(g.updatedAt) : new Date(),
+          });
+        }
+      }
+
+      // Restore payments (cobros ledger) — additive like gestiones, not a full
+      // authoritative replace like clients/machines, since it's an append-only log.
+      if (dedupedPayments.length) {
+        await tx.delete(payments);
+        for (const p of dedupedPayments) {
+          await tx.insert(payments).values({
+            id: p.id,
+            receiptNumber: p.receiptNumber || `REC-${p.id}`,
+            clientId: p.clientId || null,
+            readingId: p.readingId || null,
+            amount: Number(p.amount) || 0,
+            method: p.method || 'Efectivo',
+            date: p.date || new Date().toISOString().split('T')[0],
+            invoiceReference: p.invoiceReference || null,
+            receivedByUserId: p.receivedByUserId || null,
+            receivedByName: p.receivedByName || '',
+            clientNameSnapshot: p.clientNameSnapshot || '',
+            clientCuitSnapshot: p.clientCuitSnapshot || null,
+            period: p.period || null,
+            concept: p.concept || null,
+            readingTotalSnapshot: p.readingTotalSnapshot != null ? Number(p.readingTotalSnapshot) : null,
+            balanceAfter: Number(p.balanceAfter) || 0,
+            notes: p.notes || null,
+            createdAt: p.createdAt ? new Date(p.createdAt) : new Date(),
+            updatedAt: p.updatedAt ? new Date(p.updatedAt) : new Date(),
           });
         }
       }

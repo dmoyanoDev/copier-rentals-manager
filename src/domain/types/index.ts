@@ -151,7 +151,7 @@ export interface LocalReading extends Reading {
 // Sync Queue Types — strongly typed, no 'any'
 export type SyncOperation = 'create' | 'update' | 'delete';
 export type SyncStatus = 'pending' | 'syncing' | 'synced' | 'failed';
-export type SyncEntityType = 'clients' | 'machines' | 'readings' | 'tickets' | 'abonos' | 'users' | 'rentals' | 'budgets' | 'gestiones' | 'cobranzaConfig';
+export type SyncEntityType = 'clients' | 'machines' | 'readings' | 'tickets' | 'abonos' | 'users' | 'rentals' | 'budgets' | 'gestiones' | 'cobranzaConfig' | 'payments';
 
 export interface SyncQueueItem {
     id: string;
@@ -174,6 +174,32 @@ export interface Gestion {
     channel: string;
     result: string;
     observations: string;
+}
+
+// Payment / Receipt Types
+export const PAYMENT_METHODS = ['Efectivo', 'Transferencia', 'Cheque', 'Tarjeta de Débito', 'Tarjeta de Crédito', 'Otro'] as const;
+export type PaymentMethod = typeof PAYMENT_METHODS[number];
+
+export interface Payment {
+    id: string;
+    receiptNumber: string;
+    clientId: string | null;
+    readingId: string | null;
+    amount: number;
+    method: PaymentMethod;
+    date: string;
+    invoiceReference?: string | null;
+    receivedByUserId?: string | null;
+    receivedByName: string;
+    clientNameSnapshot: string;
+    clientCuitSnapshot?: string | null;
+    period?: string | null;
+    concept?: string | null;
+    readingTotalSnapshot?: number | null;
+    balanceAfter: number;
+    notes?: string | null;
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 export interface CobranzaConfig {
@@ -217,6 +243,7 @@ export interface HistoryEntry {
 export const MAX_SYNC_QUEUE_SIZE = 500;
 export const MAX_SYNC_RETRIES = 5;
 export const SYNC_DEBOUNCE_MS = 500;
-// Poll every 5 seconds when tab is visible — achieves near-real-time sync across devices
-// Safe for Turso free tier: incremental requests are lightweight (only fetches changes since last sync)
-export const SYNC_POLL_INTERVAL_MS = 5000;
+// Poll every 1.5 seconds when tab is visible — achieves ultra-responsive near-instant real-time sync across devices
+// Safe for Turso: incremental queries using ?since= timestamp return 0 bytes when nothing changed
+export const SYNC_POLL_INTERVAL_MS = 1500;
+

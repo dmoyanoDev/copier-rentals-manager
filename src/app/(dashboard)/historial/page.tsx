@@ -10,16 +10,30 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { formatCurrency, formatPeriod, getClientIvaRate } from '@/lib/utils';
 import { Reading, Machine } from '@/lib/mockData';
-import { Check, Clock, Search, Filter, RefreshCw, Edit, Trash2, ShieldAlert } from 'lucide-react';
+import { Check, Clock, Search, Filter, RefreshCw, Edit, Trash2, ShieldAlert, Printer } from 'lucide-react';
+import { RegisterPaymentModal } from '@/components/shared/RegisterPaymentModal';
+import { printReceipt } from '@/lib/receipts';
+import { PAYMENT_METHODS } from '@/domain/types';
 
 export default function HistoryPage() {
-    const { readings, setReadings, machines, setMachines, clients, abonos, addReadingAction, updateMachineAction } = useManagement();
-    
-    // Filter States
+    const { readings, setReadings, machines, setMachines, clients, abonos, payments, addReadingAction, updateMachineAction } = useManagement();
+
+    // Tabs
+    const [activeTab, setActiveTab] = useState<'liquidaciones' | 'cobros'>('liquidaciones');
+
+    // Filter States (Liquidaciones)
     const [searchQuery, setSearchQuery] = useState('');
     const [filterPeriodState, setFilterPeriodState] = useState('');
     const [filterClient, setFilterClient] = useState('');
     const [filterPayment, setFilterPayment] = useState('');
+
+    // Filter States (Cobros)
+    const [cobrosClientFilter, setCobrosClientFilter] = useState('');
+    const [cobrosMonthFilter, setCobrosMonthFilter] = useState('');
+    const [cobrosMethodFilter, setCobrosMethodFilter] = useState('');
+
+    // Payment registration modal
+    const [payingReading, setPayingReading] = useState<Reading | null>(null);
 
     // Editing Reading States
     const [editingReading, setEditingReading] = useState<Reading | null>(null);
@@ -30,17 +44,20 @@ export default function HistoryPage() {
     // Extract unique months from all readings (sorted descending)
     const uniqueMonths = Array.from(new Set(readings.map(r => r.month))).sort((a, b) => b.localeCompare(a));
 
-    const handleTogglePaymentStatus = (id: string, isCurrentlyPaid: boolean) => {
+    // Reverts a reading to Impago — an administrative correction, not itself a
+    // registered payment (it does not create/void any entry in the payments ledger;
+    // any receipts already issued for this reading remain in the Cobros history).
+    const handleMarkUnpaid = (id: string) => {
         const targetReading = readings.find(r => r.id === id);
-        if (targetReading) {
-            const updatedReading: Reading = {
-                ...targetReading,
-                collectionStatus: isCurrentlyPaid ? 'Impago' as const : 'Pagado' as const,
-                paymentAmount: isCurrentlyPaid ? 0 : (Number(targetReading.totalAmount) || 0),
-                paymentDate: isCurrentlyPaid ? undefined : new Date().toISOString().split('T')[0]
-            };
-            addReadingAction(updatedReading);
-        }
+        if (!targetReading) return;
+        if (!confirm('¿Marcar esta liquidación como impaga? Esto no elimina los recibos ya emitidos, solo corrige el estado de la lectura.')) return;
+        const updatedReading: Reading = {
+            ...targetReading,
+            collectionStatus: 'Impago' as const,
+            paymentAmount: 0,
+            paymentDate: undefined
+        };
+        addReadingAction(updatedReading);
     };
 
     const handleOpenEditModal = (r: Reading) => {
@@ -153,6 +170,15 @@ export default function HistoryPage() {
     const summaryPendingCount = filteredReadings.filter(r => r.collectionStatus !== 'Pagado').length;
     const summaryUniqueMachines = new Set(filteredReadings.map(r => r.machineId)).size;
 
+    // Filtered Payments List (Cobros tab)
+    const filteredPayments = [...payments].filter(p => {
+        const matchesClient = !cobrosClientFilter || p.clientId === cobrosClientFilter;
+        const matchesMonth = !cobrosMonthFilter || p.date.startsWith(cobrosMonthFilter);
+        const matchesMethod = !cobrosMethodFilter || p.method === cobrosMethodFilter;
+        return matchesClient && matchesMonth && matchesMethod;
+    }).sort((a, b) => b.date.localeCompare(a.date));
+    const cobrosTotalAmount = filteredPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
     return (
         <div className="space-y-6 animate-fade-in relative text-slate-100">
             {/* Header */}
@@ -161,6 +187,28 @@ export default function HistoryPage() {
                 <p className="text-[10px] text-slate-400">Consulta de facturación acumulada, control de cobranza y auditoría de consumos.</p>
             </div>
 
+            {/* Tabs */}
+            <div className="flex gap-2 border-b border-slate-850 pb-0">
+                <button
+                    onClick={() => setActiveTab('liquidaciones')}
+                    className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all ${
+                        activeTab === 'liquidaciones' ? 'bg-indigo-650 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                >
+                    Liquidaciones
+                </button>
+                <button
+                    onClick={() => setActiveTab('cobros')}
+                    className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all ${
+                        activeTab === 'cobros' ? 'bg-indigo-650 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                >
+                    Cobros ({payments.length})
+                </button>
+            </div>
+
+            {activeTab === 'liquidaciones' && (
+            <>
             {/* Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <Card className="bg-slate-950 border border-slate-850 p-4 space-y-1">
@@ -313,32 +361,40 @@ export default function HistoryPage() {
                                         <TableCell className="font-mono-tabular text-xs font-bold text-slate-200">{formatCurrency(totalVal)}</TableCell>
                                         <TableCell className="text-xs">
                                             <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
-                                                r.collectionStatus === 'Pagado' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
+                                                r.collectionStatus === 'Pagado' ? 'bg-emerald-500/10 text-emerald-400' :
+                                                r.collectionStatus === 'Parcial' ? 'bg-amber-500/10 text-amber-400' :
+                                                'bg-red-500/10 text-red-400'
                                             }`}>
-                                                {r.collectionStatus === 'Pagado' ? 'PAGADO' : 'PENDIENTE'}
+                                                {r.collectionStatus === 'Pagado' ? 'PAGADO' : r.collectionStatus === 'Parcial' ? 'PARCIAL' : 'PENDIENTE'}
                                             </span>
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <div className="flex justify-end gap-1.5">
+                                                {r.collectionStatus === 'Pagado' ? (
+                                                    <Button
+                                                        variant="secondary"
+                                                        size="sm"
+                                                        onClick={() => handleMarkUnpaid(r.id)}
+                                                    >
+                                                        <span className="flex items-center text-[10px] font-bold text-red-400"><Clock size={11} className="mr-1" /> Impagar</span>
+                                                    </Button>
+                                                ) : (
+                                                    <Button
+                                                        variant="secondary"
+                                                        size="sm"
+                                                        onClick={() => setPayingReading(r)}
+                                                    >
+                                                        <span className="flex items-center text-[10px] font-bold text-emerald-450"><Check size={11} className="mr-1" /> Cobrar</span>
+                                                    </Button>
+                                                )}
                                                 <Button
                                                     variant="secondary"
                                                     size="sm"
-                                                    onClick={() => handleTogglePaymentStatus(r.id, r.collectionStatus === 'Pagado')}
-                                                >
-                                                    {r.collectionStatus === 'Pagado' ? (
-                                                        <span className="flex items-center text-[10px] font-bold text-red-400"><Clock size={11} className="mr-1" /> Impagar</span>
-                                                    ) : (
-                                                        <span className="flex items-center text-[10px] font-bold text-emerald-450"><Check size={11} className="mr-1" /> Cobrar</span>
-                                                    )}
-                                                </Button>
-                                                <Button 
-                                                    variant="secondary" 
-                                                    size="sm" 
                                                     onClick={() => handleOpenEditModal(r)}
                                                 >
                                                     <Edit size={11} className="mr-1 text-indigo-400" /> Editar
                                                 </Button>
-                                                <button 
+                                                <button
                                                     onClick={() => handleDeleteReading(r.id)}
                                                     className="px-2 py-1 bg-red-955/20 text-red-400 border border-red-900/30 rounded-xl text-[10px] font-bold hover:bg-red-900/20 transition-all flex items-center"
                                                 >
@@ -353,6 +409,122 @@ export default function HistoryPage() {
                     </TableBody>
                 </Table>
             </TableContainer>
+            </>
+            )}
+
+            {activeTab === 'cobros' && (
+            <>
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card className="bg-slate-950 border border-slate-850 p-4 space-y-1">
+                    <span className="text-[9px] text-slate-500 uppercase font-extrabold tracking-wider block">Total Cobrado (filtro actual)</span>
+                    <span className="text-xl font-extrabold text-emerald-400 font-mono-tabular">
+                        {formatCurrency(cobrosTotalAmount)}
+                    </span>
+                </Card>
+                <Card className="bg-slate-950 border border-slate-850 p-4 space-y-1">
+                    <span className="text-[9px] text-slate-500 uppercase font-extrabold tracking-wider block">Cantidad de Cobros</span>
+                    <span className="text-xl font-extrabold text-slate-205 font-mono-tabular">
+                        {filteredPayments.length}
+                    </span>
+                </Card>
+            </div>
+
+            {/* Filter toolbar */}
+            <div className="p-4 bg-slate-950 border border-slate-850/65 rounded-xl space-y-3">
+                <div className="flex justify-between items-center text-xs font-semibold text-slate-450">
+                    <div className="flex items-center gap-2">
+                        <Filter size={14} /> Filtros de Cobros
+                    </div>
+                    <a href="/clientes" className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold">
+                        Ver clientes deudores →
+                    </a>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <select
+                        value={cobrosClientFilter}
+                        onChange={(e) => setCobrosClientFilter(e.target.value)}
+                        className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-355 text-xs focus:outline-none"
+                    >
+                        <option value="">Cliente: Todos</option>
+                        {clients.map(c => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                    </select>
+                    <input
+                        type="month"
+                        value={cobrosMonthFilter}
+                        onChange={(e) => setCobrosMonthFilter(e.target.value)}
+                        className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-355 text-xs focus:outline-none"
+                    />
+                    <select
+                        value={cobrosMethodFilter}
+                        onChange={(e) => setCobrosMethodFilter(e.target.value)}
+                        className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-355 text-xs focus:outline-none"
+                    >
+                        <option value="">Método: Todos</option>
+                        {PAYMENT_METHODS.map(m => (
+                            <option key={m} value={m}>{m}</option>
+                        ))}
+                    </select>
+                </div>
+            </div>
+
+            {/* Cobros Table */}
+            <TableContainer>
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHeaderCell>Fecha</TableHeaderCell>
+                            <TableHeaderCell>Cliente</TableHeaderCell>
+                            <TableHeaderCell>Período</TableHeaderCell>
+                            <TableHeaderCell>Monto</TableHeaderCell>
+                            <TableHeaderCell>Método</TableHeaderCell>
+                            <TableHeaderCell>Cobrado por</TableHeaderCell>
+                            <TableHeaderCell>N° Recibo</TableHeaderCell>
+                            <TableHeaderCell>N° Comprobante</TableHeaderCell>
+                            <TableHeaderCell className="text-right">Acciones</TableHeaderCell>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {filteredPayments.length === 0 ? (
+                            <TableRow>
+                                <TableCell colSpan={9} className="text-center py-8 text-slate-400 text-xs">
+                                    No se encontraron cobros registrados para los filtros seleccionados.
+                                </TableCell>
+                            </TableRow>
+                        ) : (
+                            filteredPayments.map(p => (
+                                <TableRow key={p.id} className="hover:bg-slate-900/40">
+                                    <TableCell className="text-xs text-slate-300">{p.date}</TableCell>
+                                    <TableCell className="font-semibold text-slate-200">{p.clientNameSnapshot}</TableCell>
+                                    <TableCell className="text-xs text-slate-350">{p.period && p.period !== 'Ajuste de saldo' ? formatPeriod(p.period) : (p.period || '-')}</TableCell>
+                                    <TableCell className="font-mono-tabular text-xs font-bold text-emerald-400">{formatCurrency(p.amount)}</TableCell>
+                                    <TableCell className="text-xs text-slate-300">{p.method}</TableCell>
+                                    <TableCell className="text-xs text-slate-300">{p.receivedByName}</TableCell>
+                                    <TableCell className="font-mono-tabular text-xs text-indigo-400 font-bold">{p.receiptNumber}</TableCell>
+                                    <TableCell className="text-xs text-slate-400">{p.invoiceReference || '-'}</TableCell>
+                                    <TableCell className="text-right">
+                                        <Button variant="secondary" size="sm" onClick={() => printReceipt(p)}>
+                                            <span className="flex items-center text-[10px] font-bold text-indigo-400"><Printer size={11} className="mr-1" /> Reimprimir</span>
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))
+                        )}
+                    </TableBody>
+                </Table>
+            </TableContainer>
+            </>
+            )}
+
+            <RegisterPaymentModal
+                isOpen={!!payingReading}
+                onClose={() => setPayingReading(null)}
+                client={payingReading ? (clients.find(c => c.id === payingReading.clientId) || null) : null}
+                reading={payingReading}
+                pendingAmount={payingReading ? Math.max(0, (Number(payingReading.totalAmount) || 0) - (Number(payingReading.paymentAmount) || 0)) : 0}
+            />
 
             {/* EDIT HISTORICAL READING DIALOG MODAL */}
             {editingReading && (

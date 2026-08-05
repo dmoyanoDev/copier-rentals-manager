@@ -24,9 +24,10 @@ import {
     Volume2, VolumeX, Settings, History, Phone, CreditCard, ChevronRight, Bell,
     Info, FileSpreadsheet, Eye, UserCheck, MoreVertical
 } from 'lucide-react';
-import { Client } from '@/lib/mockData';
+import { Client, Reading } from '@/lib/mockData';
 import { LocalClient } from '@/lib/context';
 import { BRANDING } from '@/config/branding';
+import { RegisterPaymentModal } from '@/components/shared/RegisterPaymentModal';
 
 // Custom Badge component local to this file to prevent variant typing conflicts
 const LocalBadge = ({ variant, children, className = '' }: { variant: 'success' | 'warning' | 'danger' | 'info' | 'secondary', children: React.ReactNode, className?: string }) => {
@@ -48,7 +49,7 @@ const LocalBadge = ({ variant, children, className = '' }: { variant: 'success' 
 export default function ClientsPage() {
     const {
         clients, machines, readings, abonos, rentals, tickets,
-        gestiones, cobranzaConfig, setCobranzaConfig,
+        gestiones, cobranzaConfig, setCobranzaConfig, currentUser,
         updateClientAction, addReadingAction, addGestionAction, updateCobranzaConfigAction
     } = useManagement();
     
@@ -70,6 +71,7 @@ export default function ClientsPage() {
     const [isAccountOpen, setIsAccountOpen] = useState(false);
     const [accountClient, setAccountClient] = useState<LocalClient | null>(null);
     const [accountFilter, setAccountFilter] = useState<'all' | 'pending' | 'overdue' | 'paid'>('all');
+    const [payingMovement, setPayingMovement] = useState<{ reading: Reading | null; pendingAmount: number } | null>(null);
     
     // Monthly period filters
     const [filterStartMonth, setFilterStartMonth] = useState('');
@@ -301,14 +303,14 @@ export default function ClientsPage() {
             clientId,
             date: today,
             type,
-            user: 'Administrador',
+            user: currentUser?.fullname || currentUser?.username || 'Administrador',
             channel: type === 'WhatsApp' ? 'WhatsApp Web' : type === 'Email' ? 'Email Client' : 'Sistema',
             result,
             observations
         };
         // Use action to persist gestion to Turso via sync queue
         addGestionAction(newGestion, 'create');
-    }, [addGestionAction]);
+    }, [addGestionAction, currentUser]);
 
     const handleQuickAction = (client: LocalClient, type: 'whatsapp' | 'email' | 'promesa' | 'llamado') => {
         if (type === 'whatsapp') {
@@ -331,37 +333,15 @@ export default function ClientsPage() {
         }
     };
 
-    // Register dynamic collection payments
-    const handleCollectInvoice = (client: LocalClient, movement: { id: string; number: string }) => {
-        const readingId = movement.id.replace('fact-', '').replace('rec-', '');
-        const targetReading = readings.find(r => r.id === readingId);
-        if (targetReading) {
-            // Use action to persist payment status to Turso via sync queue
-            addReadingAction({
-                ...targetReading,
-                collectionStatus: 'Pagado' as const,
-                paymentAmount: Number(targetReading.totalAmount) || 0,
-                paymentDate: new Date().toISOString().split('T')[0]
-            }, undefined, 'update');
-        }
-
-        const updatedReadings = readings.map(r => r.id === readingId ? { ...r, collectionStatus: 'Pagado' as const } : r);
-        const nextSummary = getClientFinancialSummaryHelper(client, updatedReadings, machines);
-
-        if (nextSummary.saldo === 0) {
-            registerCobranzaGestion(client.id, 'Regularización', 'Regularizado', `Pago de factura ${movement.number} cancelando deuda total.`);
-            playSystemSound('regularizado', cobranzaConfig);
-            alert(`Cobro registrado con éxito. ¡Cuenta regularizada para ${client.name}!`);
-        } else {
-            registerCobranzaGestion(client.id, 'Pago registrado', 'Cobrado parcial', `Pago registrado de factura ${movement.number}.`);
-            playSystemSound('pago', cobranzaConfig);
-            alert(`Cobro registrado para factura ${movement.number}.`);
-        }
-
-        setIsAccountOpen(false);
-        setTimeout(() => {
-            openAccountView(client);
-        }, 100);
+    // Opens the shared payment modal for a pending movement row (a real reading/
+    // "Factura", or the synthetic "Ajuste" row backed by client.debt). Resolves the
+    // target reading by type instead of stripping id prefixes — the previous
+    // fact-/rec- string-replace silently no-op'd for Ajuste rows (their id is
+    // `init-debt-${client.id}`, matching neither prefix), so "Registrar Cobro" on a
+    // manual balance adjustment never actually did anything.
+    const handleOpenPaymentModal = (movement: { id: string; type: string; pending: number }) => {
+        const reading = movement.type === 'Ajuste' ? null : (readings.find(r => r.id === movement.id.replace('fact-', '')) || null);
+        setPayingMovement({ reading, pendingAmount: movement.pending });
     };
 
     // Save customized configurations
@@ -2142,7 +2122,7 @@ export default function ClientsPage() {
                                                                     <Button 
                                                                         variant="ghost" 
                                                                         size="sm" 
-                                                                        onClick={() => handleCollectInvoice(accountClient, m)}
+                                                                        onClick={() => handleOpenPaymentModal(m)}
                                                                         className="text-emerald-450 hover:bg-emerald-950/20 h-6 px-1.5 text-[10.5px]"
                                                                     >
                                                                         Registrar Cobro
@@ -2454,6 +2434,14 @@ export default function ClientsPage() {
                     </div>
                 )}
             </Modal>
+
+            <RegisterPaymentModal
+                isOpen={!!payingMovement}
+                onClose={() => setPayingMovement(null)}
+                client={accountClient}
+                reading={payingMovement?.reading || null}
+                pendingAmount={payingMovement?.pendingAmount || 0}
+            />
 
         </div>
     );

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PAYMENT_METHODS } from '@/domain/types';
 
 const dateSchema = z.union([z.string(), z.number(), z.date()]).transform(val => {
   const d = new Date(val);
@@ -282,6 +283,28 @@ export const gestionSyncSchema = z.object({
   updatedAt: dateSchema.optional(),
 });
 
+export const paymentSyncSchema = z.object({
+  id: z.string().min(1),
+  receiptNumber: z.string().min(1),
+  clientId: z.string().nullable().optional(),
+  readingId: z.string().nullable().optional(),
+  amount: z.number().default(0),
+  method: z.enum(PAYMENT_METHODS).default('Efectivo'),
+  date: z.string().min(1),
+  invoiceReference: z.string().nullable().optional(),
+  receivedByUserId: z.string().nullable().optional(),
+  receivedByName: z.string().default(''),
+  clientNameSnapshot: z.string().default(''),
+  clientCuitSnapshot: z.string().nullable().optional(),
+  period: z.string().nullable().optional(),
+  concept: z.string().nullable().optional(),
+  readingTotalSnapshot: z.number().nullable().optional(),
+  balanceAfter: z.number().default(0),
+  notes: z.string().nullable().optional(),
+  createdAt: dateSchema.optional(),
+  updatedAt: dateSchema.optional(),
+});
+
 export const cobranzaConfigSyncSchema = z.object({
   id: z.string().default('singleton'),
   diasAvisoVencimiento: z.number().int().default(3),
@@ -306,7 +329,7 @@ export const cobranzaConfigSyncSchema = z.object({
 export const syncQueueItemSchema = z.object({
   id: z.string().min(1),
   entityId: z.string().min(1),
-  entityType: z.enum(['clients', 'machines', 'readings', 'tickets', 'plans', 'users', 'rentals', 'budgets', 'gestiones', 'cobranzaConfig']),
+  entityType: z.enum(['clients', 'machines', 'readings', 'tickets', 'plans', 'users', 'rentals', 'budgets', 'gestiones', 'cobranzaConfig', 'payments']),
   operation: z.enum(['create', 'update', 'delete']),
   payload: z.any(),
   updatedAt: z.string(),

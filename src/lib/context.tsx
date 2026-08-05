@@ -18,8 +18,8 @@ import type { SyncQueueItem, SyncEntityType } from '@/domain/types';
 import { MAX_SYNC_QUEUE_SIZE, MAX_SYNC_RETRIES, SYNC_DEBOUNCE_MS, SYNC_POLL_INTERVAL_MS } from '@/domain/types';
 import { showSaveSuccess, showSaveError, showOffline } from '@/components/ui/toast';
 // Import shared domain types — single source of truth
-export type { Gestion, CobranzaConfig } from '@/domain/types';
-import type { Gestion, CobranzaConfig } from '@/domain/types';
+export type { Gestion, CobranzaConfig, Payment } from '@/domain/types';
+import type { Gestion, CobranzaConfig, Payment } from '@/domain/types';
 
 // Extend Client interface locally
 export interface LocalClient extends Client {
@@ -105,6 +105,8 @@ interface ManagementContextType {
     setGestiones: React.Dispatch<React.SetStateAction<Gestion[]>>;
     cobranzaConfig: CobranzaConfig;
     setCobranzaConfig: React.Dispatch<React.SetStateAction<CobranzaConfig>>;
+    payments: Payment[];
+    setPayments: React.Dispatch<React.SetStateAction<Payment[]>>;
 
     // Cloud Database Sync Additions
     isSyncing: boolean;
@@ -128,6 +130,7 @@ interface ManagementContextType {
     // Cobranza actions — backed by Turso
     addGestionAction: (gestion: Gestion, operation?: 'create' | 'update' | 'delete') => void;
     updateCobranzaConfigAction: (config: CobranzaConfig) => void;
+    addPaymentAction: (payment: Payment, operation?: 'create' | 'update' | 'delete') => void;
 }
 
 const trackDeletions = (newState: any) => {
@@ -220,7 +223,7 @@ const autoTimestampState = (newState: any) => {
 
 const mergeData = (local: any, server: any, lastSyncTime: Date | null, isIncremental: boolean = false, tombstonesByTable: Record<string, string[]> = {}) => {
     const merged = { ...local };
-    const tables = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets', 'gestiones'];
+    const tables = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets', 'gestiones', 'payments'];
     const lastSync = lastSyncTime ? lastSyncTime.getTime() : 0;
 
     let deletedIds: string[] = [];
@@ -318,6 +321,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // Cobranza states
     const [gestiones, setGestiones] = useState<Gestion[]>([]);
     const [cobranzaConfig, setCobranzaConfig] = useState<CobranzaConfig>(defaultCobranzaConfig);
+    const [payments, setPayments] = useState<Payment[]>([]);
 
     // Sync States
     const [isSyncing, setIsSyncing] = useState(false);
@@ -343,6 +347,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         rentals: [] as Rental[],
         budgets: [] as Budget[],
         gestiones: [] as Gestion[],
+        payments: [] as Payment[],
         currentUser: null as User | null,
         lastSyncTime: null as Date | null,
     });
@@ -350,7 +355,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // Keep stateRef current
     useEffect(() => {
         stateRef.current = {
-            clients, machines, readings, tickets, abonos, users, rentals, budgets, gestiones,
+            clients, machines, readings, tickets, abonos, users, rentals, budgets, gestiones, payments,
             currentUser, lastSyncTime,
         };
     });
@@ -413,8 +418,9 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             rentals: 5,
             tickets: 6,
             budgets: 7,
-            gestiones: 8,      // must be after clients (FK on client_id)
-            cobranzaConfig: 9, // standalone singleton
+            payments: 8,        // must be after clients and readings (FK on both)
+            gestiones: 9,       // must be after clients (FK on client_id)
+            cobranzaConfig: 10, // standalone singleton
         };
 
         const getOrder = (item: SyncQueueItem) => {
@@ -639,7 +645,8 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         users: stateRef.current.users || [],
                         rentals: stateRef.current.rentals || [],
                         budgets: stateRef.current.budgets || [],
-                        gestiones: stateRef.current.gestiones || []
+                        gestiones: stateRef.current.gestiones || [],
+                        payments: stateRef.current.payments || []
                     };
                     if (!isInitialLoadDoneRef.current && typeof window !== 'undefined') {
                         try {
@@ -655,7 +662,8 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                                     users: parsedLocal.users || [],
                                     rentals: parsedLocal.rentals || [],
                                     budgets: parsedLocal.budgets || [],
-                                    gestiones: parsedLocal.gestiones || []
+                                    gestiones: parsedLocal.gestiones || [],
+                                    payments: parsedLocal.payments || []
                                 };
                             }
                         } catch (e) {
@@ -686,6 +694,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     if (merged.rentals) setRentals(merged.rentals);
                     setBudgets(merged.budgets || []);
                     setGestiones(merged.gestiones || []);
+                    setPayments(merged.payments || []);
 
                     const loadedTemplates = parsed.templates || [];
                     const defaultIds = defaultBudgetTemplates.map(t => t.id);
@@ -714,6 +723,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         templates: parsed.templates || templates || [],
                         machinePresets: parsed.machinePresets || machinePresets || [],
                         gestiones: merged.gestiones || [],
+                        payments: merged.payments || [],
                         cobranzaConfig: parsed.cobranzaConfig || cobranzaConfig || defaultCobranzaConfig
                     };
                     try {
@@ -1007,7 +1017,8 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
                 setMachinePresets(parsed.machinePresets && parsed.machinePresets.length > 0 ? parsed.machinePresets : defaultMachinePresets);
                 setGestiones(parsed.gestiones || defaultGestiones);
-                
+                setPayments(parsed.payments || []);
+
                 if (parsed.cobranzaConfig) {
                     setCobranzaConfig({
                         ...defaultCobranzaConfig,
@@ -1033,6 +1044,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             setTemplates(defaultBudgetTemplates);
             setMachinePresets(defaultMachinePresets);
             setGestiones([]);
+            setPayments([]);
             setCobranzaConfig(defaultCobranzaConfig);
         }
 
@@ -1118,6 +1130,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             templates,
             machinePresets,
             gestiones,
+            payments,
             cobranzaConfig
         };
         try {
@@ -1125,7 +1138,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         } catch (e) {
             console.error("Error saving state to localStorage:", e);
         }
-    }, [templates, machinePresets, gestiones, cobranzaConfig]);
+    }, [templates, machinePresets, gestiones, payments, cobranzaConfig]);
 
     // Generic enqueue helper
     const enqueueSyncItem = useCallback((entityId: string, entityType: SyncEntityType, operation: 'create' | 'update' | 'delete', payload: any) => {
@@ -1412,6 +1425,31 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         enqueueSyncItem(gestion.id, 'gestiones', operation, operation === 'delete' ? gestion : gestionWithTime);
     }, [gestiones, enqueueSyncItem]);
 
+    // Payments action: registers a cobro (payment/receipt) — backed by Turso
+    const addPaymentAction = useCallback((payment: Payment, operation: 'create' | 'update' | 'delete' = 'create') => {
+        const nowStr = new Date().toISOString();
+        const paymentWithTime = { ...payment, updatedAt: nowStr, createdAt: payment.createdAt || nowStr };
+
+        let updatedPayments = payments;
+        if (operation === 'delete') {
+            updatedPayments = payments.filter(p => p.id !== payment.id);
+        } else if (operation === 'create') {
+            updatedPayments = [paymentWithTime, ...payments];
+        } else {
+            updatedPayments = payments.map(p => p.id === payment.id ? paymentWithTime : p);
+        }
+        setPayments(updatedPayments);
+
+        // Persist payments to localStorage inside ms_data
+        try {
+            const raw = localStorage.getItem('ms_data');
+            const current = raw ? JSON.parse(raw) : {};
+            localStorage.setItem('ms_data', JSON.stringify({ ...current, payments: updatedPayments }));
+        } catch (e) {}
+
+        enqueueSyncItem(payment.id, 'payments', operation, operation === 'delete' ? payment : paymentWithTime);
+    }, [payments, enqueueSyncItem]);
+
     // CobranzaConfig action: saves configuration singleton to Turso
     const updateCobranzaConfigAction = useCallback((config: CobranzaConfig) => {
         const nowStr = new Date().toISOString();
@@ -1457,6 +1495,8 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 setMachinePresets,
                 gestiones,
                 setGestiones,
+                payments,
+                setPayments,
                 cobranzaConfig,
                 setCobranzaConfig,
                 isSyncing,
@@ -1476,6 +1516,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 updateUserAction,
                 addGestionAction,
                 updateCobranzaConfigAction,
+                addPaymentAction,
                 resetSyncAction
             }}
         >
