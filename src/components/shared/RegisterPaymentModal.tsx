@@ -108,7 +108,7 @@ export const RegisterPaymentModal: React.FC<RegisterPaymentModalProps> = ({ isOp
     // Same Regularización-vs-Pago-registrado branching handleCollectInvoice already
     // used — based on the CLIENT'S overall account balance after this payment, not
     // just whether this one reading/ajuste was fully settled.
-    const nextSummary = getClientFinancialSummaryHelper(clientForSummary, updatedReadingsForSummary, machines);
+    const nextSummary = getClientFinancialSummaryHelper(clientForSummary, updatedReadingsForSummary, machines, payments);
     const fullyRegularized = nextSummary.saldo <= 0.01;
     const collectorName = currentUser?.fullname || currentUser?.username || 'Administrador';
     const concept = reading ? `período ${reading.month}` : 'ajuste de saldo';

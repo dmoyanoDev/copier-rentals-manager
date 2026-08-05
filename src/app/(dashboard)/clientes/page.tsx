@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useManagement } from '@/lib/context';
 import { Card, CardContent } from '@/components/ui/card';
 import { TableContainer, Table, TableHeader, TableRow, TableHeaderCell, TableBody, TableCell } from '@/components/ui/table';
@@ -49,7 +49,7 @@ const LocalBadge = ({ variant, children, className = '' }: { variant: 'success' 
 export default function ClientsPage() {
     const {
         clients, machines, readings, abonos, rentals, tickets,
-        gestiones, cobranzaConfig, setCobranzaConfig, currentUser,
+        gestiones, cobranzaConfig, setCobranzaConfig, currentUser, payments,
         updateClientAction, addReadingAction, addGestionAction, updateCobranzaConfigAction
     } = useManagement();
     
@@ -140,12 +140,27 @@ export default function ClientsPage() {
     // ==========================================
     // ACCOUNTING HELPERS USING CENTRALISED UTILS
     // ==========================================
+    // getClientFinancialSummaryHelper does an O(readings) scan per client. Several places
+    // below call it once per client in the *entire* client list (the debt filter, the
+    // Cuentas Corrientes tab, the Listado table's debt column) — without memoizing, that's
+    // an O(clients × readings) recompute on every render, including renders triggered by
+    // things with nothing to do with this data (typing in an unrelated search box, the
+    // ~1.5s background sync poll). Computing it once per client here and reusing the same
+    // object for the rest of the render is a much cheaper way to get the same numbers.
+    const financialSummaryByClientId = useMemo(() => {
+        const map = new Map<string, ReturnType<typeof getClientFinancialSummaryHelper>>();
+        for (const c of clients) {
+            map.set(c.id, getClientFinancialSummaryHelper(c, readings, machines, payments));
+        }
+        return map;
+    }, [clients, readings, machines, payments]);
+
     const getClientFinancialSummary = (client: LocalClient) => {
-        return getClientFinancialSummaryHelper(client, readings, machines);
+        return financialSummaryByClientId.get(client.id) ?? getClientFinancialSummaryHelper(client, readings, machines, payments);
     };
 
     const getClientMovements = (client: LocalClient) => {
-        return getClientMovementsHelper(client, readings, machines);
+        return getClientMovementsHelper(client, readings, machines, payments);
     };
 
     // Traditional filter handler
@@ -2265,13 +2280,14 @@ export default function ClientsPage() {
                                                     <th className="px-4 py-2.5">Concepto Liquidado</th>
                                                     <th className="px-4 py-2.5 text-right">Importe Cobrado</th>
                                                     <th className="px-4 py-2.5">Medio de Pago</th>
+                                                    <th className="px-4 py-2.5">Cobrado Por</th>
                                                     <th className="px-4 py-2.5">Estado</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-855 bg-slate-950/20">
                                                 {paymentHistory.length === 0 ? (
                                                     <tr>
-                                                        <td colSpan={6} className="text-center py-6 text-slate-500 italic">
+                                                        <td colSpan={7} className="text-center py-6 text-slate-500 italic">
                                                             No se registran ingresos o recibos cobrados para este cliente.
                                                         </td>
                                                     </tr>
@@ -2282,7 +2298,8 @@ export default function ClientsPage() {
                                                             <td className="px-4 py-2.5 font-mono-tabular text-emerald-400 font-bold">{p.number}</td>
                                                             <td className="px-4 py-2.5 text-slate-300">{p.concept}</td>
                                                             <td className="px-4 py-2.5 text-right font-mono-tabular font-bold text-emerald-450">{formatCurrency(p.original)}</td>
-                                                            <td className="px-4 py-2.5 text-slate-400">{p.notes || 'Transferencia Bancaria'}</td>
+                                                            <td className="px-4 py-2.5 text-slate-400">{p.method || 'Histórico (sin detalle)'}</td>
+                                                            <td className="px-4 py-2.5 text-slate-400">{p.receivedBy || '—'}</td>
                                                             <td className="px-4 py-2.5">
                                                                 <LocalBadge variant="success">Acreditado</LocalBadge>
                                                             </td>

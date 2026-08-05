@@ -1,5 +1,5 @@
 import { Client, Ticket, Reading, Machine } from './mockData';
-import type { Gestion } from '@/domain/types';
+import type { Gestion, Payment } from '@/domain/types';
 
 // Helper to merge tailwind class names
 export function cn(...inputs: (string | undefined | null | boolean | { [key: string]: boolean })[]) {
@@ -124,28 +124,32 @@ export function getDaysOverdue(dueDateStr: string): number {
     return Math.floor(diffTime / (1000 * 60 * 60 * 24));
 }
 
-export function getClientMovementsHelper(client: Client, readings: Reading[], machines: Machine[]) {
+export interface ClientMovement {
+    id: string;
+    date: string;
+    type: string;
+    number: string;
+    period: string;
+    concept: string;
+    original: number;
+    paid: number;
+    pending: number;
+    dueDate: string;
+    status: string;
+    daysOverdue: number;
+    notes: string;
+    method?: string;
+    receivedBy?: string;
+}
+
+export function getClientMovementsHelper(client: Client, readings: Reading[], machines: Machine[], payments: Payment[] = []): ClientMovement[] {
     const clientReadings = readings.filter(r => {
         if (r.clientId) return r.clientId === client.id;
         const mach = machines.find(m => m.id === r.machineId);
         return mach && mach.clientId === client.id;
     });
 
-    const movements: {
-        id: string;
-        date: string;
-        type: string;
-        number: string;
-        period: string;
-        concept: string;
-        original: number;
-        paid: number;
-        pending: number;
-        dueDate: string;
-        status: string;
-        daysOverdue: number;
-        notes: string;
-    }[] = [];
+    const movements: ClientMovement[] = [];
 
     // Map readings as Facturas & Recibos.
     // IMPORTANT: `collectionStatus` (persisted in Turso) is the source of truth for whether
@@ -184,7 +188,36 @@ export function getClientMovementsHelper(client: Client, readings: Reading[], ma
             notes: (r.readingComment as string) || 'Facturación automatizada'
         });
 
-        if (paidForDisplay > 0) {
+        // Real payment transactions against this reading — one movement row per actual
+        // payment record (with its own real date/method/receipt number/collector) instead
+        // of a single synthesized aggregate, so installments each keep their own history.
+        const readingPayments = payments.filter(p => p.readingId === r.id);
+        readingPayments.forEach(p => {
+            movements.push({
+                id: `pay-${p.id}`,
+                date: p.date,
+                type: 'Recibo',
+                number: p.receiptNumber,
+                period: r.month as string,
+                concept: `Cobro de facturación período ${r.month}`,
+                original: p.amount,
+                paid: p.amount,
+                pending: 0,
+                dueDate: '',
+                status: 'Pagado',
+                daysOverdue: 0,
+                notes: p.notes || '',
+                method: p.method,
+                receivedBy: p.receivedByName
+            });
+        });
+
+        // Fallback for paid amounts predating this ledger (or otherwise not backed by a
+        // payments row) — keeps historical receipts visible on the statement instead of
+        // silently dropping them once real payment records take over going forward.
+        const coveredByLedger = readingPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+        const uncoveredAmount = paidForDisplay - coveredByLedger;
+        if (uncoveredAmount > 0.01) {
             movements.push({
                 id: `rec-${r.id}`,
                 date: r.paymentDate ? (r.paymentDate as string) : `${r.month}-10`,
@@ -192,13 +225,13 @@ export function getClientMovementsHelper(client: Client, readings: Reading[], ma
                 number: `RC-${(r.id as string).replace('r-', '00005')}`,
                 period: r.month as string,
                 concept: `Cobro de facturación período ${r.month}`,
-                original: totalAmt,
-                paid: paidForDisplay,
+                original: uncoveredAmount,
+                paid: uncoveredAmount,
                 pending: 0,
                 dueDate: '',
                 status: isFullyPaid ? 'Pagado' : 'Parcial',
                 daysOverdue: 0,
-                notes: 'Recibido por transferencia bancaria'
+                notes: 'Cobro histórico (previo al registro detallado de pagos)'
             });
         }
     });
@@ -209,6 +242,31 @@ export function getClientMovementsHelper(client: Client, readings: Reading[], ma
     // NO está explicado por las facturas de lecturas (ajustes manuales reales).
     const pendingFromReadings = movements.reduce((acc, m) => m.type === 'Factura' ? acc + m.pending : acc, 0);
     const manualAdjustment = Math.max(0, (client.debt || 0) - pendingFromReadings);
+
+    // Real payments made directly against the manual balance (no reading attached) — these
+    // used to be completely invisible on the statement, since only readings ever got a
+    // synthesized receipt.
+    const adjustmentPayments = payments.filter(p => p.clientId === client.id && !p.readingId);
+    adjustmentPayments.forEach(p => {
+        movements.push({
+            id: `pay-${p.id}`,
+            date: p.date,
+            type: 'Recibo',
+            number: p.receiptNumber,
+            period: 'Ajuste de saldo',
+            concept: 'Cobro de ajuste manual de saldo',
+            original: p.amount,
+            paid: p.amount,
+            pending: 0,
+            dueDate: '',
+            status: 'Pagado',
+            daysOverdue: 0,
+            notes: p.notes || '',
+            method: p.method,
+            receivedBy: p.receivedByName
+        });
+    });
+
     if (manualAdjustment > 0) {
         // Usa la fecha de alta del cliente como referencia de mora en vez de una fecha fija
         // global (que hacía crecer la mora de TODOS los clientes al mismo ritmo para siempre).
@@ -234,8 +292,8 @@ export function getClientMovementsHelper(client: Client, readings: Reading[], ma
     return movements;
 }
 
-export function getClientFinancialSummaryHelper(client: Client, readings: Reading[], machines: Machine[]) {
-    const movements = getClientMovementsHelper(client, readings, machines);
+export function getClientFinancialSummaryHelper(client: Client, readings: Reading[], machines: Machine[], payments: Payment[] = []) {
+    const movements = getClientMovementsHelper(client, readings, machines, payments);
     
     const saldo = movements.reduce((acc, m) => {
         if (m.type === 'Factura' || m.type === 'Ajuste') return acc + m.pending;
@@ -263,25 +321,30 @@ export function getClientFinancialSummaryHelper(client: Client, readings: Readin
     const maxMora = pendingDocs.length > 0 ? Math.max(...pendingDocs.map(d => d.daysOverdue || 0)) : 0;
     const avgMora = pendingDocs.length > 0 ? Math.round(pendingDocs.reduce((acc, d) => acc + d.daysOverdue, 0) / pendingDocs.length) : 0;
 
-    // Calculate historical average days to pay (emission to payment)
-    const paidInvoices = movements.filter(m => m.type === 'Factura' && m.status === 'Pagado');
-    let totalPaidDays = 0;
-    paidInvoices.forEach(inv => {
-        const receipt = movements.find(r => r.type === 'Recibo' && r.number === inv.number.replace('FC-', 'RC-'));
-        if (receipt) {
-            const d1 = new Date(inv.date + 'T00:00:00');
-            const d2 = new Date(receipt.date + 'T00:00:00');
-            const diff = d2.getTime() - d1.getTime();
-            if (diff > 0) {
-                totalPaidDays += Math.floor(diff / (1000 * 60 * 60 * 24));
-            } else {
-                totalPaidDays += 9;
-            }
-        } else {
-            totalPaidDays += 9;
-        }
+    // Historical average days from invoice emission to full payment. Computed directly from
+    // readings' own paymentDate (stamped whenever a reading reaches 'Pagado') rather than by
+    // matching synthesized Factura/Recibo movement numbers — that matching broke once a single
+    // invoice could have several real receipts (partial installments) with their own receipt
+    // numbers instead of one predictable derived RC-... string. Readings with no usable date
+    // are simply excluded from the average instead of being penalized with an arbitrary
+    // fallback constant.
+    const clientReadingsForAvg = readings.filter(r => {
+        if (r.clientId) return r.clientId === client.id;
+        const mach = machines.find(m => m.id === r.machineId);
+        return mach && mach.clientId === client.id;
     });
-    const avgPayDays = paidInvoices.length > 0 ? Math.round(totalPaidDays / paidInvoices.length) : 0;
+    let totalPaidDays = 0;
+    let countedPayDays = 0;
+    clientReadingsForAvg.forEach(r => {
+        if (r.collectionStatus !== 'Pagado' || !r.paymentDate) return;
+        const invoiceDate = new Date(`${r.month}-01T00:00:00`);
+        const paymentDate = new Date(`${r.paymentDate}T00:00:00`);
+        const diff = paymentDate.getTime() - invoiceDate.getTime();
+        if (isNaN(diff) || diff < 0) return;
+        totalPaidDays += Math.floor(diff / (1000 * 60 * 60 * 24));
+        countedPayDays++;
+    });
+    const avgPayDays = countedPayDays > 0 ? Math.round(totalPaidDays / countedPayDays) : 0;
 
     // Score de cobrabilidad (0 to 100)
     let score = 100;
