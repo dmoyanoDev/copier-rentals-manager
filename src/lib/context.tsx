@@ -221,7 +221,7 @@ const autoTimestampState = (newState: any) => {
     }
 };
 
-const mergeData = (local: any, server: any, lastSyncTime: Date | null, isIncremental: boolean = false, tombstonesByTable: Record<string, string[]> = {}) => {
+const mergeData = (local: any, server: any, lastSyncTime: Date | null, isIncremental: boolean = false, tombstonesByTable: Record<string, string[]> = {}, discardLocalOnly: boolean = false) => {
     const merged = { ...local };
     const tables = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets', 'gestiones', 'payments'];
     const lastSync = lastSyncTime ? lastSyncTime.getTime() : 0;
@@ -259,7 +259,14 @@ const mergeData = (local: any, server: any, lastSyncTime: Date | null, isIncreme
                     continue;
                 }
                 // Only exists locally.
-                if (isIncremental) {
+                if (discardLocalOnly) {
+                    // Explicit "Restablecer": the user asked to discard unsynced local
+                    // changes and trust the cloud as-is. Without this, a row deleted
+                    // server-side through a path that skipped the tombstone table (e.g.
+                    // a manual DB fix) would look identical to a genuine unsynced local
+                    // edit and survive every future reset forever.
+                    continue;
+                } else if (isIncremental) {
                     // Incremental sync: keep local item — server didn't return it so it hasn't changed remotely
                     mergedList.push(localItem);
                 } else {
@@ -270,6 +277,11 @@ const mergeData = (local: any, server: any, lastSyncTime: Date | null, isIncreme
                         mergedList.push(localItem);
                     }
                 }
+            } else if (discardLocalOnly) {
+                // Exists in both, but this is an explicit reset — trust the cloud
+                // version outright instead of Last-Write-Wins, matching the "discard
+                // local changes" promise the user already confirmed.
+                mergedList.push(serverItem);
             } else {
                 // Exists in both. Use Last-Write-Wins based on timestamps.
                 const localTime = localItem.updatedAt || localItem.createdAt
@@ -540,7 +552,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }, []);
 
     // Fetch snapshot from backend database — uses stateRef to avoid stale closures
-    const syncFromDatabase = useCallback(async (forceUser?: User | null, forceRetry: boolean = false) => {
+    const syncFromDatabase = useCallback(async (forceUser?: User | null, forceRetry: boolean = false, discardLocalOnly: boolean = false) => {
         const activeUser = forceUser !== undefined ? forceUser : stateRef.current.currentUser;
         if (!activeUser) {
             return;
@@ -586,8 +598,13 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         isSyncingRef.current = true;
         setIsSyncing(true);
         try {
-            let storedLastSync = stateRef.current.lastSyncTime;
-            if (!storedLastSync && typeof window !== 'undefined') {
+            // discardLocalOnly (an explicit "Restablecer") must always fetch the FULL
+            // backup, never an incremental one — stateRef can still hold the previous
+            // (stale) lastSyncTime for one tick after resetSyncAction's setLastSyncTime(null)
+            // since it only updates via a useEffect, and an incremental fetch here would
+            // return a partial dataset that then looks like everything else was deleted.
+            let storedLastSync = discardLocalOnly ? null : stateRef.current.lastSyncTime;
+            if (!storedLastSync && !discardLocalOnly && typeof window !== 'undefined') {
                 try {
                     const raw = localStorage.getItem('ms_last_sync_time');
                     if (raw) storedLastSync = new Date(raw);
@@ -628,9 +645,10 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 setSyncError(null);
                 
                 // Only overwrite if remote database contains actual data or it is an incremental sync
-                const hasServerData = 
+                const hasServerData =
                     isIncremental ||
-                    (parsed.clients && parsed.clients.length > 0) || 
+                    discardLocalOnly ||
+                    (parsed.clients && parsed.clients.length > 0) ||
                     (parsed.budgets && parsed.budgets.length > 0) ||
                     (parsed.machines && parsed.machines.length > 0);
                     
@@ -679,7 +697,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         (tombstonesByTable[key] ||= []).push(t.entityId);
                     }
 
-                    const merged = mergeData(currentLocalState, parsed, stateRef.current.lastSyncTime, isIncremental, tombstonesByTable);
+                    const merged = mergeData(currentLocalState, parsed, stateRef.current.lastSyncTime, isIncremental, tombstonesByTable, discardLocalOnly);
 
                     setClients(merged.clients || []);
                     // Normalize DB field name 'machineCounter' → frontend field 'currentCounter'
@@ -887,8 +905,8 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             setSyncQueue([]);
             setLastSyncTime(null);
             setSyncError(null);
-            
-            await syncFromDatabase(stateRef.current.currentUser);
+
+            await syncFromDatabase(stateRef.current.currentUser, false, true);
             showSaveSuccess();
         } catch (e) {
             console.error("Error resetting sync:", e);

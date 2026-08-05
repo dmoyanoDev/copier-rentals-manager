@@ -1,34 +1,112 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useManagement } from '@/lib/context';
 import { Cloud, CloudOff, RefreshCw, RotateCcw } from 'lucide-react';
+import { Modal } from '@/components/ui/modal';
+import { Button } from '@/components/ui/button';
+import type { SyncQueueItem, SyncEntityType, SyncOperation } from '@/domain/types';
+
+const ENTITY_LABELS: Record<SyncEntityType, string> = {
+    clients: 'Cliente',
+    machines: 'Máquina',
+    readings: 'Lectura',
+    tickets: 'Ticket',
+    abonos: 'Plan/Abono',
+    users: 'Usuario',
+    rentals: 'Alquiler',
+    budgets: 'Presupuesto',
+    gestiones: 'Gestión de Cobranza',
+    payments: 'Pago',
+    cobranzaConfig: 'Config. de Cobranza',
+};
+
+const OPERATION_LABELS: Record<SyncOperation, string> = {
+    create: 'Crear',
+    update: 'Editar',
+    delete: 'Eliminar',
+};
+
+// Best-effort human label from whatever the payload happens to carry —
+// queue items span 11 different entity shapes, so this is deliberately
+// forgiving rather than exhaustive per-entity.
+const describeItem = (item: SyncQueueItem): string => {
+    const p: any = item.payload || {};
+    if (p.name) return p.name;
+    if (p.clientNameSnapshot) return p.clientNameSnapshot;
+    if (p.clientName) return p.clientName;
+    if (p.fullname) return p.fullname;
+    if (p.username) return p.username;
+    if (p.brand || p.model) return `${p.brand || ''} ${p.model || ''}${p.serial ? ` (S/N: ${p.serial})` : ''}`.trim();
+    if (p.receiptNumber) return p.receiptNumber;
+    if (p.numero) return p.numero;
+    if (p.month) return `Período ${p.month}`;
+    return item.entityId;
+};
+
+const PendingItemsList: React.FC<{ items: SyncQueueItem[] }> = ({ items }) => (
+    <div className="space-y-2">
+        {items.map((item) => (
+            <div key={item.id} className="flex items-center justify-between gap-3 p-2.5 bg-slate-950/50 border border-slate-800 rounded-lg text-xs">
+                <div className="min-w-0">
+                    <div className="font-semibold text-slate-200 truncate">
+                        {ENTITY_LABELS[item.entityType] || item.entityType} · {OPERATION_LABELS[item.operation] || item.operation}
+                    </div>
+                    <div className="text-slate-450 truncate">{describeItem(item)}</div>
+                </div>
+                {item.status === 'failed' ? (
+                    <span className="shrink-0 px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/10 text-red-400 border border-red-500/20">
+                        Error ({item.retryCount} intento{item.retryCount === 1 ? '' : 's'})
+                    </span>
+                ) : (
+                    <span className="shrink-0 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                        Pendiente
+                    </span>
+                )}
+            </div>
+        ))}
+    </div>
+);
 
 const PageHeaderActions: React.FC = () => {
     const { currentMonth, setCurrentMonth, isSyncing, syncError, lastSyncTime, syncFromDatabase, syncQueue, resetSyncAction } = useManagement();
+    const [showPendingModal, setShowPendingModal] = useState(false);
+    const [showResetModal, setShowResetModal] = useState(false);
+    const [isResetting, setIsResetting] = useState(false);
 
-    const pendingCount = syncQueue?.filter((i: any) => i.status === 'pending' || i.status === 'failed').length || 0;
+    const pendingItems = (syncQueue?.filter((i: any) => i.status === 'pending' || i.status === 'failed') || []) as SyncQueueItem[];
+    const pendingCount = pendingItems.length;
     const syncingCount = syncQueue?.filter((i: any) => i.status === 'syncing').length || 0;
+
+    const handleConfirmReset = async () => {
+        setIsResetting(true);
+        try {
+            await resetSyncAction();
+        } finally {
+            setIsResetting(false);
+            setShowResetModal(false);
+        }
+    };
 
     return (
         <div className="flex items-center gap-3">
             {/* Cloud Database Sync Status Indicator */}
             <button
-                onClick={() => syncFromDatabase(null, true)}
+                onClick={() => pendingCount > 0 ? setShowPendingModal(true) : syncFromDatabase(null, true)}
                 disabled={isSyncing || syncingCount > 0}
                 title={
                     isSyncing || syncingCount > 0
-                        ? `Sincronizando base de datos Turso... (${syncingCount} cambios en proceso)` 
+                        ? `Sincronizando base de datos Turso... (${syncingCount} cambios en proceso)`
                         : pendingCount > 0
-                        ? `Tienes ${pendingCount} cambio(s) guardado(s) localmente pendientes de sincronizar con el servidor.`
+                        ? `Tienes ${pendingCount} cambio(s) guardado(s) localmente pendientes de sincronizar. Click para ver cuáles.`
                         : syncError === 'UNAUTHORIZED'
                         ? 'Tu sesión ha expirado por seguridad. Por favor, vuelve a iniciar sesión.'
                         : syncError === 'DB_ERROR'
                         ? 'No se pudo conectar al servidor de base de datos Turso en la nube.'
                         : syncError === 'OFFLINE'
                         ? `Sin conexión a Internet. Trabajando offline.${lastSyncTime ? ` Última sincronización: ${lastSyncTime.toLocaleTimeString('es-AR')}` : ''}`
-                        : lastSyncTime 
-                        ? `Última sincronización: ${lastSyncTime.toLocaleDateString('es-AR')} ${lastSyncTime.toLocaleTimeString('es-AR')}` 
+                        : lastSyncTime
+                        ? `Última sincronización: ${lastSyncTime.toLocaleDateString('es-AR')} ${lastSyncTime.toLocaleTimeString('es-AR')}`
                         : 'Sincronizar ahora con la nube'
                 }
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-850 bg-slate-900/10 hover:bg-slate-900/20 dark:bg-slate-950 dark:hover:bg-slate-900/60 transition-all text-[11px] font-semibold text-slate-400 select-none cursor-pointer"
@@ -74,13 +152,9 @@ const PageHeaderActions: React.FC = () => {
             {/* Manual Sync Queue Reset Option */}
             {pendingCount > 0 && (
                 <button
-                    onClick={async () => {
-                        if (window.confirm("¿Deseas restablecer la base de datos local y descargar la información limpia de la nube? Se descartarán los cambios locales no sincronizados de este dispositivo.")) {
-                            await resetSyncAction();
-                        }
-                    }}
+                    onClick={() => setShowResetModal(true)}
                     disabled={isSyncing}
-                    title="Descartar cambios locales pendientes y descargar datos frescos de la nube"
+                    title="Ver qué se va a descartar y restablecer la base de datos local"
                     className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-red-200 dark:border-red-900/40 bg-red-500/10 hover:bg-red-500/25 transition-all text-[11px] font-semibold text-red-400 select-none cursor-pointer"
                 >
                     <RotateCcw size={12} />
@@ -98,6 +172,67 @@ const PageHeaderActions: React.FC = () => {
                     style={{ colorScheme: 'dark' }}
                 />
             </div>
+
+            {/* What's pending — informational only */}
+            <Modal
+                isOpen={showPendingModal}
+                onClose={() => setShowPendingModal(false)}
+                title={`Cambios Pendientes de Sincronizar (${pendingCount})`}
+                footer={
+                    <>
+                        <Button variant="ghost" size="sm" onClick={() => setShowPendingModal(false)}>Cerrar</Button>
+                        <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => { syncFromDatabase(null, true); setShowPendingModal(false); }}
+                        >
+                            Reintentar Ahora
+                        </Button>
+                    </>
+                }
+            >
+                <div className="space-y-3">
+                    <p className="text-xs text-slate-400">
+                        Estos cambios se guardaron en este dispositivo pero todavía no llegaron a la nube.
+                        Si hay conexión, se reintentan solos automáticamente cada pocos segundos.
+                    </p>
+                    {pendingCount === 0 ? (
+                        <p className="text-xs text-slate-500 italic">No hay cambios pendientes.</p>
+                    ) : (
+                        <PendingItemsList items={pendingItems} />
+                    )}
+                </div>
+            </Modal>
+
+            {/* Restablecer — explain before doing anything destructive */}
+            <Modal
+                isOpen={showResetModal}
+                onClose={() => !isResetting && setShowResetModal(false)}
+                title="Restablecer Base de Datos Local"
+                footer={
+                    <>
+                        <Button variant="ghost" size="sm" onClick={() => setShowResetModal(false)} disabled={isResetting}>Cancelar</Button>
+                        <Button variant="danger" size="sm" onClick={handleConfirmReset} disabled={isResetting}>
+                            {isResetting ? 'Restableciendo...' : 'Sí, Restablecer'}
+                        </Button>
+                    </>
+                }
+            >
+                <div className="space-y-3">
+                    <p className="text-xs text-slate-300">Esta acción va a hacer dos cosas, en este orden:</p>
+                    <ol className="text-xs text-slate-300 space-y-1.5 list-decimal list-inside">
+                        <li><span className="font-semibold text-red-400">Descartar</span> los {pendingCount} cambio(s) locales de abajo — no se van a volver a intentar guardar.</li>
+                        <li><span className="font-semibold text-emerald-400">Descargar</span> una copia fresca y completa de todos los datos desde la nube, reemplazando lo que este dispositivo tenía guardado localmente.</li>
+                    </ol>
+                    <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5">
+                        Usá esto solo si sabés que estos cambios ya no son necesarios (por ejemplo, se cargaron con datos de prueba, o la información ya se guardó desde otro dispositivo). Esta acción no se puede deshacer.
+                    </p>
+                    <div>
+                        <p className="text-[10px] uppercase font-bold text-slate-500 mb-1.5">Se va a descartar:</p>
+                        <PendingItemsList items={pendingItems} />
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 };
