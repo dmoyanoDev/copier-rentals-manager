@@ -601,8 +601,18 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             if (response.ok) {
                 const parsed = await response.json();
                 
-                // Always mark sync as successful if API returns 200
-                const now = new Date();
+                // Always mark sync as successful if API returns 200.
+                // Use the SERVER's clock for the sync cursor, not the browser's: every row's
+                // updatedAt is stamped with server time (see sync/process/route.ts), so a
+                // cursor built from this device's own Date() silently drifts by however much
+                // its system clock is skewed. A client clock even slightly ahead of the server
+                // meant this device's *next* incremental pull would ask for
+                // `since=<a moment after the row's real server timestamp>` and permanently miss
+                // it — refreshing never helps, because the bad cursor is what's persisted and
+                // reused (ms_last_sync_time survives F5/Ctrl+F5, it's localStorage). Confirmed
+                // as the cause of a real report: a rental created on the phone never appeared
+                // on a notebook even after a hard refresh, despite being correctly saved.
+                const now = parsed.backupMeta?.exportDate ? new Date(parsed.backupMeta.exportDate) : new Date();
                 setLastSyncTime(now);
                 if (typeof window !== 'undefined') {
                     try {
