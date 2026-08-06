@@ -101,7 +101,6 @@ interface ManagementContextType {
     gestiones: Gestion[];
     setGestiones: React.Dispatch<React.SetStateAction<Gestion[]>>;
     cobranzaConfig: CobranzaConfig;
-    setCobranzaConfig: React.Dispatch<React.SetStateAction<CobranzaConfig>>;
     payments: Payment[];
     setPayments: React.Dispatch<React.SetStateAction<Payment[]>>;
 
@@ -1651,7 +1650,6 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 payments,
                 setPayments,
                 cobranzaConfig,
-                setCobranzaConfig,
                 isSyncing,
                 syncError,
                 lastSyncTime,

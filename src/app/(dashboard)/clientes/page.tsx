@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { Client, Reading } from '@/lib/mockData';
 import { LocalClient } from '@/lib/context';
+import type { CobranzaConfig } from '@/domain/types';
 import { BRANDING } from '@/config/branding';
 import { RegisterPaymentModal } from '@/components/shared/RegisterPaymentModal';
 
@@ -50,12 +51,20 @@ const LocalBadge = ({ variant, children, className = '' }: { variant: 'success' 
 export default function ClientsPage() {
     const {
         clients, machines, readings, abonos, rentals, tickets,
-        gestiones, cobranzaConfig, setCobranzaConfig, currentUser, payments,
+        gestiones, cobranzaConfig, currentUser, payments,
         updateClientAction, addReadingAction, addGestionAction, updateCobranzaConfigAction
     } = useManagement();
-    
+
     // Tabs setup
     const [activeTab, setActiveTab] = useState<'list' | 'accounts' | 'config'>('list');
+
+    // Local draft for the Configuración de Cobranza form — editing used to write straight
+    // into the live `cobranzaConfig` context state, which the ~1.5s background sync poll
+    // also unconditionally overwrites on every cycle (it's a singleton, no per-field merge).
+    // Typing into a template textarea for more than ~1.5s risked the poll silently reverting
+    // the in-progress edit back to whatever was last saved. Every other form on this page
+    // already uses local state until an explicit save; this one just didn't yet.
+    const [configDraft, setConfigDraft] = useState<CobranzaConfig>(cobranzaConfig);
 
     // Traditional list states
     const [searchQuery, setSearchQuery] = useState('');
@@ -99,6 +108,12 @@ export default function ClientsPage() {
     const [emailSubject, setEmailSubject] = useState('');
     const [emailBody, setEmailBody] = useState('');
     const [emailTemplateType, setEmailTemplateType] = useState<'preventivo' | 'vencido' | 'segundo' | 'pago'>('preventivo');
+    const [isSendingEmail, setIsSendingEmail] = useState(false);
+    const [emailSendError, setEmailSendError] = useState<string | null>(null);
+
+    // Bulk email sending progress (Cuentas Corrientes tab)
+    const [isBulkSending, setIsBulkSending] = useState(false);
+    const [bulkSendProgress, setBulkSendProgress] = useState<{ done: number; total: number } | null>(null);
     
     const [isWhatsappModalOpen, setIsWhatsappModalOpen] = useState(false);
     const [whatsappTarget, setWhatsappTarget] = useState<LocalClient | null>(null);
@@ -262,19 +277,64 @@ export default function ClientsPage() {
         setEmailSubject(`Estado de Cuenta – ${client.name} – ${new Date().toLocaleDateString('es-AR')}`);
         setEmailTemplateType('preventivo');
         setEmailBody(loadEmailTemplate(client, 'preventivo'));
+        setEmailSendError(null);
         setIsEmailModalOpen(true);
     };
 
-    const sendEmail = () => {
-        const mailto = `mailto:${emailTo}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
-        window.open(mailto, '_blank');
-        
-        if (emailTarget) {
-            registerCobranzaGestion(emailTarget.id, 'Email', 'Correo enviado', `Enviado recordatorio tipo: ${emailTemplateType.toUpperCase()}`);
+    // Renders the account statement to a real PDF (react-pdf, same engine as Presupuestos)
+    // and returns it as base64, ready to attach to an outgoing email. A mailto: link — what
+    // this used to be — can never carry an attachment in any browser, so the "adjunto
+    // generado automáticamente" promise in the email modal was never true until this existed.
+    const generateAccountPdfBase64 = async (client: LocalClient, version: 'comercial' | 'interna'): Promise<string> => {
+        const { pdf } = await import('@react-pdf/renderer');
+        const { AccountStatementPDF } = await import('@/pdf/AccountStatementPDF');
+        const docElement = React.createElement(AccountStatementPDF, {
+            client,
+            movements: getClientMovements(client),
+            summary: getClientFinancialSummary(client),
+            version
+        });
+        const pdfInstance = pdf(docElement as any);
+        const blob = await pdfInstance.toBlob();
+        const reader = new FileReader();
+        const base64Promise = new Promise<string>((resolve) => {
+            reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+        });
+        reader.readAsDataURL(blob);
+        return base64Promise;
+    };
+
+    const sendEmail = async () => {
+        if (!emailTarget) return;
+        setIsSendingEmail(true);
+        setEmailSendError(null);
+        try {
+            const pdfBase64 = await generateAccountPdfBase64(emailTarget, pdfVersion);
+            const res = await fetch('/api/send-account-email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    to: emailTo,
+                    clienteNombre: emailTarget.name,
+                    subject: emailSubject,
+                    textBody: emailBody,
+                    pdfBase64
+                })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Error al enviar el correo.');
+            }
+
+            registerCobranzaGestion(emailTarget.id, 'Email', 'Correo enviado', `Enviado recordatorio tipo: ${emailTemplateType.toUpperCase()}${data.simulated ? ' (simulado — sin YAHOO_APP_PASSWORD configurado)' : ''}`);
             playSystemSound('recordatorio', cobranzaConfig);
+            setIsEmailModalOpen(false);
+            alert(data.simulated ? '¡Correo SIMULADO enviado! Configura YAHOO_APP_PASSWORD para envíos reales.' : '¡Correo enviado con éxito, con el estado de cuenta adjunto en PDF!');
+        } catch (err: any) {
+            setEmailSendError(err.message || 'No se pudo enviar el correo.');
+        } finally {
+            setIsSendingEmail(false);
         }
-        
-        setIsEmailModalOpen(false);
     };
 
     const loadWhatsappTemplate = (client: LocalClient, type: 'preventivo' | 'vencido' | 'segundo' | 'pago') => {
@@ -381,10 +441,14 @@ export default function ClientsPage() {
     // Save customized configurations
     const handleSaveConfig = (e: React.FormEvent) => {
         e.preventDefault();
-        // Persist cobranzaConfig to Turso via sync queue
-        updateCobranzaConfigAction(cobranzaConfig);
+        // Persist the local draft to Turso via sync queue
+        updateCobranzaConfigAction(configDraft);
         alert('Configuraciones de automatización y sonidos guardadas con éxito.');
-        playSystemSound('recordatorio', cobranzaConfig);
+        playSystemSound('recordatorio', configDraft);
+    };
+
+    const handleCancelConfig = () => {
+        setConfigDraft(cobranzaConfig);
     };
 
     // Save internal comments
@@ -733,10 +797,10 @@ export default function ClientsPage() {
     };
 
     // ==========================================
-    // ACTIONS MOCK MASIVAS / SELECTION
+    // ACCIONES MASIVAS / SELECTION
     // ==========================================
     const toggleSelectBulk = (id: string) => {
-        setSelectedBulkIds(prev => 
+        setSelectedBulkIds(prev =>
             prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
         );
     };
@@ -749,10 +813,64 @@ export default function ClientsPage() {
         }
     };
 
-    const triggerBulkEmail = () => {
+    // Sends a real account-statement email (with PDF attached) to every selected client,
+    // one at a time — sequential, not Promise.all, to avoid hammering the SMTP relay with
+    // a burst of simultaneous connections. Each client gets whichever template already
+    // fits their own situation (vencido vs. preventivo), same choice a human would make
+    // opening the single-client modal for each of them. Used to just alert() a fake success
+    // count with no client actually contacted and nothing logged.
+    const triggerBulkEmail = async () => {
         if (selectedBulkIds.length === 0) return;
-        alert(`Recordatorio masivo enviado por correo a los ${selectedBulkIds.length} clientes seleccionados con éxito.`);
+
+        const targets = selectedBulkIds
+            .map(id => clients.find(c => c.id === id))
+            .filter((c): c is LocalClient => !!c);
+
+        const withoutEmail = targets.filter(c => !c.email);
+        const withEmail = targets.filter(c => !!c.email);
+
+        if (withEmail.length === 0) {
+            alert('Ninguno de los clientes seleccionados tiene un email registrado.');
+            return;
+        }
+
+        setIsBulkSending(true);
+        setBulkSendProgress({ done: 0, total: withEmail.length });
+
+        let sent = 0;
+        let failed = 0;
+        for (const client of withEmail) {
+            try {
+                const summary = getClientFinancialSummary(client);
+                const templateType = summary.vencido > 0 ? 'vencido' : 'preventivo';
+                const subject = `Estado de Cuenta – ${client.name} – ${new Date().toLocaleDateString('es-AR')}`;
+                const textBody = loadEmailTemplate(client, templateType);
+                const pdfBase64 = await generateAccountPdfBase64(client, 'comercial');
+
+                const res = await fetch('/api/send-account-email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ to: client.email, clienteNombre: client.name, subject, textBody, pdfBase64 })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success) throw new Error(data.error || 'fallo');
+
+                registerCobranzaGestion(client.id, 'Email', 'Correo enviado', `Recordatorio masivo (${templateType.toUpperCase()})${data.simulated ? ' — simulado' : ''}`);
+                sent++;
+            } catch (e) {
+                failed++;
+            } finally {
+                setBulkSendProgress(prev => prev ? { ...prev, done: prev.done + 1 } : null);
+            }
+        }
+
+        playSystemSound('recordatorio', cobranzaConfig);
+        setIsBulkSending(false);
+        setBulkSendProgress(null);
         setSelectedBulkIds([]);
+
+        const skippedMsg = withoutEmail.length > 0 ? `\n${withoutEmail.length} cliente(s) sin email registrado, omitido(s).` : '';
+        alert(`Envío masivo terminado: ${sent} correo(s) enviado(s)${failed > 0 ? `, ${failed} fallaron` : ''}.${skippedMsg}`);
     };
 
     const triggerBulkExcel = () => {
@@ -1056,7 +1174,7 @@ export default function ClientsPage() {
                     <Landmark size={13} /> Cuentas Corrientes
                 </button>
                 <button
-                    onClick={() => setActiveTab('config')}
+                    onClick={() => { setConfigDraft(cobranzaConfig); setActiveTab('config'); }}
                     className={`flex-1 md:flex-none text-center justify-center px-4 py-2.5 text-xs font-bold uppercase tracking-wider rounded-t-xl transition-all flex items-center gap-1.5 ${
                         activeTab === 'config' 
                             ? 'bg-slate-900 border-t-2 border-indigo-500 text-indigo-400 font-extrabold' 
@@ -1279,17 +1397,19 @@ export default function ClientsPage() {
                     {selectedBulkIds.length > 0 && (
                         <div className="bg-indigo-950/20 border border-indigo-900/50 p-4 rounded-xl flex flex-col md:flex-row gap-3 items-center justify-between animate-fade-in text-xs">
                             <span className="font-semibold text-indigo-300 text-center md:text-left">
-                                {selectedBulkIds.length} clientes seleccionados para acciones masivas
+                                {isBulkSending && bulkSendProgress
+                                    ? `Enviando ${bulkSendProgress.done}/${bulkSendProgress.total}...`
+                                    : `${selectedBulkIds.length} clientes seleccionados para acciones masivas`}
                             </span>
                             <div className="flex flex-wrap gap-2 w-full md:w-auto justify-center md:justify-end">
-                                <Button variant="ghost" size="sm" onClick={() => setSelectedBulkIds([])} className="text-slate-400 flex-1 md:flex-none">
+                                <Button variant="ghost" size="sm" onClick={() => setSelectedBulkIds([])} disabled={isBulkSending} className="text-slate-400 flex-1 md:flex-none">
                                     Desmarcar todos
                                 </Button>
-                                <Button variant="secondary" size="sm" onClick={triggerBulkExcel} className="flex items-center gap-1 flex-1 md:flex-none justify-center">
+                                <Button variant="secondary" size="sm" onClick={triggerBulkExcel} disabled={isBulkSending} className="flex items-center gap-1 flex-1 md:flex-none justify-center">
                                     <Download size={13} /> Exportar Excel
                                 </Button>
-                                <Button variant="primary" size="sm" onClick={triggerBulkEmail} className="flex items-center gap-1 flex-1 md:flex-none justify-center">
-                                    <Send size={13} /> Enviar Recordatorios
+                                <Button variant="primary" size="sm" onClick={triggerBulkEmail} disabled={isBulkSending} className="flex items-center gap-1 flex-1 md:flex-none justify-center">
+                                    <Send size={13} /> {isBulkSending ? 'Enviando...' : 'Enviar Recordatorios'}
                                 </Button>
                             </div>
                         </div>
@@ -1474,7 +1594,7 @@ export default function ClientsPage() {
                     </div>
                     <CardContent className="p-5">
                         <form onSubmit={handleSaveConfig} className="space-y-6 text-xs max-w-3xl">
-                            
+
                             {/* Sound Panel Config */}
                             <div className="p-4 bg-slate-950/40 rounded-xl border border-slate-850 space-y-4">
                                 <span className="text-[10px] uppercase font-bold text-indigo-400 block tracking-wider">Configuración de Audio y Feedback</span>
@@ -1485,28 +1605,28 @@ export default function ClientsPage() {
                                     </div>
                                     <button
                                         type="button"
-                                        onClick={() => setCobranzaConfig(prev => ({ ...prev, sonidosActivos: !prev.sonidosActivos }))}
+                                        onClick={() => setConfigDraft(prev => ({ ...prev, sonidosActivos: !prev.sonidosActivos }))}
                                         className={`p-2 rounded-xl border transition-colors ${
-                                            cobranzaConfig.sonidosActivos 
-                                                ? 'bg-indigo-950/40 border-indigo-500/30 text-indigo-400' 
+                                            configDraft.sonidosActivos
+                                                ? 'bg-indigo-950/40 border-indigo-500/30 text-indigo-400'
                                                 : 'bg-slate-900 border-slate-800 text-slate-500'
                                         }`}
                                     >
-                                        {cobranzaConfig.sonidosActivos ? <Volume2 size={16} /> : <VolumeX size={16} />}
+                                        {configDraft.sonidosActivos ? <Volume2 size={16} /> : <VolumeX size={16} />}
                                     </button>
                                 </div>
-                                {cobranzaConfig.sonidosActivos && (
+                                {configDraft.sonidosActivos && (
                                     <div className="space-y-1.5">
                                         <div className="flex justify-between text-[11px] text-slate-400">
                                             <span>Volumen de Sonidos</span>
-                                            <span>{cobranzaConfig.volumenSonidos}%</span>
+                                            <span>{configDraft.volumenSonidos}%</span>
                                         </div>
                                         <input
                                             type="range"
                                             min="0"
                                             max="100"
-                                            value={cobranzaConfig.volumenSonidos}
-                                            onChange={(e) => setCobranzaConfig(prev => ({ ...prev, volumenSonidos: parseInt(e.target.value, 10) }))}
+                                            value={configDraft.volumenSonidos}
+                                            onChange={(e) => setConfigDraft(prev => ({ ...prev, volumenSonidos: parseInt(e.target.value, 10) }))}
                                             className="w-full accent-indigo-500"
                                         />
                                     </div>
@@ -1519,8 +1639,8 @@ export default function ClientsPage() {
                                     <label className="text-[10.5px] text-slate-455 uppercase font-bold">Días para aviso preventivo</label>
                                     <input
                                         type="number"
-                                        value={cobranzaConfig.diasAvisoVencimiento}
-                                        onChange={(e) => setCobranzaConfig(prev => ({ ...prev, diasAvisoVencimiento: parseInt(e.target.value, 10) || 0 }))}
+                                        value={configDraft.diasAvisoVencimiento}
+                                        onChange={(e) => setConfigDraft(prev => ({ ...prev, diasAvisoVencimiento: parseInt(e.target.value, 10) || 0 }))}
                                         className="w-full bg-slate-955 border border-slate-850 rounded-xl px-3 py-2 text-slate-105"
                                     />
                                 </div>
@@ -1528,8 +1648,8 @@ export default function ClientsPage() {
                                     <label className="text-[10.5px] text-slate-455 uppercase font-bold">Monto mínimo para Alerta Prioritaria</label>
                                     <input
                                         type="number"
-                                        value={cobranzaConfig.montoMinimoAlerta}
-                                        onChange={(e) => setCobranzaConfig(prev => ({ ...prev, montoMinimoAlerta: parseInt(e.target.value, 10) || 0 }))}
+                                        value={configDraft.montoMinimoAlerta}
+                                        onChange={(e) => setConfigDraft(prev => ({ ...prev, montoMinimoAlerta: parseInt(e.target.value, 10) || 0 }))}
                                         className="w-full bg-slate-955 border border-slate-850 rounded-xl px-3 py-2 text-slate-105"
                                     />
                                 </div>
@@ -1537,8 +1657,8 @@ export default function ClientsPage() {
                                     <label className="text-[10.5px] text-slate-455 uppercase font-bold">Días para Alerta Crítica</label>
                                     <input
                                         type="number"
-                                        value={cobranzaConfig.diasMoraCritica}
-                                        onChange={(e) => setCobranzaConfig(prev => ({ ...prev, diasMoraCritica: parseInt(e.target.value, 10) || 0 }))}
+                                        value={configDraft.diasMoraCritica}
+                                        onChange={(e) => setConfigDraft(prev => ({ ...prev, diasMoraCritica: parseInt(e.target.value, 10) || 0 }))}
                                         className="w-full bg-slate-955 border border-slate-850 rounded-xl px-3 py-2 text-slate-105"
                                     />
                                 </div>
@@ -1547,21 +1667,21 @@ export default function ClientsPage() {
                             {/* Multiple Editable Templates Configuration */}
                             <div className="space-y-4 border-t border-slate-800 pt-4">
                                 <h3 className="font-bold text-slate-200 text-xs uppercase tracking-wider">Diseño de Plantillas Editables</h3>
-                                
+
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {/* Preventivo templates */}
                                     <div className="bg-slate-955/40 p-4 border border-slate-850 rounded-xl space-y-2">
                                         <span className="font-bold text-indigo-400">1. Aviso Preventivo</span>
                                         <textarea
-                                            value={cobranzaConfig.plantillaPreventivoWhatsapp}
-                                            onChange={(e) => setCobranzaConfig(prev => ({ ...prev, plantillaPreventivoWhatsapp: e.target.value }))}
+                                            value={configDraft.plantillaPreventivoWhatsapp}
+                                            onChange={(e) => setConfigDraft(prev => ({ ...prev, plantillaPreventivoWhatsapp: e.target.value }))}
                                             rows={2}
                                             placeholder="WhatsApp Preventivo..."
                                             className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs"
                                         />
                                         <textarea
-                                            value={cobranzaConfig.plantillaPreventivoEmail}
-                                            onChange={(e) => setCobranzaConfig(prev => ({ ...prev, plantillaPreventivoEmail: e.target.value }))}
+                                            value={configDraft.plantillaPreventivoEmail}
+                                            onChange={(e) => setConfigDraft(prev => ({ ...prev, plantillaPreventivoEmail: e.target.value }))}
                                             rows={3}
                                             placeholder="Email Preventivo..."
                                             className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs"
@@ -1572,15 +1692,15 @@ export default function ClientsPage() {
                                     <div className="bg-slate-955/40 p-4 border border-slate-850 rounded-xl space-y-2">
                                         <span className="font-bold text-red-400">2. Deuda Vencida</span>
                                         <textarea
-                                            value={cobranzaConfig.plantillaDeudaVencidaWhatsapp}
-                                            onChange={(e) => setCobranzaConfig(prev => ({ ...prev, plantillaDeudaVencidaWhatsapp: e.target.value }))}
+                                            value={configDraft.plantillaDeudaVencidaWhatsapp}
+                                            onChange={(e) => setConfigDraft(prev => ({ ...prev, plantillaDeudaVencidaWhatsapp: e.target.value }))}
                                             rows={2}
                                             placeholder="WhatsApp Deuda..."
                                             className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs"
                                         />
                                         <textarea
-                                            value={cobranzaConfig.plantillaDeudaVencidaEmail}
-                                            onChange={(e) => setCobranzaConfig(prev => ({ ...prev, plantillaDeudaVencidaEmail: e.target.value }))}
+                                            value={configDraft.plantillaDeudaVencidaEmail}
+                                            onChange={(e) => setConfigDraft(prev => ({ ...prev, plantillaDeudaVencidaEmail: e.target.value }))}
                                             rows={3}
                                             placeholder="Email Deuda..."
                                             className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs"
@@ -1591,15 +1711,15 @@ export default function ClientsPage() {
                                     <div className="bg-slate-955/40 p-4 border border-slate-850 rounded-xl space-y-2">
                                         <span className="font-bold text-amber-400">3. Segundo Aviso</span>
                                         <textarea
-                                            value={cobranzaConfig.plantillaSegundoAvisoWhatsapp}
-                                            onChange={(e) => setCobranzaConfig(prev => ({ ...prev, plantillaSegundoAvisoWhatsapp: e.target.value }))}
+                                            value={configDraft.plantillaSegundoAvisoWhatsapp}
+                                            onChange={(e) => setConfigDraft(prev => ({ ...prev, plantillaSegundoAvisoWhatsapp: e.target.value }))}
                                             rows={2}
                                             placeholder="WhatsApp Reclamación..."
                                             className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs"
                                         />
                                         <textarea
-                                            value={cobranzaConfig.plantillaSegundoAvisoEmail}
-                                            onChange={(e) => setCobranzaConfig(prev => ({ ...prev, plantillaSegundoAvisoEmail: e.target.value }))}
+                                            value={configDraft.plantillaSegundoAvisoEmail}
+                                            onChange={(e) => setConfigDraft(prev => ({ ...prev, plantillaSegundoAvisoEmail: e.target.value }))}
                                             rows={3}
                                             placeholder="Email Reclamación..."
                                             className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs"
@@ -1610,15 +1730,15 @@ export default function ClientsPage() {
                                     <div className="bg-slate-955/40 p-4 border border-slate-850 rounded-xl space-y-2">
                                         <span className="font-bold text-emerald-400">4. Confirmación de Pago</span>
                                         <textarea
-                                            value={cobranzaConfig.plantillaPagoRecibidoWhatsapp}
-                                            onChange={(e) => setCobranzaConfig(prev => ({ ...prev, plantillaPagoRecibidoWhatsapp: e.target.value }))}
+                                            value={configDraft.plantillaPagoRecibidoWhatsapp}
+                                            onChange={(e) => setConfigDraft(prev => ({ ...prev, plantillaPagoRecibidoWhatsapp: e.target.value }))}
                                             rows={2}
                                             placeholder="WhatsApp Confirmación..."
                                             className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs"
                                         />
                                         <textarea
-                                            value={cobranzaConfig.plantillaPagoRecibidoEmail}
-                                            onChange={(e) => setCobranzaConfig(prev => ({ ...prev, plantillaPagoRecibidoEmail: e.target.value }))}
+                                            value={configDraft.plantillaPagoRecibidoEmail}
+                                            onChange={(e) => setConfigDraft(prev => ({ ...prev, plantillaPagoRecibidoEmail: e.target.value }))}
                                             rows={3}
                                             placeholder="Email Confirmación..."
                                             className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs"
@@ -1627,9 +1747,14 @@ export default function ClientsPage() {
                                 </div>
                             </div>
 
-                            <Button type="submit" variant="primary" size="sm" className="flex items-center gap-1">
-                                <CheckCircle size={14} /> Guardar Parámetros
-                            </Button>
+                            <div className="flex gap-2">
+                                <Button type="submit" variant="primary" size="sm" className="flex items-center gap-1">
+                                    <CheckCircle size={14} /> Guardar Parámetros
+                                </Button>
+                                <Button type="button" variant="ghost" size="sm" onClick={handleCancelConfig}>
+                                    Descartar Cambios
+                                </Button>
+                            </div>
                         </form>
                     </CardContent>
                 </Card>
@@ -2363,11 +2488,11 @@ export default function ClientsPage() {
                 title="Redactar Correo de Cobranza"
                 footer={
                     <div className="flex gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => setIsEmailModalOpen(false)}>
+                        <Button variant="ghost" size="sm" onClick={() => setIsEmailModalOpen(false)} disabled={isSendingEmail}>
                             Cancelar
                         </Button>
-                        <Button variant="primary" size="sm" onClick={sendEmail} className="flex items-center gap-1">
-                            <Send size={13} /> Lanzar Correo
+                        <Button variant="primary" size="sm" onClick={sendEmail} disabled={isSendingEmail} className="flex items-center gap-1">
+                            <Send size={13} /> {isSendingEmail ? 'Generando PDF y enviando...' : 'Lanzar Correo'}
                         </Button>
                     </div>
                 }
@@ -2412,8 +2537,11 @@ export default function ClientsPage() {
                         </div>
                         <div className="p-3 bg-slate-955 border border-slate-850 rounded-xl flex justify-between items-center">
                             <span className="font-semibold text-slate-300 font-bold">📄 Adjunto generado automáticamente:</span>
-                            <LocalBadge variant="info">EstadoCuenta_${emailTarget.name.replace(/ /g, '_')}.pdf</LocalBadge>
+                            <LocalBadge variant="info">{`EstadoCuenta_${emailTarget.name.replace(/ /g, '_')}.pdf`}</LocalBadge>
                         </div>
+                        {emailSendError && (
+                            <p className="text-red-500 text-[10px] font-bold bg-red-500/10 p-2.5 rounded-lg border border-red-500/20">⚠️ {emailSendError}</p>
+                        )}
                     </div>
                 )}
             </Modal>
