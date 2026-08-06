@@ -35,20 +35,18 @@ function getNextBudgetNumero(budgets: Budget[]): string {
 }
 
 export default function PresupuestosPage() {
-    const { 
-        clients, 
-        setClients, 
+    const {
+        clients,
         machines,
         abonos,
-        budgets, 
-        setBudgets, 
-        templates, 
-        setTemplates, 
-        machinePresets, 
-        setMachinePresets,
+        budgets,
+        templates,
+        machinePresets,
         currentUser,
         addBudgetAction,
-        updateClientAction
+        updateClientAction,
+        addMachinePresetAction,
+        addTemplateAction
     } = useManagement();
 
     const [activeTab, setActiveTab] = useState<'list' | 'create' | 'presets' | 'templates'>('list');
@@ -466,7 +464,12 @@ export default function PresupuestosPage() {
             return;
         }
 
-        // Save new client to master database if requested
+        // Save new client to master database if requested — capture its real id so the
+        // budget below actually links to it. Using the `clientId` state here instead
+        // (still the 'new' placeholder at this point, since nothing sets it to the
+        // freshly-created id) always left budget.clientId undefined, silently orphaning
+        // the budget from the client record it was just supposed to create.
+        let finalClientId = clientId === 'new' ? undefined : (clientId || undefined);
         if (isNewClient && saveNewClient) {
             const newClientData = {
                 id: 'client-' + Date.now(),
@@ -479,6 +482,7 @@ export default function PresupuestosPage() {
                 debt: 0
             };
             updateClientAction(newClientData, 'create');
+            finalClientId = newClientData.id;
         }
 
         const newBudget: Budget = {
@@ -488,7 +492,7 @@ export default function PresupuestosPage() {
             estado: statusOverride,
             tipo,
             templateId: selectedTemplateId || undefined,
-            clientId: clientId === 'new' ? undefined : (clientId || undefined),
+            clientId: finalClientId,
             isNewClient,
             saveNewClient,
             ivaMode,
@@ -857,17 +861,13 @@ export default function PresupuestosPage() {
             activo: true
         };
 
-        if (editingPreset) {
-            setMachinePresets(prev => prev.map(p => p.id === editingPreset.id ? newPreset : p));
-        } else {
-            setMachinePresets(prev => [...prev, newPreset]);
-        }
+        addMachinePresetAction(newPreset, editingPreset ? 'update' : 'create');
         setIsPresetModalOpen(false);
     };
 
     const handleDeletePreset = (id: string) => {
         if (confirm('¿Está seguro de que desea eliminar este equipo preconfigurado?')) {
-            setMachinePresets(prev => prev.filter(p => p.id !== id));
+            addMachinePresetAction({ id } as MachinePreset, 'delete');
         }
     };
 
@@ -911,17 +911,13 @@ export default function PresupuestosPage() {
             activo: true
         };
 
-        if (editingTemplate) {
-            setTemplates(prev => prev.map(t => t.id === editingTemplate.id ? newTemp : t));
-        } else {
-            setTemplates(prev => [...prev, newTemp]);
-        }
+        addTemplateAction(newTemp, editingTemplate ? 'update' : 'create');
         setIsTemplateModalOpen(false);
     };
 
     const handleDeleteTemplate = (id: string) => {
         if (confirm('¿Está seguro de que desea eliminar esta plantilla de texto?')) {
-            setTemplates(prev => prev.filter(t => t.id !== id));
+            addTemplateAction({ id } as BudgetTemplate, 'delete');
         }
     };
 
@@ -1202,7 +1198,7 @@ export default function PresupuestosPage() {
                                     </div>
 
                                     {/* Commercial Terms block */}
-                                    <div className="border-t border-slate-850 pt-4 grid grid-cols-2 gap-4 text-[10px] text-slate-400">
+                                    <div className="border-t border-slate-850 pt-4 grid grid-cols-3 gap-4 text-[10px] text-slate-400">
                                         <div className="space-y-1.5">
                                             <span className="font-bold text-slate-300 block uppercase text-[8px] tracking-wider">Condiciones Comerciales</span>
                                             <p>Validez de la oferta: <strong>{selectedBudget.validezOferta}</strong></p>
@@ -1220,6 +1216,12 @@ export default function PresupuestosPage() {
                                             <span className="font-bold text-slate-300 block uppercase text-[8px] tracking-wider">Servicios y Soporte Incluidos</span>
                                             {selectedBudget.includesText && (
                                                 <p className="text-[9px] text-slate-450 leading-relaxed">{selectedBudget.includesText}</p>
+                                            )}
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <span className="font-bold text-slate-300 block uppercase text-[8px] tracking-wider">Cargos Excluidos</span>
+                                            {selectedBudget.excludesText && (
+                                                <p className="text-[9px] text-slate-450 leading-relaxed">{selectedBudget.excludesText}</p>
                                             )}
                                         </div>
                                     </div>
@@ -2015,7 +2017,7 @@ export default function PresupuestosPage() {
                                     </span>
                                 </div>
 
-                                <div className="border-t border-slate-850 pt-4 grid grid-cols-2 gap-4 text-[10px] text-slate-400">
+                                <div className="border-t border-slate-850 pt-4 grid grid-cols-3 gap-4 text-[10px] text-slate-400">
                                     <div className="space-y-1">
                                         <span className="font-bold text-slate-350 block uppercase text-[8px] tracking-wider">Cláusulas</span>
                                         <p>Validez oferta: <strong>{validezOferta}</strong></p>
@@ -2025,6 +2027,10 @@ export default function PresupuestosPage() {
                                     <div className="space-y-1">
                                         <span className="font-bold text-slate-350 block uppercase text-[8px] tracking-wider">Soporte Incluido</span>
                                         {includesText && <p className="text-[9px] text-slate-450 leading-relaxed">{includesText}</p>}
+                                    </div>
+                                    <div className="space-y-1">
+                                        <span className="font-bold text-slate-350 block uppercase text-[8px] tracking-wider">Cargos Excluidos</span>
+                                        {excludesText && <p className="text-[9px] text-slate-450 leading-relaxed">{excludesText}</p>}
                                     </div>
                                 </div>
                             </CardContent>
@@ -2260,7 +2266,7 @@ export default function PresupuestosPage() {
                         </div>
 
                         {/* Commercial Terms block */}
-                        <div className="border-t pt-4 grid grid-cols-2 gap-4 text-[10px]">
+                        <div className="border-t pt-4 grid grid-cols-3 gap-4 text-[10px]">
                             <div className="space-y-1">
                                 <span className="font-bold block uppercase text-[8px] tracking-wider">Condiciones Comerciales</span>
                                 <p>Validez de la oferta: <strong>{selectedBudget.validezOferta}</strong></p>
@@ -2278,6 +2284,12 @@ export default function PresupuestosPage() {
                                 <span className="font-bold block uppercase text-[8px] tracking-wider">Servicios y Soporte Incluidos</span>
                                 {selectedBudget.includesText && (
                                     <p className="text-[9px] leading-relaxed">{selectedBudget.includesText}</p>
+                                )}
+                            </div>
+                            <div className="space-y-1">
+                                <span className="font-bold block uppercase text-[8px] tracking-wider">Cargos Excluidos</span>
+                                {selectedBudget.excludesText && (
+                                    <p className="text-[9px] leading-relaxed">{selectedBudget.excludesText}</p>
                                 )}
                             </div>
                         </div>

@@ -40,6 +40,9 @@ import { gestiones } from '@/infrastructure/db/schema/gestiones';
 import { cobranzaConfig as cobranzaConfigTable } from '@/infrastructure/db/schema/cobranzaConfig';
 import { syncTombstones } from '@/infrastructure/db/schema/syncTombstones';
 import { payments } from '@/infrastructure/db/schema/payments';
+import { machinePresets } from '@/infrastructure/db/schema/machinePresets';
+import { budgetTemplates } from '@/infrastructure/db/schema/budgetTemplates';
+import { defaultMachinePresets, defaultBudgetTemplates } from '@/domain/budget/presets';
 
 
 // Helper to write audit logs from server route handler
@@ -221,6 +224,65 @@ export async function ensureSchemaSynced(db: any) {
       )
     `);
 
+    // 11. Ensure machine_presets table exists (catálogo de equipos preconfigurados para
+    // presupuestos — antes vivía únicamente en el localStorage del navegador, invisible
+    // entre dispositivos y perdido si se borraba el caché)
+    await db.run(sql`
+      CREATE TABLE IF NOT EXISTS machine_presets (
+        id TEXT PRIMARY KEY NOT NULL,
+        marca TEXT NOT NULL,
+        modelo TEXT NOT NULL,
+        nombre_comercial TEXT NOT NULL DEFAULT '',
+        tipo TEXT NOT NULL DEFAULT 'B&N',
+        ppm INTEGER NOT NULL DEFAULT 40,
+        funciones TEXT NOT NULL DEFAULT '',
+        duplex INTEGER NOT NULL DEFAULT 1,
+        escaner INTEGER NOT NULL DEFAULT 1,
+        adf INTEGER NOT NULL DEFAULT 1,
+        conectividad TEXT NOT NULL DEFAULT '',
+        papel TEXT NOT NULL DEFAULT '',
+        pantalla TEXT NOT NULL DEFAULT '',
+        memoria TEXT NOT NULL DEFAULT '',
+        capacidad_papel TEXT NOT NULL DEFAULT '',
+        technical_summary TEXT NOT NULL DEFAULT '',
+        commercial_notes TEXT NOT NULL DEFAULT '',
+        activo INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
+    // 12. Ensure budget_templates table exists (mismo problema que machine_presets, para
+    // las plantillas de texto por defecto de cada tipo de presupuesto)
+    await db.run(sql`
+      CREATE TABLE IF NOT EXISTS budget_templates (
+        id TEXT PRIMARY KEY NOT NULL,
+        nombre TEXT NOT NULL,
+        tipo TEXT NOT NULL,
+        default_intro_text TEXT NOT NULL DEFAULT '',
+        default_conditions_text TEXT NOT NULL DEFAULT '',
+        default_includes_text TEXT NOT NULL DEFAULT '',
+        default_excludes_text TEXT NOT NULL DEFAULT '',
+        default_requirements_text TEXT NOT NULL DEFAULT '',
+        default_tax_mode TEXT NOT NULL DEFAULT 'ADD_21',
+        activo INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
+    // 13. Seed catalog defaults idempotently, keyed by the same fixed ids the frontend
+    // used to hardcode (preset-hp-432, temp-alquiler, etc.) — every existing device
+    // converges on the same rows instead of duplicating them, and they become real,
+    // editable/deletable DB rows instead of a frontend constant re-merged on every load.
+    const seedNow = new Date();
+    for (const p of defaultMachinePresets) {
+      await db.insert(machinePresets).values({ ...p, createdAt: seedNow, updatedAt: seedNow }).onConflictDoNothing();
+    }
+    for (const t of defaultBudgetTemplates) {
+      await db.insert(budgetTemplates).values({ ...t, createdAt: seedNow, updatedAt: seedNow }).onConflictDoNothing();
+    }
+
     isDbSchemaSynced = true;
     console.log("Database schema auto-sync completed successfully.");
   } catch (err) {
@@ -269,6 +331,8 @@ export async function GET(request: Request) {
       dbRentals,
       dbGestiones,
       dbPayments,
+      dbMachinePresets,
+      dbBudgetTemplates,
       dbCobranzaConfig,
       dbTombstones
     ] = await Promise.all([
@@ -288,6 +352,16 @@ export async function GET(request: Request) {
       // Always fetch gestiones and cobranzaConfig (incremental by updatedAt when possible)
       isValidSince ? db.select().from(gestiones).where(gt(gestiones.updatedAt, sinceValue)) : db.select().from(gestiones),
       isValidSince ? db.select().from(payments).where(gt(payments.updatedAt, sinceValue)) : db.select().from(payments),
+      // Always full-fetch, never filtered by `since` — same reasoning as cobranzaConfig
+      // below. This is a small, low-churn catalog (a handful of rows), and unlike every
+      // other table here it can be seeded server-side with a fixed past timestamp (see
+      // ensureSchemaSynced): a device whose sync cursor has already advanced past that
+      // seed moment would incrementally poll forever and never receive those rows —
+      // confirmed live, the exact scenario every already-running device hits right after
+      // this feature ships. Fetching the full list every time costs nothing at this size
+      // and permanently avoids the blind spot instead of just working around today's seed.
+      db.select().from(machinePresets),
+      db.select().from(budgetTemplates),
       db.select().from(cobranzaConfigTable).limit(1),
       // Tombstones only matter for incremental pulls — a full sync's server lists are
       // already authoritative (a deleted row simply isn't in them).
@@ -322,6 +396,8 @@ export async function GET(request: Request) {
       rentals: dbRentals,
       gestiones: dbGestiones,
       payments: dbPayments,
+      machinePresets: dbMachinePresets,
+      templates: dbBudgetTemplates,
       // Only populated on incremental pulls — tells other devices which entities were
       // hard-deleted since `since` so they can drop them from local state too.
       tombstones: dbTombstones.map((t: any) => ({ entityType: t.entityType, entityId: t.entityId })),
@@ -406,6 +482,8 @@ export async function POST(request: Request) {
     const dedupedRentals = dedupeById<any>(payload.rentals);
     const dedupedGestiones = dedupeById<any>(payload.gestiones);
     const dedupedPayments = dedupeById<any>(payload.payments);
+    const dedupedMachinePresets = dedupeById<any>(payload.machinePresets);
+    const dedupedBudgetTemplates = dedupeById<any>(payload.templates);
     const dedupedSharedPdfs = dedupeById<any>(payload.sharedPdfs);
     const dedupedNotificationSettings = dedupeById<any>(payload.notificationSettings);
     const dedupedNotificationHistory = dedupeById<any>(payload.notificationHistory);
@@ -723,6 +801,57 @@ export async function POST(request: Request) {
             notes: p.notes || null,
             createdAt: p.createdAt ? new Date(p.createdAt) : new Date(),
             updatedAt: p.updatedAt ? new Date(p.updatedAt) : new Date(),
+          });
+        }
+      }
+
+      // Restore machine_presets / budget_templates catalogs — same additive-replace
+      // pattern as gestiones/payments (only touched when the payload actually carries
+      // them, so an old/partial payload never wipes out newer catalog rows).
+      if (dedupedMachinePresets.length) {
+        await tx.delete(machinePresets);
+        for (const p of dedupedMachinePresets) {
+          await tx.insert(machinePresets).values({
+            id: p.id,
+            marca: p.marca || 'Desconocida',
+            modelo: p.modelo || 'Desconocido',
+            nombreComercial: p.nombreComercial || '',
+            tipo: p.tipo || 'B&N',
+            ppm: Number(p.ppm) || 40,
+            funciones: p.funciones || '',
+            duplex: p.duplex ?? true,
+            escaner: p.escaner ?? true,
+            adf: p.adf ?? true,
+            conectividad: p.conectividad || '',
+            papel: p.papel || '',
+            pantalla: p.pantalla || '',
+            memoria: p.memoria || '',
+            capacidadPapel: p.capacidadPapel || '',
+            technicalSummary: p.technicalSummary || '',
+            commercialNotes: p.commercialNotes || '',
+            activo: p.activo ?? true,
+            createdAt: p.createdAt ? new Date(p.createdAt) : new Date(),
+            updatedAt: p.updatedAt ? new Date(p.updatedAt) : new Date(),
+          });
+        }
+      }
+
+      if (dedupedBudgetTemplates.length) {
+        await tx.delete(budgetTemplates);
+        for (const t of dedupedBudgetTemplates) {
+          await tx.insert(budgetTemplates).values({
+            id: t.id,
+            nombre: t.nombre || 'Plantilla',
+            tipo: t.tipo || 'alquiler',
+            defaultIntroText: t.defaultIntroText || '',
+            defaultConditionsText: t.defaultConditionsText || '',
+            defaultIncludesText: t.defaultIncludesText || '',
+            defaultExcludesText: t.defaultExcludesText || '',
+            defaultRequirementsText: t.defaultRequirementsText || '',
+            defaultTaxMode: t.defaultTaxMode || 'ADD_21',
+            activo: t.activo ?? true,
+            createdAt: t.createdAt ? new Date(t.createdAt) : new Date(),
+            updatedAt: t.updatedAt ? new Date(t.updatedAt) : new Date(),
           });
         }
       }

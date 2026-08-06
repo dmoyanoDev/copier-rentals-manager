@@ -19,6 +19,8 @@ const ENTITY_LABELS: Record<SyncEntityType, string> = {
     gestiones: 'Gestión de Cobranza',
     payments: 'Pago',
     cobranzaConfig: 'Config. de Cobranza',
+    machinePresets: 'Equipo Preset',
+    templates: 'Plantilla de Texto',
 };
 
 const OPERATION_LABELS: Record<SyncOperation, string> = {
@@ -28,7 +30,7 @@ const OPERATION_LABELS: Record<SyncOperation, string> = {
 };
 
 // Best-effort human label from whatever the payload happens to carry —
-// queue items span 11 different entity shapes, so this is deliberately
+// queue items span 13 different entity shapes, so this is deliberately
 // forgiving rather than exhaustive per-entity.
 const describeItem = (item: SyncQueueItem): string => {
     const p: any = item.payload || {};
@@ -37,6 +39,9 @@ const describeItem = (item: SyncQueueItem): string => {
     if (p.clientName) return p.clientName;
     if (p.fullname) return p.fullname;
     if (p.username) return p.username;
+    if (p.nombreComercial) return p.nombreComercial;
+    if (p.marca || p.modelo) return `${p.marca || ''} ${p.modelo || ''}`.trim();
+    if (p.nombre) return p.nombre;
     if (p.brand || p.model) return `${p.brand || ''} ${p.model || ''}${p.serial ? ` (S/N: ${p.serial})` : ''}`.trim();
     if (p.receiptNumber) return p.receiptNumber;
     if (p.numero) return p.numero;

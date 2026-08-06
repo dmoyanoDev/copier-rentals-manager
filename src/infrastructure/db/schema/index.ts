@@ -17,3 +17,5 @@ export * from './gestiones';
 export * from './cobranzaConfig';
 export * from './syncTombstones';
 export * from './payments';
+export * from './machinePresets';
+export * from './budgetTemplates';

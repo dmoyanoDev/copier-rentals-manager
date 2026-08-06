@@ -320,6 +320,44 @@ export const paymentSyncSchema = z.object({
   updatedAt: dateSchema.optional(),
 });
 
+export const machinePresetSyncSchema = z.object({
+  id: z.string().min(1),
+  marca: z.string().min(1),
+  modelo: z.string().min(1),
+  nombreComercial: z.string().default(''),
+  tipo: z.string().default('B&N'),
+  ppm: z.number().default(40),
+  funciones: z.string().default(''),
+  duplex: z.boolean().default(true),
+  escaner: z.boolean().default(true),
+  adf: z.boolean().default(true),
+  conectividad: z.string().default(''),
+  papel: z.string().default(''),
+  pantalla: z.string().default(''),
+  memoria: z.string().default(''),
+  capacidadPapel: z.string().default(''),
+  technicalSummary: z.string().default(''),
+  commercialNotes: z.string().default(''),
+  activo: z.boolean().default(true),
+  createdAt: dateSchema.optional(),
+  updatedAt: dateSchema.optional(),
+});
+
+export const budgetTemplateSyncSchema = z.object({
+  id: z.string().min(1),
+  nombre: z.string().min(1),
+  tipo: z.enum(['alquiler', 'insumo', 'repuesto', 'servicio_tecnico', 'mixto', 'venta']),
+  defaultIntroText: z.string().default(''),
+  defaultConditionsText: z.string().default(''),
+  defaultIncludesText: z.string().default(''),
+  defaultExcludesText: z.string().default(''),
+  defaultRequirementsText: z.string().default(''),
+  defaultTaxMode: z.enum(['INCLUDED', 'ADD_21', 'PLUS_IVA', 'EXEMPT']).default('ADD_21'),
+  activo: z.boolean().default(true),
+  createdAt: dateSchema.optional(),
+  updatedAt: dateSchema.optional(),
+});
+
 export const cobranzaConfigSyncSchema = z.object({
   id: z.string().default('singleton'),
   diasAvisoVencimiento: z.number().int().default(3),
@@ -344,7 +382,7 @@ export const cobranzaConfigSyncSchema = z.object({
 export const syncQueueItemSchema = z.object({
   id: z.string().min(1),
   entityId: z.string().min(1),
-  entityType: z.enum(['clients', 'machines', 'readings', 'tickets', 'plans', 'users', 'rentals', 'budgets', 'gestiones', 'cobranzaConfig', 'payments']),
+  entityType: z.enum(['clients', 'machines', 'readings', 'tickets', 'plans', 'users', 'rentals', 'budgets', 'gestiones', 'cobranzaConfig', 'payments', 'machinePresets', 'templates']),
   operation: z.enum(['create', 'update', 'delete']),
   payload: z.any(),
   updatedAt: z.string(),

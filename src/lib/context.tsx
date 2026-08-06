@@ -13,7 +13,6 @@ import {
 } from '@/domain/types';
 import { Budget, BudgetTemplate, MachinePreset } from '@/domain/budget/types';
 import { BRANDING } from '@/config/branding';
-import { defaultMachinePresets, defaultBudgetTemplates } from '@/domain/budget/presets';
 import type { SyncQueueItem, SyncEntityType } from '@/domain/types';
 import { MAX_SYNC_QUEUE_SIZE, MAX_SYNC_RETRIES, SYNC_DEBOUNCE_MS, SYNC_POLL_INTERVAL_MS } from '@/domain/types';
 import { showSaveSuccess, showSaveError, showOffline } from '@/components/ui/toast';
@@ -96,9 +95,7 @@ interface ManagementContextType {
     budgets: Budget[];
     setBudgets: React.Dispatch<React.SetStateAction<Budget[]>>;
     templates: BudgetTemplate[];
-    setTemplates: React.Dispatch<React.SetStateAction<BudgetTemplate[]>>;
     machinePresets: MachinePreset[];
-    setMachinePresets: React.Dispatch<React.SetStateAction<MachinePreset[]>>;
 
     // Cobranza Additions
     gestiones: Gestion[];
@@ -131,6 +128,9 @@ interface ManagementContextType {
     addGestionAction: (gestion: Gestion, operation?: 'create' | 'update' | 'delete') => void;
     updateCobranzaConfigAction: (config: CobranzaConfig) => void;
     addPaymentAction: (payment: Payment, operation?: 'create' | 'update' | 'delete') => void;
+    // Budget catalog actions — backed by Turso (antes vivían solo en localStorage)
+    addMachinePresetAction: (preset: MachinePreset, operation?: 'create' | 'update' | 'delete') => void;
+    addTemplateAction: (template: BudgetTemplate, operation?: 'create' | 'update' | 'delete') => void;
     // For bulk operations (e.g. CSV import) that already computed and set their own local
     // array via setClients/setMachines/etc — enqueues each item's sync individually instead
     // of going through the single-item *Action helpers, which would each redundantly
@@ -230,9 +230,19 @@ const autoTimestampState = (newState: any) => {
     }
 };
 
+// GET /api/backup always returns the COMPLETE list for these two tables, never filtered
+// by `since` (see backup/route.ts) — they're small catalogs that can be seeded with a
+// fixed past timestamp, so an incremental filter would let an already-advanced device's
+// cursor permanently miss rows seeded/changed before it. Because their server list is
+// always the full truth, "missing from it" always means genuinely gone, never "just not
+// in this delta" — the isIncremental fallback below must not apply to them (see its
+// comment for what breaks otherwise: a delete resurrected by one stale in-flight poll
+// becomes permanent once the tombstone's short incremental window passes).
+const FULLY_FETCHED_TABLES = new Set(['templates', 'machinePresets']);
+
 const mergeData = (local: any, server: any, lastSyncTime: Date | null, isIncremental: boolean = false, tombstonesByTable: Record<string, string[]> = {}, discardLocalOnly: boolean = false) => {
     const merged = { ...local };
-    const tables = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets', 'gestiones', 'payments'];
+    const tables = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets', 'gestiones', 'payments', 'templates', 'machinePresets'];
     const lastSync = lastSyncTime ? lastSyncTime.getTime() : 0;
 
     let deletedIds: string[] = [];
@@ -275,7 +285,7 @@ const mergeData = (local: any, server: any, lastSyncTime: Date | null, isIncreme
                     // a manual DB fix) would look identical to a genuine unsynced local
                     // edit and survive every future reset forever.
                     continue;
-                } else if (isIncremental) {
+                } else if (isIncremental && !FULLY_FETCHED_TABLES.has(table)) {
                     // Incremental sync: keep local item — server didn't return it so it hasn't changed remotely
                     mergedList.push(localItem);
                 } else {
@@ -369,6 +379,8 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         budgets: [] as Budget[],
         gestiones: [] as Gestion[],
         payments: [] as Payment[],
+        templates: [] as BudgetTemplate[],
+        machinePresets: [] as MachinePreset[],
         currentUser: null as User | null,
         lastSyncTime: null as Date | null,
     });
@@ -377,6 +389,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     useEffect(() => {
         stateRef.current = {
             clients, machines, readings, tickets, abonos, users, rentals, budgets, gestiones, payments,
+            templates, machinePresets,
             currentUser, lastSyncTime,
         };
     });
@@ -673,7 +686,9 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         rentals: stateRef.current.rentals || [],
                         budgets: stateRef.current.budgets || [],
                         gestiones: stateRef.current.gestiones || [],
-                        payments: stateRef.current.payments || []
+                        payments: stateRef.current.payments || [],
+                        templates: stateRef.current.templates || [],
+                        machinePresets: stateRef.current.machinePresets || []
                     };
                     if (!isInitialLoadDoneRef.current && typeof window !== 'undefined') {
                         try {
@@ -690,7 +705,9 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                                     rentals: parsedLocal.rentals || [],
                                     budgets: parsedLocal.budgets || [],
                                     gestiones: parsedLocal.gestiones || [],
-                                    payments: parsedLocal.payments || []
+                                    payments: parsedLocal.payments || [],
+                                    templates: parsedLocal.templates || [],
+                                    machinePresets: parsedLocal.machinePresets || []
                                 };
                             }
                         } catch (e) {
@@ -722,13 +739,8 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     setBudgets(merged.budgets || []);
                     setGestiones(merged.gestiones || []);
                     setPayments(merged.payments || []);
-
-                    const loadedTemplates = parsed.templates || [];
-                    const defaultIds = defaultBudgetTemplates.map(t => t.id);
-                    const customTemplates = loadedTemplates.filter((t: any) => !defaultIds.includes(t.id));
-                    setTemplates([...defaultBudgetTemplates, ...customTemplates]);
-
-                    if (parsed.machinePresets) setMachinePresets(parsed.machinePresets);
+                    setTemplates(merged.templates || []);
+                    setMachinePresets(merged.machinePresets || []);
 
                     if (parsed.cobranzaConfig) {
                         setCobranzaConfig({
@@ -747,8 +759,8 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         users: merged.users || [],
                         rentals: merged.rentals || [],
                         budgets: merged.budgets || [],
-                        templates: parsed.templates || templates || [],
-                        machinePresets: parsed.machinePresets || machinePresets || [],
+                        templates: merged.templates || [],
+                        machinePresets: merged.machinePresets || [],
                         gestiones: merged.gestiones || [],
                         payments: merged.payments || [],
                         cobranzaConfig: parsed.cobranzaConfig || cobranzaConfig || defaultCobranzaConfig
@@ -767,7 +779,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     // Regular create/update/delete already goes through the per-item sync
                     // queue (processSyncQueue) regardless of this block.
                     if (!isIncremental) {
-                        const tablesToCompare = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets'];
+                        const tablesToCompare = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets', 'templates', 'machinePresets'];
                         let localChangesExist = false;
                         for (const table of tablesToCompare) {
                             const serverList = parsed[table] || (table === 'abonos' ? parsed.plans || [] : []);
@@ -1051,13 +1063,8 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 setUsers(parsed.users || []);
                 setRentals(parsed.rentals || []);
                 setBudgets(parsed.budgets || []);
-                
-                const loadedTemplates = parsed.templates || [];
-                const defaultIds = defaultBudgetTemplates.map(t => t.id);
-                const customTemplates = loadedTemplates.filter((t: any) => !defaultIds.includes(t.id));
-                setTemplates([...defaultBudgetTemplates, ...customTemplates]);
-
-                setMachinePresets(parsed.machinePresets && parsed.machinePresets.length > 0 ? parsed.machinePresets : defaultMachinePresets);
+                setTemplates(parsed.templates || []);
+                setMachinePresets(parsed.machinePresets || []);
                 setGestiones(parsed.gestiones || defaultGestiones);
                 setPayments(parsed.payments || []);
 
@@ -1083,8 +1090,8 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             setUsers([]);
             setRentals([]);
             setBudgets([]);
-            setTemplates(defaultBudgetTemplates);
-            setMachinePresets(defaultMachinePresets);
+            setTemplates([]);
+            setMachinePresets([]);
             setGestiones([]);
             setPayments([]);
             setCobranzaConfig(defaultCobranzaConfig);
@@ -1537,6 +1544,57 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         enqueueSyncItem(payment.id, 'payments', operation, operation === 'delete' ? payment : paymentWithTime);
     }, [enqueueSyncItem]);
 
+    // Machine preset action: catálogo de equipos preconfigurados para presupuestos —
+    // antes vivía solo en localStorage (ver comentario en addGestionAction sobre por
+    // qué se lee de stateRef y no de la closure).
+    const addMachinePresetAction = useCallback((preset: MachinePreset, operation: 'create' | 'update' | 'delete' = 'create') => {
+        const nowStr = new Date().toISOString();
+        const presetWithTime = { ...preset, updatedAt: nowStr, createdAt: preset.createdAt || nowStr };
+
+        let updatedPresets = stateRef.current.machinePresets;
+        if (operation === 'delete') {
+            updatedPresets = stateRef.current.machinePresets.filter(p => p.id !== preset.id);
+        } else if (operation === 'create') {
+            updatedPresets = [...stateRef.current.machinePresets, presetWithTime];
+        } else {
+            updatedPresets = stateRef.current.machinePresets.map(p => p.id === preset.id ? presetWithTime : p);
+        }
+        setMachinePresets(updatedPresets);
+
+        try {
+            const raw = localStorage.getItem('ms_data');
+            const current = raw ? JSON.parse(raw) : {};
+            localStorage.setItem('ms_data', JSON.stringify({ ...current, machinePresets: updatedPresets }));
+        } catch (e) {}
+
+        enqueueSyncItem(preset.id, 'machinePresets', operation, operation === 'delete' ? preset : presetWithTime);
+    }, [enqueueSyncItem]);
+
+    // Budget template action: plantillas de texto por defecto para presupuestos —
+    // mismo problema que addMachinePresetAction, antes solo local.
+    const addTemplateAction = useCallback((template: BudgetTemplate, operation: 'create' | 'update' | 'delete' = 'create') => {
+        const nowStr = new Date().toISOString();
+        const templateWithTime = { ...template, updatedAt: nowStr, createdAt: template.createdAt || nowStr };
+
+        let updatedTemplates = stateRef.current.templates;
+        if (operation === 'delete') {
+            updatedTemplates = stateRef.current.templates.filter(t => t.id !== template.id);
+        } else if (operation === 'create') {
+            updatedTemplates = [...stateRef.current.templates, templateWithTime];
+        } else {
+            updatedTemplates = stateRef.current.templates.map(t => t.id === template.id ? templateWithTime : t);
+        }
+        setTemplates(updatedTemplates);
+
+        try {
+            const raw = localStorage.getItem('ms_data');
+            const current = raw ? JSON.parse(raw) : {};
+            localStorage.setItem('ms_data', JSON.stringify({ ...current, templates: updatedTemplates }));
+        } catch (e) {}
+
+        enqueueSyncItem(template.id, 'templates', operation, operation === 'delete' ? template : templateWithTime);
+    }, [enqueueSyncItem]);
+
     // CobranzaConfig action: saves configuration singleton to Turso
     const updateCobranzaConfigAction = useCallback((config: CobranzaConfig) => {
         const nowStr = new Date().toISOString();
@@ -1587,9 +1645,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 budgets,
                 setBudgets,
                 templates,
-                setTemplates,
                 machinePresets,
-                setMachinePresets,
                 gestiones,
                 setGestiones,
                 payments,
@@ -1614,6 +1670,8 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 addGestionAction,
                 updateCobranzaConfigAction,
                 addPaymentAction,
+                addMachinePresetAction,
+                addTemplateAction,
                 bulkSyncAction,
                 resetSyncAction
             }}

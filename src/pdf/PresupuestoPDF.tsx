@@ -319,6 +319,13 @@ export const PresupuestoPDF = ({ budget }: { budget: Budget }) => {
           </View>
         </View>
 
+        {budget.excludesText && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Cargos Excluidos</Text>
+            <Text style={{ fontSize: 7, color: '#475569', lineHeight: 1.25 }}>{budget.excludesText}</Text>
+          </View>
+        )}
+
         {budget.requirementsText && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Requisitos de Contratación</Text>

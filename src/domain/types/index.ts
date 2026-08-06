@@ -153,7 +153,7 @@ export interface LocalReading extends Reading {
 // Sync Queue Types — strongly typed, no 'any'
 export type SyncOperation = 'create' | 'update' | 'delete';
 export type SyncStatus = 'pending' | 'syncing' | 'synced' | 'failed';
-export type SyncEntityType = 'clients' | 'machines' | 'readings' | 'tickets' | 'abonos' | 'users' | 'rentals' | 'budgets' | 'gestiones' | 'cobranzaConfig' | 'payments';
+export type SyncEntityType = 'clients' | 'machines' | 'readings' | 'tickets' | 'abonos' | 'users' | 'rentals' | 'budgets' | 'gestiones' | 'cobranzaConfig' | 'payments' | 'machinePresets' | 'templates';
 
 export interface SyncQueueItem {
     id: string;

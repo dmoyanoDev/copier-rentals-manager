@@ -61,6 +61,8 @@ export interface BudgetTemplate {
     defaultRequirementsText: string;
     defaultTaxMode: TaxMode;
     activo: boolean;
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 export interface MachinePreset {
@@ -82,6 +84,8 @@ export interface MachinePreset {
     technicalSummary: string;
     commercialNotes: string;
     activo: boolean;
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 export interface BudgetSendLog {
