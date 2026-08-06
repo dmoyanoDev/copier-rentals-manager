@@ -663,8 +663,19 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         localStorage.setItem('ms_last_sync_time', now.toISOString());
                     } catch (e) {}
                 }
-                setSyncError(null);
-                
+                // A successful PULL must not blindly erase a PUSH failure from the queue-processing
+                // step above — they're independent requests, and this one succeeding says nothing
+                // about whether this device's own pending edit actually reached the server. Only
+                // clear the error if the queue is genuinely caught up; otherwise a stuck edit goes
+                // completely invisible the moment the next ~1.5s poll's read half succeeds, which it
+                // usually does even while the write half keeps failing.
+                const stillPendingAfterPush = getStoredQueue().some(item =>
+                    (item.status === 'pending' || item.status === 'failed') && item.retryCount < MAX_SYNC_RETRIES
+                );
+                if (!stillPendingAfterPush) {
+                    setSyncError(null);
+                }
+
                 // Only overwrite if remote database contains actual data or it is an incremental sync
                 const hasServerData =
                     isIncremental ||
