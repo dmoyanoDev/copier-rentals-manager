@@ -15,7 +15,7 @@ import { Machine } from '@/lib/mockData';
 import { formatCurrency, formatPeriod } from '@/lib/utils';
 
 export default function MachinesPage() {
-    const { machines, setMachines, clients, abonos, readings, setReadings, rentals, tickets, updateMachineAction, addRentalAction, updateRentalAction, currentUser } = useManagement();
+    const { machines, clients, abonos, readings, rentals, tickets, updateMachineAction, addRentalAction, updateRentalAction, currentUser } = useManagement();
     const [searchQuery, setSearchQuery] = useState('');
     const [filterStatus, setFilterStatus] = useState('');
     
