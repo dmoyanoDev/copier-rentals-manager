@@ -3,6 +3,7 @@ import nodemailer from 'nodemailer';
 import { db } from '@/infrastructure/db/client';
 import { emailLogs } from '@/infrastructure/db/schema/emailLogs';
 import { getSession } from '@/infrastructure/auth/session';
+import { escapeHtml } from '@/lib/utils';
 
 export async function POST(req: NextRequest) {
   // Sin este chequeo, cualquiera en internet podia mandar emails con adjuntos
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest) {
           <p style="color: #94a3b8; margin: 5px 0 0 0; font-size: 12px;">Soluciones de Impresión Corporativa y Alquileres</p>
         </div>
         <div style="padding: 24px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
-          <p style="margin-top: 0;">Estimado/a <strong>${clienteNombre}</strong>,</p>
+          <p style="margin-top: 0;">Estimado/a <strong>${escapeHtml(clienteNombre)}</strong>,</p>
           <p>Le enviamos adjunto el presupuesto correspondiente a la propuesta comercial <strong>${numeroPresupuesto}</strong> solicitada.</p>
           <p>En el documento adjunto encontrará detallados los equipos propuestos, los abonos mensuales sugeridos y las condiciones del servicio.</p>
           <p style="margin-bottom: 0;">Quedamos a su entera disposición ante cualquier consulta o para coordinar los próximos pasos.</p>

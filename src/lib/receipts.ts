@@ -2,7 +2,7 @@ import { Payment, PaymentMethod, User } from '@/domain/types';
 import { LocalClient } from '@/lib/context';
 import { Reading } from '@/lib/mockData';
 import { BRANDING } from '@/config/branding';
-import { formatCurrency, formatPeriod } from '@/lib/utils';
+import { formatCurrency, formatPeriod, escapeHtml } from '@/lib/utils';
 
 // Same client-side max+1 scan as getNextBudgetNumero (presupuestos/page.tsx) — no
 // server-side atomic counter, same known collision risk across offline devices.
@@ -64,10 +64,20 @@ export function generateReceiptHtml(payment: Payment): string {
   const statusColor = isPartial ? '#b45309' : '#047857';
   const statusBg = isPartial ? '#fef3c7' : '#ecfdf5';
 
+  // clientNameSnapshot/concept/invoiceReference/notes are free text (client name comes from
+  // the Clientes form, the rest are typed by whoever registers the payment in
+  // RegisterPaymentModal) — this HTML is written into a real popup document via
+  // document.write() in printReceipt(), so an unescaped `<script>` in any of them would
+  // actually execute there, same-origin, with the viewer's session.
+  const clientName = escapeHtml(payment.clientNameSnapshot);
+  const concept = escapeHtml(payment.concept || '-');
+  const invoiceReference = escapeHtml(payment.invoiceReference || 'Sin comprobante');
+  const notes = payment.notes ? escapeHtml(payment.notes) : '';
+
   return `
     <html>
         <head>
-            <title>Recibo ${payment.receiptNumber} - ${payment.clientNameSnapshot}</title>
+            <title>Recibo ${payment.receiptNumber} - ${clientName}</title>
             <style>
                 body { font-family: Arial, sans-serif; color: #334155; padding: 30px; line-height: 1.5; }
                 .header-box { display: flex; justify-content: space-between; border-bottom: 2px solid #e2e8f0; padding-bottom: 14px; }
@@ -95,16 +105,16 @@ export function generateReceiptHtml(payment: Payment): string {
 
             <div class="recibo-box">
                 <div class="recibo-row">
-                    <div><span class="label">Recibí de</span><br/><strong>${payment.clientNameSnapshot}</strong></div>
+                    <div><span class="label">Recibí de</span><br/><strong>${clientName}</strong></div>
                     <div style="text-align: right;"><span class="label">CUIT</span><br/>${payment.clientCuitSnapshot || 'N/A'}</div>
                 </div>
                 <div class="recibo-row">
-                    <div><span class="label">Concepto</span><br/>${payment.concept || '-'}</div>
+                    <div><span class="label">Concepto</span><br/>${concept}</div>
                     <div style="text-align: right;"><span class="label">Período</span><br/>${payment.period && payment.period !== 'Ajuste de saldo' ? formatPeriod(payment.period) : (payment.period || '-')}</div>
                 </div>
                 <div class="recibo-row">
                     <div><span class="label">Método de pago</span><br/>${payment.method}</div>
-                    <div style="text-align: right;"><span class="label">N° Factura/Comprobante</span><br/>${payment.invoiceReference || 'Sin comprobante'}</div>
+                    <div style="text-align: right;"><span class="label">N° Factura/Comprobante</span><br/>${invoiceReference}</div>
                 </div>
                 ${payment.readingTotalSnapshot != null ? `
                 <div class="recibo-row">
@@ -112,9 +122,9 @@ export function generateReceiptHtml(payment: Payment): string {
                     <div style="text-align: right;"><span class="label">Saldo Restante</span><br/>${formatCurrency(Math.max(0, payment.balanceAfter))}</div>
                 </div>
                 ` : ''}
-                ${payment.notes ? `
+                ${notes ? `
                 <div class="recibo-row">
-                    <div style="width: 100%;"><span class="label">Observaciones</span><br/>${payment.notes}</div>
+                    <div style="width: 100%;"><span class="label">Observaciones</span><br/>${notes}</div>
                 </div>
                 ` : ''}
             </div>

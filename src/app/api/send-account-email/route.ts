@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import { getSession } from '@/infrastructure/auth/session';
+import { escapeHtml } from '@/lib/utils';
 
 // Sends an account-statement email with a real PDF attachment via the same Yahoo SMTP
 // relay as /api/send-email. Kept as a separate route instead of reusing that one because
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
         <h2 style="color: #ffffff; margin: 0; font-size: 20px;">M&S Tecnología Digital</h2>
         <p style="color: #94a3b8; margin: 5px 0 0 0; font-size: 12px;">Soluciones de Impresión Corporativa y Alquileres</p>
       </div>
-      <div style="padding: 24px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px; white-space: pre-wrap;">${String(textBody).replace(/</g, '&lt;')}</div>
+      <div style="padding: 24px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px; white-space: pre-wrap;">${escapeHtml(String(textBody))}</div>
     </div>
   `;
 

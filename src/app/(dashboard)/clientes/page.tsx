@@ -15,6 +15,7 @@ import {
     getClientMovementsHelper,
     getClientFinancialSummaryHelper,
     getClientReadings,
+    escapeHtml,
     getSystemAlerts,
     getAlertSoundForNewAlerts,
     SystemAlert
@@ -482,6 +483,17 @@ export default function ClientsPage() {
         const printWindow = window.open('', '_blank');
         if (!printWindow) return;
 
+        // client.name/address/phone/email/cobranzaNotas and each movement's concept/gestión
+        // observations are all free text entered through ordinary forms — this HTML is
+        // written into a real popup document via document.write() below, so an unescaped
+        // `<script>`/event-handler in any of them would actually execute there, same-origin,
+        // with the viewer's session (same issue already fixed in receipts.ts's printReceipt).
+        const safeClientName = escapeHtml(client.name);
+        const safeAddress = client.address ? escapeHtml(client.address) : '';
+        const safePhone = client.phone ? escapeHtml(client.phone) : '';
+        const safeEmail = client.email ? escapeHtml(client.email) : '';
+        const safeCobranzaNotas = client.cobranzaNotas ? escapeHtml(client.cobranzaNotas) : '';
+
         // Apply period filters to print layout too if configured
         const filteredMovements = movements.filter(m => {
             if (filterStartMonth && m.period && m.period !== 'Saldo Inicial' && m.period < filterStartMonth) return false;
@@ -493,8 +505,8 @@ export default function ClientsPage() {
             <tr>
                 <td style="padding: 6px; border: 1px solid #cbd5e1; font-size: 11px;">${m.date}</td>
                 <td style="padding: 6px; border: 1px solid #cbd5e1; font-size: 11px;">${m.type}</td>
-                <td style="padding: 6px; border: 1px solid #cbd5e1; font-size: 11px; font-family: monospace;">${m.number}</td>
-                <td style="padding: 6px; border: 1px solid #cbd5e1; font-size: 11px;">${m.concept}</td>
+                <td style="padding: 6px; border: 1px solid #cbd5e1; font-size: 11px; font-family: monospace;">${escapeHtml(m.number)}</td>
+                <td style="padding: 6px; border: 1px solid #cbd5e1; font-size: 11px;">${escapeHtml(m.concept)}</td>
                 <td style="padding: 6px; border: 1px solid #cbd5e1; font-size: 11px; text-align: right;">${formatCurrency(m.original)}</td>
                 <td style="padding: 6px; border: 1px solid #cbd5e1; font-size: 11px; text-align: right;">${formatCurrency(m.paid)}</td>
                 <td style="padding: 6px; border: 1px solid #cbd5e1; font-size: 11px; text-align: right; font-weight: bold; color: ${m.pending > 0 ? '#ef4444' : '#10b981'};">${formatCurrency(m.pending)}</td>
@@ -511,8 +523,8 @@ export default function ClientsPage() {
 
         const gestionesLogs = (gestiones || []).filter(g => g.clientId === client.id).map(g => `
             <div style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 10.5px;">
-                <strong>${g.date} - ${g.type}</strong> [Canal: ${g.channel} | Resultado: ${g.result}]<br/>
-                <span style="color: #475569; italic font-style: italic;">"${g.observations}"</span> <span style="font-size: 9px; color: #94a3b8;">(Por: ${g.user})</span>
+                <strong>${g.date} - ${g.type}</strong> [Canal: ${g.channel} | Resultado: ${escapeHtml(g.result)}]<br/>
+                <span style="color: #475569; italic font-style: italic;">"${escapeHtml(g.observations)}"</span> <span style="font-size: 9px; color: #94a3b8;">(Por: ${escapeHtml(g.user)})</span>
             </div>
         `).join('');
 
@@ -525,7 +537,7 @@ export default function ClientsPage() {
         printWindow.document.write(`
             <html>
                 <head>
-                    <title>Estado de Cuenta - ${client.name} (${version.toUpperCase()})</title>
+                    <title>Estado de Cuenta - ${safeClientName} (${version.toUpperCase()})</title>
                     <style>
                         body { font-family: Arial, sans-serif; color: #334155; padding: 25px; line-height: 1.4; }
                         .header-box { display: flex; justify-content: space-between; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px; }
@@ -553,14 +565,14 @@ export default function ClientsPage() {
                     <div style="margin-top: 20px; font-size: 12px; display: grid; grid-template-cols: 1fr 1fr; gap: 20px;">
                         <div>
                             <strong>DATOS DEL CLIENTE:</strong><br/>
-                            <span style="font-size: 13px; font-weight: bold; color: #1e293b;">${client.name}</span><br/>
+                            <span style="font-size: 13px; font-weight: bold; color: #1e293b;">${safeClientName}</span><br/>
                             CUIT: ${client.cuit}<br/>
                             Categoría Fiscal: ${client.taxCategory}
                         </div>
                         <div style="text-align: right;">
-                            Dirección: ${client.address || 'Sin especificar'}<br/>
-                            Teléfono: ${client.phone || 'N/A'}<br/>
-                            Email: ${client.email || 'N/A'}
+                            Dirección: ${safeAddress || 'Sin especificar'}<br/>
+                            Teléfono: ${safePhone || 'N/A'}<br/>
+                            Email: ${safeEmail || 'N/A'}
                         </div>
                     </div>
 
@@ -601,7 +613,7 @@ export default function ClientsPage() {
                         </div>
                         <div style="margin-top: 10px; font-size: 11px;">
                             <strong>Notas Internas Comerciales:</strong><br/>
-                            <p style="margin: 4px 0 0 0; color: #475569; font-style: italic;">"${client.cobranzaNotas || 'Sin notas comerciales internas'}"</p>
+                            <p style="margin: 4px 0 0 0; color: #475569; font-style: italic;">"${safeCobranzaNotas || 'Sin notas comerciales internas'}"</p>
                         </div>
                     </div>
                     ` : ''}
@@ -716,7 +728,7 @@ export default function ClientsPage() {
 
         const rows = debtors.map(item => `
             <tr>
-                <td style="padding: 6px; border: 1px solid #cbd5e1; font-size: 11px; font-weight: bold;">${item.client.name}</td>
+                <td style="padding: 6px; border: 1px solid #cbd5e1; font-size: 11px; font-weight: bold;">${escapeHtml(item.client.name)}</td>
                 <td style="padding: 6px; border: 1px solid #cbd5e1; font-size: 11px; font-family: monospace;">${item.client.cuit}</td>
                 <td style="padding: 6px; border: 1px solid #cbd5e1; font-size: 11px; text-align: right; font-weight: bold;">${formatCurrency(item.summary.saldo)}</td>
                 <td style="padding: 6px; border: 1px solid #cbd5e1; font-size: 11px; text-align: right; color: #ef4444; font-weight: bold;">${formatCurrency(item.summary.vencido)}</td>

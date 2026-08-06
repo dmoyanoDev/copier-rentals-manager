@@ -4,6 +4,7 @@ import { notificationSettings } from '@/infrastructure/db/schema/notificationSet
 import { notificationHistory } from '@/infrastructure/db/schema/notificationHistory';
 import { eq } from 'drizzle-orm';
 import { Ticket, User } from '@/lib/mockData';
+import { escapeHtml } from '@/lib/utils';
 
 export type NotificationEvent = 
   | 'creado'
@@ -136,17 +137,26 @@ export async function sendTechNotification(
     enlace: `${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}/tecnica?ticketId=${ticket.id}`
   };
 
-  const replaceVars = (text: string) => {
+  const replaceVars = (text: string, vars: Record<string, string>) => {
     let output = text;
-    for (const [k, v] of Object.entries(variables)) {
+    for (const [k, v] of Object.entries(vars)) {
       output = output.replace(new RegExp(`{${k}}`, 'g'), v);
     }
     return output;
   };
 
-  // Compile WhatsApp and Email template text
-  const whatsappMsgText = replaceVars(settings.templatesConfig.whatsapp || DEFAULT_TEMPLATES_CONFIG.whatsapp);
-  const emailHtmlText = replaceVars(settings.templatesConfig.email || DEFAULT_TEMPLATES_CONFIG.email);
+  // Compile WhatsApp (plain text, no escaping needed) and Email (HTML) template text.
+  // ticket.clientName/clientAddress/machineDesc/serialNumber/description are free-text
+  // fields a técnico (or an external client-facing intake form) can set to anything —
+  // substituting them unescaped into the HTML template let a ticket description like
+  // `<img src=x onerror=...>` execute for real: this HTML gets stored verbatim in
+  // notificationHistory.message and later rendered via dangerouslySetInnerHTML on the
+  // Técnica page (the "Cuerpo del Mensaje Despachado" viewer), not just emailed out.
+  const whatsappMsgText = replaceVars(settings.templatesConfig.whatsapp || DEFAULT_TEMPLATES_CONFIG.whatsapp, variables);
+  const htmlSafeVariables = Object.fromEntries(
+    Object.entries(variables).map(([k, v]) => [k, escapeHtml(v)])
+  );
+  const emailHtmlText = replaceVars(settings.templatesConfig.email || DEFAULT_TEMPLATES_CONFIG.email, htmlSafeVariables);
 
   let emailSent = false;
   let whatsappSent = false;

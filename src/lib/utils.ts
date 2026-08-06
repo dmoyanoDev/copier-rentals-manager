@@ -19,6 +19,19 @@ export function cn(...inputs: (string | undefined | null | boolean | { [key: str
     return classes.join(' ');
 }
 
+// Escapes free-text values (client names, ticket descriptions, notes) before they're
+// interpolated into an HTML string template. Needed anywhere user-entered text ends up in
+// an emailed/stored/printed HTML document rather than passed through JSX (which already
+// escapes automatically) — see notificationService.ts, receipts.ts.
+export function escapeHtml(value: string): string {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 export function formatCurrency(value: number): string {
     return new Intl.NumberFormat('es-AR', {
         style: 'currency',
