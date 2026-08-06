@@ -116,9 +116,8 @@ export const machineSyncSchema = z.object({
   abonoId: z.string().nullable().optional(),
   installationDate: z.string().nullable().optional(),
   initialCounter: z.number().int().default(0),
-  // lastServiceCounter and preventiveInterval exist in frontend but not in DB — accepted and stripped
-  lastServiceCounter: z.number().int().optional(),
-  preventiveInterval: z.number().int().optional(),
+  lastServiceCounter: z.number().int().default(0),
+  preventiveInterval: z.number().int().default(15000),
   applyIva: z.boolean().default(false),
   readingDay: z.number().int().default(10),
   isAvailable: z.boolean().default(true),
@@ -129,7 +128,7 @@ export const machineSyncSchema = z.object({
 }).transform((data) => {
   // Normalize: if frontend sends currentCounter, use it as machineCounter
   const counter = data.currentCounter !== undefined ? data.currentCounter : data.machineCounter;
-  const { currentCounter, lastServiceCounter, preventiveInterval, ...rest } = data;
+  const { currentCounter, ...rest } = data;
   return { ...rest, machineCounter: counter };
 });
 

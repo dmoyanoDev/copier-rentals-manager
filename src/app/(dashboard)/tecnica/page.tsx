@@ -2463,6 +2463,12 @@ export default function TechnicalPage() {
                         placeholder="Ej: mgomez@mstecnologia.com.ar"
                     />
 
+                    {!editingTech && (
+                        <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[10px] text-amber-350 leading-relaxed">
+                            ⚠️ Esta ficha no crea una contraseña de acceso. Para poder iniciar sesión, el técnico debe entrar a la pantalla de Ingresar al Sistema y usar <strong>"¿Olvidaste tu contraseña?"</strong> con este email para generar la suya la primera vez.
+                        </div>
+                    )}
+
                     <div className="grid grid-cols-2 gap-4">
                         <Input
                             label="Teléfono de Contacto"

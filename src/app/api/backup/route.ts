@@ -144,6 +144,21 @@ export async function ensureSchemaSynced(db: any) {
       } catch (e) {}
     }
 
+    // 6b. Ensure missing preventive-maintenance columns in machines exist — these were
+    // accepted by machineSyncSchema and used throughout /tecnica and /maquinas, but the
+    // table never actually had them, so every "Registrar Service" reset was silently
+    // discarded before reaching Turso (confirmed live: reset locally, gone after the next
+    // sync poll). Real columns now, same defaults the frontend already assumed.
+    const machinesColumns = [
+      { name: 'last_service_counter', type: 'INTEGER NOT NULL DEFAULT 0' },
+      { name: 'preventive_interval', type: 'INTEGER NOT NULL DEFAULT 15000' }
+    ];
+    for (const col of machinesColumns) {
+      try {
+        await db.run(sql.raw(`ALTER TABLE machines ADD COLUMN ${col.name} ${col.type}`));
+      } catch (e) {}
+    }
+
     // 7. Ensure gestiones table exists
     await db.run(sql`
       CREATE TABLE IF NOT EXISTS gestiones (
@@ -604,6 +619,8 @@ export async function POST(request: Request) {
             abonoId: m.abonoId || null,
             installationDate: m.installationDate || null,
             initialCounter: m.initialCounter || 0,
+            lastServiceCounter: m.lastServiceCounter || 0,
+            preventiveInterval: m.preventiveInterval || 15000,
             applyIva: m.applyIva ?? false,
             readingDay: m.readingDay || 10,
             isAvailable: m.isAvailable ?? true,

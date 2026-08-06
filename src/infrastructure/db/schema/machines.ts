@@ -19,6 +19,8 @@ export const machines = sqliteTable('machines', {
   isAvailable: integer('is_available', { mode: 'boolean' }).default(true).notNull(),
   pdfUrl: text('pdf_url'),
   features: text('features'),
+  lastServiceCounter: integer('last_service_counter').default(0).notNull(),
+  preventiveInterval: integer('preventive_interval').default(15000).notNull(),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
 });
