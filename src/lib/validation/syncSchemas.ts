@@ -98,6 +98,7 @@ export const planSyncSchema = z.object({
   price: z.number().default(0),
   excessPrice: z.number().default(0),
   ivaRate: z.number().default(21),
+  active: z.boolean().default(true),
   createdAt: dateSchema.optional(),
   updatedAt: dateSchema.optional(),
 });

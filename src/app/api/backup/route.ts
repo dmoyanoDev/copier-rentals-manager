@@ -159,6 +159,13 @@ export async function ensureSchemaSynced(db: any) {
       } catch (e) {}
     }
 
+    // 6c. Ensure missing 'active' column in plans exists — "Estado de Comercialización"
+    // (VIGENTE/DESACTIVADO) in /abonos read/wrote this field but the table never had it,
+    // so deactivating a plan only ever looked real in the browser that did it.
+    try {
+      await db.run(sql`ALTER TABLE plans ADD COLUMN active INTEGER NOT NULL DEFAULT 1`);
+    } catch (e) {}
+
     // 7. Ensure gestiones table exists
     await db.run(sql`
       CREATE TABLE IF NOT EXISTS gestiones (
@@ -599,6 +606,7 @@ export async function POST(request: Request) {
             price: Number(p.price) || 0,
             excessPrice: Number(p.excessPrice) || 0,
             ivaRate: Number(p.ivaRate) || 21,
+            active: p.active === false ? false : true,
             createdAt: p.createdAt ? new Date(p.createdAt) : new Date(),
             updatedAt: p.updatedAt ? new Date(p.updatedAt) : (p.createdAt ? new Date(p.createdAt) : new Date())
           });

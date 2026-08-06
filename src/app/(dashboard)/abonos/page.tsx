@@ -14,7 +14,7 @@ import { Plus, Trash2, Edit, FileText, CheckCircle, ShieldAlert, Sparkles } from
 import { Abono } from '@/lib/mockData';
 
 export default function AbonosPage() {
-    const { abonos, setAbonos, machines, clients, rentals, readings, updateAbonoAction } = useManagement();
+    const { abonos, machines, clients, rentals, readings, updateAbonoAction } = useManagement();
     const [searchQuery, setSearchQuery] = useState('');
     const [filterActive, setFilterActive] = useState('');
     

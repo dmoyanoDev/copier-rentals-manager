@@ -7,6 +7,7 @@ export const plans = sqliteTable('plans', {
   price: real('price').default(0).notNull(),
   excessPrice: real('excess_price').default(0).notNull(),
   ivaRate: real('iva_rate').default(21.0).notNull(),
+  active: integer('active', { mode: 'boolean' }).default(true).notNull(),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
 });
