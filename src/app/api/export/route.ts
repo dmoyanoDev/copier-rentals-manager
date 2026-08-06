@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { addAuditLogAction } from '@/app/actions/audit';
 import { getSession } from '@/infrastructure/auth/session';
+import { isMasterUser } from '@/lib/auth/sessionDecrypt';
 
 function escapeCSVCell(val: any): string {
   if (val === null || val === undefined) return '';
@@ -22,6 +23,13 @@ export async function POST(request: Request) {
     const session = await getSession(request);
     if (!session) {
       return NextResponse.json({ error: 'Sesión no válida.' }, { status: 401 });
+    }
+    // La página de Respaldo (que es el único consumidor de este endpoint) se muestra
+    // solo al usuario Maestro en el cliente, pero eso no impedía llamar la API directo
+    // con la sesión de un rol 'administrativo'/'tecnico' y volcar toda la base de
+    // clientes/máquinas/alquileres. Mismo patrón de refuerzo ya aplicado a /api/backup.
+    if (!isMasterUser(session)) {
+      return NextResponse.json({ error: 'Acceso denegado: se requiere el usuario Maestro para exportar datos.' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);

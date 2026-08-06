@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/infrastructure/auth/session';
+import { isMasterUser } from '@/lib/auth/sessionDecrypt';
 
 function parseCSV(text: string): string[][] {
   const lines: string[][] = [];
@@ -52,6 +53,12 @@ export async function POST(request: Request) {
     const session = await getSession(request);
     if (!session) {
       return NextResponse.json({ error: 'Sesión no válida.' }, { status: 401 });
+    }
+    // Mismo refuerzo que /api/export: la UI de Respaldo es master-only, pero este
+    // endpoint solo pedía sesión válida — cualquier rol podía usarlo para preparar una
+    // importación masiva de clientes/máquinas/lecturas.
+    if (!isMasterUser(session)) {
+      return NextResponse.json({ error: 'Acceso denegado: se requiere el usuario Maestro para importar datos.' }, { status: 403 });
     }
 
     const payload = await request.json();

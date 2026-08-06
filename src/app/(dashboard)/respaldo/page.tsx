@@ -12,18 +12,19 @@ import {
 } from 'lucide-react';
 import { getAuditLogsAction, addAuditLogAction } from '@/app/actions/audit';
 import { diagnoseDataAction, logCleanupOperationAction, DiagnosedIssue } from '@/app/actions/cleanup';
+import type { SyncEntityType } from '@/domain/types';
 
 export default function RespaldoPage() {
     const { 
-        clients, setClients, 
-        machines, setMachines, 
-        readings, setReadings, 
-        tickets, setTickets, 
-        abonos, setAbonos, 
-        users, setUsers, 
+        clients, setClients,
+        machines, setMachines,
+        readings, setReadings,
+        tickets, setTickets,
+        abonos,
         rentals, setRentals,
         currentUser,
         bulkSyncAction,
+        resetSyncAction,
     } = useManagement();
 
     const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
@@ -416,14 +417,14 @@ export default function RespaldoPage() {
                     throw new Error(res.error || 'Error al restaurar la base de datos Turso.');
                 }
 
-                // Sincronizar estado local en React (que luego se autoguarda a localStorage)
-                setClients(parsed.clients || []);
-                setMachines(parsed.machines || []);
-                setReadings(parsed.readings || []);
-                setTickets(parsed.tickets || []);
-                setAbonos(parsed.plans || parsed.abonos || []);
-                setUsers(parsed.users || []);
-                if (parsed.rentals) setRentals(parsed.rentals);
+                // Turso ya tiene el snapshot restaurado en este punto. En vez de mapear a mano
+                // cada tabla del JSON a su setX() local (quedaba desactualizado cada vez que se
+                // agregaba una tabla nueva al backup — como pasó con payments/gestiones/templates/
+                // machinePresets/cobranzaConfig, ninguna de las cuales se refrescaba acá),
+                // resetSyncAction limpia la cola de sync local (evita que ediciones pendientes de
+                // ANTES de la restauración se repliquen encima después) y vuelve a traer el
+                // estado completo real desde la nube, todas las tablas incluidas.
+                await resetSyncAction();
 
                 await loadAuditLogs();
                 alert('¡Felicidades! La restauración transaccional de Turso y el estado local se completó correctamente.');
@@ -483,60 +484,84 @@ export default function RespaldoPage() {
             setIsCleaning(true);
             try {
                 const issuesToClean = diagnosedIssues.filter(iss => selectedIssues.includes(iss.id));
-                
+
                 let cleanedClients = [...clients];
                 let cleanedMachines = [...machines];
                 let cleanedReadings = [...readings];
                 let cleanedRentals = [...rentals];
                 let cleanedTickets = [...tickets];
 
-                // Iterate and apply cleanups
+                // Every repair/delete below is also queued into syncItems and pushed via
+                // bulkSyncAction further down. Previously this only called setClients/
+                // setMachines/etc (plain React state), so the "cleanup" never reached Turso —
+                // the next ~1.5s sync poll would merge the still-dirty server records back in,
+                // silently undoing the fix while the audit log below had already recorded it
+                // as a success. Building the arrays once and enqueuing once (instead of calling
+                // updateClientAction/updateMachineAction per item inside this forEach) avoids
+                // the stale-stateRef clobbering bug already found in the CSV importer above.
+                const nowStr = new Date().toISOString();
+                const syncItems: { id: string; entityType: SyncEntityType; operation: 'create' | 'update' | 'delete'; payload: any }[] = [];
+
                 issuesToClean.forEach(issue => {
                     if (issue.category === 'cliente') {
                         if (issue.type === 'incompleto') {
-                            // Auto-repair: set empty fields
-                            cleanedClients = cleanedClients.map(c => 
-                                c.id === issue.itemId 
-                                    ? { ...c, name: c.name || `Cliente Reconstruido ${c.id.substring(c.id.length - 4)}`, cuit: c.cuit || '00-00000000-0' } 
-                                    : c
-                            );
+                            const target = cleanedClients.find(c => c.id === issue.itemId);
+                            if (target) {
+                                const repaired = { ...target, name: target.name || `Cliente Reconstruido ${target.id.substring(target.id.length - 4)}`, cuit: target.cuit || '00-00000000-0', updatedAt: nowStr };
+                                cleanedClients = cleanedClients.map(c => c.id === issue.itemId ? repaired : c);
+                                syncItems.push({ id: repaired.id, entityType: 'clients', operation: 'update', payload: repaired });
+                            }
                         } else {
-                            // Delete
                             cleanedClients = cleanedClients.filter(c => c.id !== issue.itemId);
+                            syncItems.push({ id: issue.itemId, entityType: 'clients', operation: 'delete', payload: { id: issue.itemId } });
                         }
                     } else if (issue.category === 'maquina') {
                         if (issue.type === 'incompleto') {
-                            cleanedMachines = cleanedMachines.map(m => 
-                                m.id === issue.itemId 
-                                    ? { ...m, brand: m.brand || 'Ricoh', model: m.model || 'Equipo Genérico', serial: m.serial || `SER-${Date.now().toString().substring(8)}` }
-                                    : m
-                            );
+                            const target = cleanedMachines.find(m => m.id === issue.itemId);
+                            if (target) {
+                                const repaired = { ...target, brand: target.brand || 'Ricoh', model: target.model || 'Equipo Genérico', serial: target.serial || `SER-${Date.now().toString().substring(8)}`, updatedAt: nowStr };
+                                cleanedMachines = cleanedMachines.map(m => m.id === issue.itemId ? repaired : m);
+                                syncItems.push({ id: repaired.id, entityType: 'machines', operation: 'update', payload: repaired });
+                            }
                         } else {
                             // Detach invalid client/abono
-                            cleanedMachines = cleanedMachines.map(m => 
-                                m.id === issue.itemId 
-                                    ? { ...m, clientId: null, abonoId: null, status: 'Disponible' as any }
-                                    : m
-                            );
+                            const target = cleanedMachines.find(m => m.id === issue.itemId);
+                            if (target) {
+                                const repaired = { ...target, clientId: null, abonoId: null, status: 'Disponible' as any, updatedAt: nowStr };
+                                cleanedMachines = cleanedMachines.map(m => m.id === issue.itemId ? repaired : m);
+                                syncItems.push({ id: repaired.id, entityType: 'machines', operation: 'update', payload: repaired });
+                            }
                         }
                     } else if (issue.category === 'alquiler') {
                         // Delete invalid contract
                         cleanedRentals = cleanedRentals.filter(r => r.id !== issue.itemId);
+                        syncItems.push({ id: issue.itemId, entityType: 'rentals', operation: 'delete', payload: { id: issue.itemId } });
                     } else if (issue.category === 'lectura') {
                         // Remove orphan reading
                         cleanedReadings = cleanedReadings.filter(rd => rd.id !== issue.itemId);
+                        syncItems.push({ id: issue.itemId, entityType: 'readings', operation: 'delete', payload: { id: issue.itemId } });
                     } else if (issue.category === 'ticket') {
                         // Delete orphan ticket
                         cleanedTickets = cleanedTickets.filter(t => t.id !== issue.itemId);
+                        syncItems.push({ id: issue.itemId, entityType: 'tickets', operation: 'delete', payload: { id: issue.itemId } });
                     }
                 });
 
-                // Update React states
+                // Update React state immediately for UI feedback, then push the same final
+                // arrays to localStorage and enqueue every change for the real Turso sync.
                 setClients(cleanedClients);
                 setMachines(cleanedMachines);
                 setReadings(cleanedReadings);
                 setRentals(cleanedRentals);
                 setTickets(cleanedTickets);
+
+                bulkSyncAction(syncItems, {
+                    clients: cleanedClients,
+                    machines: cleanedMachines,
+                    readings: cleanedReadings,
+                    rentals: cleanedRentals,
+                    tickets: cleanedTickets,
+                });
 
                 // Add audit logging using Server Action
                 const logDetails = `Herramienta de limpieza ejecutada. Total anomalías reparadas/eliminadas: ${issuesToClean.length}.`;
