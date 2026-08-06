@@ -131,6 +131,15 @@ interface ManagementContextType {
     addGestionAction: (gestion: Gestion, operation?: 'create' | 'update' | 'delete') => void;
     updateCobranzaConfigAction: (config: CobranzaConfig) => void;
     addPaymentAction: (payment: Payment, operation?: 'create' | 'update' | 'delete') => void;
+    // For bulk operations (e.g. CSV import) that already computed and set their own local
+    // array via setClients/setMachines/etc — enqueues each item's sync individually instead
+    // of going through the single-item *Action helpers, which would each redundantly
+    // recompute the whole array from stateRef.current (stale until next render) and end up
+    // only keeping the LAST item of the batch in local state until the next sync poll.
+    bulkSyncAction: (
+        items: { id: string; entityType: SyncEntityType; operation: 'create' | 'update' | 'delete'; payload: any }[],
+        localStorageUpdate?: Partial<{ clients: Client[]; machines: Machine[]; readings: Reading[]; tickets: Ticket[]; abonos: Abono[]; users: User[]; rentals: Rental[]; budgets: Budget[]; }>
+    ) => void;
 }
 
 const trackDeletions = (newState: any) => {
@@ -897,6 +906,21 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const resetSyncAction = useCallback(async () => {
         setIsSyncing(true);
         try {
+            // syncFromDatabase silently no-ops (isSyncingRef.current guard) if another
+            // sync is already running — and the background poll fires every 1.5s, so
+            // there's a real chance one is. isSyncingRef flips to true synchronously,
+            // but the `disabled` prop on the Restablecer button only reflects it after
+            // React re-renders, so a click can land in that gap and slip through to
+            // here anyway. Without waiting it out, the call below would return
+            // immediately having done nothing — local-only rows survive untouched —
+            // while resetSyncAction still reports success. Confirmed live: a reset
+            // that raced a background poll left stale local machines in place.
+            const maxWaitMs = 5000;
+            const waitStart = Date.now();
+            while (isSyncingRef.current && Date.now() - waitStart < maxWaitMs) {
+                await new Promise(resolve => setTimeout(resolve, 150));
+            }
+
             if (typeof window !== 'undefined') {
                 localStorage.removeItem('ms_sync_queue');
                 localStorage.removeItem('ms_last_sync_time');
@@ -1220,21 +1244,32 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const updatedRentals = [rentalWithTime, ...baseRentals];
         setRentals(updatedRentals);
 
-        // Update machines state
-        const updatedMachines = stateRef.current.machines.map(m => {
-            const up = machineUpdates.find(u => u.id === m.id);
-            if (up) {
-                // Keep isAvailable consistent with status — it was previously only set once at
-                // machine creation and never updated again, leaving it stale for every machine
-                // that got rented or freed afterwards (confirmed against real Turso data).
-                return { ...m, clientId: up.clientId, abonoId: up.abonoId, status: up.status, isAvailable: up.status === 'Disponible', updatedAt: nowStr };
-            }
-            return m;
-        });
-        setMachines(updatedMachines);
+        // Update machines state — only touch it (and only include it in the localStorage
+        // write below) when there's actually something to change. Doing this unconditionally
+        // meant a caller passing machineUpdates: [] (e.g. because it already updated the
+        // machine itself via updateMachineAction moments earlier, in the same handler) would
+        // still compute "updatedMachines" from the same stale stateRef.current.machines and
+        // overwrite that just-saved machine back to its pre-edit value in local state/
+        // localStorage — the server stayed correct (that machine's own enqueueSyncItem call
+        // already captured it directly), but this device's own UI would flash the old value
+        // until the next sync poll quietly corrected it.
+        let updatedMachines = stateRef.current.machines;
+        if (machineUpdates.length > 0) {
+            updatedMachines = stateRef.current.machines.map(m => {
+                const up = machineUpdates.find(u => u.id === m.id);
+                if (up) {
+                    // Keep isAvailable consistent with status — it was previously only set once at
+                    // machine creation and never updated again, leaving it stale for every machine
+                    // that got rented or freed afterwards (confirmed against real Turso data).
+                    return { ...m, clientId: up.clientId, abonoId: up.abonoId, status: up.status, isAvailable: up.status === 'Disponible', updatedAt: nowStr };
+                }
+                return m;
+            });
+            setMachines(updatedMachines);
+        }
 
         // Save state to storage
-        saveStateToLocalStorage({ rentals: updatedRentals, machines: updatedMachines });
+        saveStateToLocalStorage(machineUpdates.length > 0 ? { rentals: updatedRentals, machines: updatedMachines } : { rentals: updatedRentals });
 
         // Enqueue sync actions
         enqueueSyncItem(rentalWithTime.id, 'rentals', 'create', rentalWithTime);
@@ -1261,7 +1296,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             updatedMachines = stateRef.current.machines.map(m => {
                 const up = machineUpdates.find(u => u.id === m.id);
                 if (up) {
-                    return { ...m, clientId: up.clientId, abonoId: up.abonoId, status: up.status, updatedAt: nowStr };
+                    return { ...m, clientId: up.clientId, abonoId: up.abonoId, status: up.status, isAvailable: up.status === 'Disponible', updatedAt: nowStr };
                 }
                 return m;
             });
@@ -1298,7 +1333,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (machineUpdate) {
             updatedMachines = stateRef.current.machines.map(m => {
                 if (m.id === machineUpdate.id) {
-                    return { ...m, status: machineUpdate.status, updatedAt: nowStr };
+                    return { ...m, status: machineUpdate.status, isAvailable: machineUpdate.status === 'Disponible', updatedAt: nowStr };
                 }
                 return m;
             });
@@ -1450,13 +1485,18 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const nowStr = new Date().toISOString();
         const gestionWithTime = { ...gestion, updatedAt: nowStr, createdAt: (gestion as Gestion & { createdAt?: string }).createdAt || nowStr };
 
-        let updatedGestiones = gestiones;
+        // Lee de stateRef, no de la variable `gestiones` cerrada por closure — igual que
+        // las otras 11 acciones. Con la closure, dos llamadas seguidas a esta función
+        // dentro del mismo handler (p. ej. registrar dos gestiones en una sola acción)
+        // leerían la misma foto y la segunda pisaría en silencio el cambio de la primera
+        // en el estado local — el mismo bug ya encontrado y arreglado hoy en addRentalAction.
+        let updatedGestiones = stateRef.current.gestiones;
         if (operation === 'delete') {
-            updatedGestiones = gestiones.filter(g => g.id !== gestion.id);
+            updatedGestiones = stateRef.current.gestiones.filter(g => g.id !== gestion.id);
         } else if (operation === 'create') {
-            updatedGestiones = [gestionWithTime, ...gestiones];
+            updatedGestiones = [gestionWithTime, ...stateRef.current.gestiones];
         } else {
-            updatedGestiones = gestiones.map(g => g.id === gestion.id ? gestionWithTime : g);
+            updatedGestiones = stateRef.current.gestiones.map(g => g.id === gestion.id ? gestionWithTime : g);
         }
         setGestiones(updatedGestiones);
 
@@ -1468,20 +1508,22 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         } catch (e) {}
 
         enqueueSyncItem(gestion.id, 'gestiones', operation, operation === 'delete' ? gestion : gestionWithTime);
-    }, [gestiones, enqueueSyncItem]);
+    }, [enqueueSyncItem]);
 
     // Payments action: registers a cobro (payment/receipt) — backed by Turso
     const addPaymentAction = useCallback((payment: Payment, operation: 'create' | 'update' | 'delete' = 'create') => {
         const nowStr = new Date().toISOString();
         const paymentWithTime = { ...payment, updatedAt: nowStr, createdAt: payment.createdAt || nowStr };
 
-        let updatedPayments = payments;
+        // Lee de stateRef, no de la variable `payments` cerrada por closure — ver el
+        // comentario en addGestionAction.
+        let updatedPayments = stateRef.current.payments;
         if (operation === 'delete') {
-            updatedPayments = payments.filter(p => p.id !== payment.id);
+            updatedPayments = stateRef.current.payments.filter(p => p.id !== payment.id);
         } else if (operation === 'create') {
-            updatedPayments = [paymentWithTime, ...payments];
+            updatedPayments = [paymentWithTime, ...stateRef.current.payments];
         } else {
-            updatedPayments = payments.map(p => p.id === payment.id ? paymentWithTime : p);
+            updatedPayments = stateRef.current.payments.map(p => p.id === payment.id ? paymentWithTime : p);
         }
         setPayments(updatedPayments);
 
@@ -1493,7 +1535,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         } catch (e) {}
 
         enqueueSyncItem(payment.id, 'payments', operation, operation === 'delete' ? payment : paymentWithTime);
-    }, [payments, enqueueSyncItem]);
+    }, [enqueueSyncItem]);
 
     // CobranzaConfig action: saves configuration singleton to Turso
     const updateCobranzaConfigAction = useCallback((config: CobranzaConfig) => {
@@ -1510,6 +1552,16 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
         enqueueSyncItem('singleton', 'cobranzaConfig', 'update', configWithTime);
     }, [enqueueSyncItem]);
+
+    const bulkSyncAction = useCallback((
+        items: { id: string; entityType: SyncEntityType; operation: 'create' | 'update' | 'delete'; payload: any }[],
+        localStorageUpdate?: Partial<{ clients: Client[]; machines: Machine[]; readings: Reading[]; tickets: Ticket[]; abonos: Abono[]; users: User[]; rentals: Rental[]; budgets: Budget[]; }>
+    ) => {
+        if (localStorageUpdate) {
+            saveStateToLocalStorage(localStorageUpdate);
+        }
+        items.forEach(item => enqueueSyncItem(item.id, item.entityType, item.operation, item.payload));
+    }, [enqueueSyncItem, saveStateToLocalStorage]);
 
     return (
         <ManagementContext.Provider
@@ -1562,6 +1614,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 addGestionAction,
                 updateCobranzaConfigAction,
                 addPaymentAction,
+                bulkSyncAction,
                 resetSyncAction
             }}
         >

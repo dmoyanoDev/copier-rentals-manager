@@ -149,18 +149,25 @@ const PageHeaderActions: React.FC = () => {
                 )}
             </button>
 
-            {/* Manual Sync Queue Reset Option */}
-            {pendingCount > 0 && (
-                <button
-                    onClick={() => setShowResetModal(true)}
-                    disabled={isSyncing}
-                    title="Ver qué se va a descartar y restablecer la base de datos local"
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-red-200 dark:border-red-900/40 bg-red-500/10 hover:bg-red-500/25 transition-all text-[11px] font-semibold text-red-400 select-none cursor-pointer"
-                >
-                    <RotateCcw size={12} />
-                    <span>Restablecer</span>
-                </button>
-            )}
+            {/* Full resync — always available, not just when there's something pending to
+                discard. Antes esto solo aparecía con pendingCount > 0, así que si el único
+                problema de un dispositivo era del lado de la DESCARGA (su copia local quedó
+                vieja, pero no tenía nada propio atascado para subir), no había ningún botón
+                para pedirle una copia fresca — el único recurso terminaba siendo borrar el
+                caché del navegador a mano. */}
+            <button
+                onClick={() => setShowResetModal(true)}
+                disabled={isSyncing}
+                title={pendingCount > 0 ? 'Ver qué se va a descartar y traer una copia fresca de la nube' : 'Forzar una copia fresca y completa de todos los datos desde la nube'}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition-all text-[11px] font-semibold select-none cursor-pointer ${
+                    pendingCount > 0
+                        ? 'border-red-200 dark:border-red-900/40 bg-red-500/10 hover:bg-red-500/25 text-red-400'
+                        : 'border-slate-200 dark:border-slate-850 bg-slate-900/10 hover:bg-slate-900/20 dark:bg-slate-950 dark:hover:bg-slate-900/60 text-slate-400'
+                }`}
+            >
+                <RotateCcw size={12} />
+                <span>{pendingCount > 0 ? 'Restablecer' : 'Forzar Sincronización'}</span>
+            </button>
 
             <div className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 shadow-sm text-xs">
                 <span className="font-semibold text-slate-500 dark:text-slate-400">Mes de gestión:</span>
@@ -204,34 +211,46 @@ const PageHeaderActions: React.FC = () => {
                 </div>
             </Modal>
 
-            {/* Restablecer — explain before doing anything destructive */}
+            {/* Full resync — explain before doing anything, copy adapts to whether there's
+                anything local that would actually get discarded. */}
             <Modal
                 isOpen={showResetModal}
                 onClose={() => !isResetting && setShowResetModal(false)}
-                title="Restablecer Base de Datos Local"
+                title={pendingCount > 0 ? 'Restablecer Base de Datos Local' : 'Forzar Sincronización Completa'}
                 footer={
                     <>
                         <Button variant="ghost" size="sm" onClick={() => setShowResetModal(false)} disabled={isResetting}>Cancelar</Button>
-                        <Button variant="danger" size="sm" onClick={handleConfirmReset} disabled={isResetting}>
-                            {isResetting ? 'Restableciendo...' : 'Sí, Restablecer'}
+                        <Button variant={pendingCount > 0 ? 'danger' : 'primary'} size="sm" onClick={handleConfirmReset} disabled={isResetting}>
+                            {isResetting ? 'Sincronizando...' : pendingCount > 0 ? 'Sí, Restablecer' : 'Sí, Traer Copia Fresca'}
                         </Button>
                     </>
                 }
             >
-                <div className="space-y-3">
-                    <p className="text-xs text-slate-300">Esta acción va a hacer dos cosas, en este orden:</p>
-                    <ol className="text-xs text-slate-300 space-y-1.5 list-decimal list-inside">
-                        <li><span className="font-semibold text-red-400">Descartar</span> los {pendingCount} cambio(s) locales de abajo — no se van a volver a intentar guardar.</li>
-                        <li><span className="font-semibold text-emerald-400">Descargar</span> una copia fresca y completa de todos los datos desde la nube, reemplazando lo que este dispositivo tenía guardado localmente.</li>
-                    </ol>
-                    <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5">
-                        Usá esto solo si sabés que estos cambios ya no son necesarios (por ejemplo, se cargaron con datos de prueba, o la información ya se guardó desde otro dispositivo). Esta acción no se puede deshacer.
-                    </p>
-                    <div>
-                        <p className="text-[10px] uppercase font-bold text-slate-500 mb-1.5">Se va a descartar:</p>
-                        <PendingItemsList items={pendingItems} />
+                {pendingCount > 0 ? (
+                    <div className="space-y-3">
+                        <p className="text-xs text-slate-300">Esta acción va a hacer dos cosas, en este orden:</p>
+                        <ol className="text-xs text-slate-300 space-y-1.5 list-decimal list-inside">
+                            <li><span className="font-semibold text-red-400">Descartar</span> los {pendingCount} cambio(s) locales de abajo — no se van a volver a intentar guardar.</li>
+                            <li><span className="font-semibold text-emerald-400">Descargar</span> una copia fresca y completa de todos los datos desde la nube, reemplazando lo que este dispositivo tenía guardado localmente.</li>
+                        </ol>
+                        <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5">
+                            Usá esto solo si sabés que estos cambios ya no son necesarios (por ejemplo, se cargaron con datos de prueba, o la información ya se guardó desde otro dispositivo). Esta acción no se puede deshacer.
+                        </p>
+                        <div>
+                            <p className="text-[10px] uppercase font-bold text-slate-500 mb-1.5">Se va a descartar:</p>
+                            <PendingItemsList items={pendingItems} />
+                        </div>
                     </div>
-                </div>
+                ) : (
+                    <div className="space-y-3">
+                        <p className="text-xs text-slate-300">
+                            Va a descargar una copia fresca y completa de todos los datos desde la nube, reemplazando lo que este dispositivo tiene guardado localmente.
+                        </p>
+                        <p className="text-xs text-slate-400 bg-slate-950/40 border border-slate-800 rounded-lg p-2.5">
+                            Usalo si sospechás que esta pantalla no está reflejando un cambio reciente hecho desde otro dispositivo. No tenés cambios propios pendientes de guardar, así que no se pierde nada.
+                        </p>
+                    </div>
+                )}
             </Modal>
         </div>
     );

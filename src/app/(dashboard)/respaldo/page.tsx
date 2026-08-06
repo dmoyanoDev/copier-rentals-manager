@@ -23,9 +23,7 @@ export default function RespaldoPage() {
         users, setUsers, 
         rentals, setRentals,
         currentUser,
-        updateClientAction,
-        updateMachineAction,
-        addReadingAction,
+        bulkSyncAction,
     } = useManagement();
 
     const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
@@ -258,39 +256,58 @@ export default function RespaldoPage() {
         if (confirm(confirmMsg)) {
             setIsImporting(true);
             try {
+                // Cada rama arma el array final una sola vez y lo usa tanto para el
+                // setX(...) local como para bulkSyncAction — llamar a updateClientAction/
+                // updateMachineAction/addReadingAction una vez POR FILA en un forEach corría
+                // cada una contra el mismo stateRef.current desactualizado (solo se refresca
+                // en un useEffect, un tick después de cada setState), así que cada iteración
+                // pisaba en silencio el estado local de la anterior — con una importación de
+                // 50 filas, solo la última terminaba viéndose en este dispositivo hasta el
+                // próximo sync (el servidor sí recibía las 50, cada enqueue usa el objeto
+                // directo, no el array recalculado).
+                const nowStr = new Date().toISOString();
                 if (importModule === 'clientes') {
                     const cleanedValids = validItems.map(({ isValid, errors, isDuplicate, ...rest }: any) => rest);
-                    setClients(prev => {
-                        const filtered = prev.filter(c => !cleanedValids.some((v: any) => v.cuit === c.cuit));
-                        return [...filtered, ...cleanedValids];
-                    });
-                    // Sync each imported client to Turso
-                    cleanedValids.forEach((client: any) => {
-                        const exists = clients.some(c => c.cuit === client.cuit);
-                        updateClientAction(client, exists ? 'update' : 'create');
-                    });
+                    const stamped = cleanedValids.map((c: any) => ({ ...c, updatedAt: nowStr, createdAt: c.createdAt || nowStr }));
+                    const updatedClients = [...clients.filter(c => !stamped.some((v: any) => v.cuit === c.cuit)), ...stamped];
+                    setClients(updatedClients);
+                    bulkSyncAction(
+                        stamped.map((client: any) => ({
+                            id: client.id,
+                            entityType: 'clients' as const,
+                            operation: (clients.some(c => c.cuit === client.cuit) ? 'update' : 'create') as 'update' | 'create',
+                            payload: client,
+                        })),
+                        { clients: updatedClients }
+                    );
                 } else if (importModule === 'maquinas') {
                     const cleanedValids = validItems.map(({ isValid, errors, isDuplicate, ...rest }: any) => rest);
-                    setMachines(prev => {
-                        const filtered = prev.filter(m => !cleanedValids.some((v: any) => v.serial === m.serial));
-                        return [...filtered, ...cleanedValids];
-                    });
-                    // Sync each imported machine to Turso
-                    cleanedValids.forEach((machine: any) => {
-                        const exists = machines.some(m => m.serial === machine.serial);
-                        updateMachineAction(machine, exists ? 'update' : 'create');
-                    });
+                    const stamped = cleanedValids.map((m: any) => ({ ...m, updatedAt: nowStr, createdAt: m.createdAt || nowStr }));
+                    const updatedMachines = [...machines.filter(m => !stamped.some((v: any) => v.serial === m.serial)), ...stamped];
+                    setMachines(updatedMachines);
+                    bulkSyncAction(
+                        stamped.map((machine: any) => ({
+                            id: machine.id,
+                            entityType: 'machines' as const,
+                            operation: (machines.some(m => m.serial === machine.serial) ? 'update' : 'create') as 'update' | 'create',
+                            payload: machine,
+                        })),
+                        { machines: updatedMachines }
+                    );
                 } else if (importModule === 'lecturas') {
                     const cleanedValids = validItems.map(({ isValid, errors, isDuplicate, ...rest }: any) => rest);
-                    setReadings(prev => {
-                        const filtered = prev.filter(r => !cleanedValids.some((v: any) => v.machineId === r.machineId && v.month === r.month));
-                        return [...filtered, ...cleanedValids];
-                    });
-                    // Sync each imported reading to Turso
-                    cleanedValids.forEach((reading: any) => {
-                        const exists = readings.some(r => r.machineId === reading.machineId && r.month === reading.month);
-                        addReadingAction(reading, undefined, exists ? 'update' : 'create');
-                    });
+                    const stamped = cleanedValids.map((r: any) => ({ ...r, updatedAt: nowStr, createdAt: r.createdAt || nowStr }));
+                    const updatedReadings = [...readings.filter(r => !stamped.some((v: any) => v.machineId === r.machineId && v.month === r.month)), ...stamped];
+                    setReadings(updatedReadings);
+                    bulkSyncAction(
+                        stamped.map((reading: any) => ({
+                            id: reading.id,
+                            entityType: 'readings' as const,
+                            operation: (readings.some(r => r.machineId === reading.machineId && r.month === reading.month) ? 'update' : 'create') as 'update' | 'create',
+                            payload: reading,
+                        })),
+                        { readings: updatedReadings }
+                    );
                 }
 
                 // Log audit action

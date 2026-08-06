@@ -300,9 +300,15 @@ export async function GET(request: Request) {
     // técnico) could otherwise read every user's password hash from a normal poll.
     const safeUsers = dbUsers.map(({ passwordHash, ...rest }: any) => rest);
 
+    // clientes/page.tsx only ever reads/writes client.cobranzaNotas, never the DB's own
+    // `notes` column name — without this alias a client's internal collection notes would
+    // never round-trip back to the frontend after a sync, even once clientSyncSchema learns
+    // to accept cobranzaNotas on the way in.
+    const clientsForFrontend = dbClients.map((c: any) => ({ ...c, cobranzaNotas: c.notes ?? null }));
+
     const backupPayload = {
       users: safeUsers,
-      clients: dbClients,
+      clients: clientsForFrontend,
       plans: dbPlans,
       machines: dbMachines,
       readings: dbReadings,

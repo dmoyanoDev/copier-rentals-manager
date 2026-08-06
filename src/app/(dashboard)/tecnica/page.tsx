@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 export default function TechnicalPage() {
-    const { tickets, currentUser, users, clients, machines, updateTicketAction, updateUserAction, updateMachineAction } = useManagement();
+    const { tickets, setTickets, currentUser, users, clients, machines, updateTicketAction, updateUserAction, updateMachineAction, bulkSyncAction } = useManagement();
     const isTech = currentUser?.role === 'tecnico';
 
     // Core Navigation Tabs: 'bitacora' | 'tecnicos' | 'config' | 'historial_envios' | 'metricas'
@@ -192,13 +192,26 @@ export default function TechnicalPage() {
             });
             const data = await response.json();
             if (data.success) {
-                // Persist each updated ticket to Turso via sync queue
-                (data.tickets as Ticket[]).forEach(updatedTicket => {
+                // Persist every changed ticket in one state transaction — calling
+                // updateTicketAction once per ticket in this loop would have each call
+                // compute its own "next tickets" array from the same stale
+                // stateRef.current.tickets (only refreshed a tick later via useEffect), so
+                // only the LAST changed ticket in the run would actually stick locally
+                // until the next sync poll quietly fixed it. The cron can flip several
+                // tickets per run (SLA breaches, auto-escalations), so this was reachable.
+                const changed = (data.tickets as Ticket[]).filter(updatedTicket => {
                     const existing = tickets.find(t => t.id === updatedTicket.id);
-                    if (existing && JSON.stringify(existing) !== JSON.stringify(updatedTicket)) {
-                        updateTicketAction(updatedTicket);
-                    }
+                    return existing && JSON.stringify(existing) !== JSON.stringify(updatedTicket);
                 });
+                if (changed.length > 0) {
+                    const changedIds = new Set(changed.map(t => t.id));
+                    const updatedTickets = tickets.map(t => changedIds.has(t.id) ? changed.find(c => c.id === t.id)! : t);
+                    setTickets(updatedTickets);
+                    bulkSyncAction(
+                        changed.map(t => ({ id: t.id, entityType: 'tickets' as const, operation: 'update' as const, payload: t })),
+                        { tickets: updatedTickets }
+                    );
+                }
                 fetchLogs();
                 if (data.logs.length > 0) {
                     alert(`¡Cron de automatización ejecutado!\n\nAcciones realizadas:\n${data.logs.join('\n')}`);

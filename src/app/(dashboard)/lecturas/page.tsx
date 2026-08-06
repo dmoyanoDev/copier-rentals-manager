@@ -364,7 +364,9 @@ export default function ReadingsPage() {
         };
 
         // Call context action (saves rental, updates machine links, and syncs both to Turso)
-        addRentalAction(nRental, [{
+        // — si la máquina se acaba de crear arriba, ya quedó guardada con los valores
+        // finales; no volver a tocarla acá (ver comentario equivalente en alquileres/page.tsx).
+        addRentalAction(nRental, rentalMachineMode === 'create' ? [] : [{
             id: finalMachineId,
             clientId: finalClientId,
             abonoId: finalPlanId,

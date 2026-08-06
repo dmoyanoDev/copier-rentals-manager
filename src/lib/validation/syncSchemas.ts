@@ -75,12 +75,20 @@ export const clientSyncSchema = z.object({
   email: z.string().nullable().optional(),
   address: z.string().nullable().optional(),
   cuit: z.string().nullable().optional(),
+  // Accept both 'notes' (DB name) and 'cobranzaNotas' (frontend name, the only one
+  // clientes/page.tsx actually reads/writes) — same accept-both-and-normalize pattern
+  // as machineCounter/currentCounter and comments/readingComment.
   notes: z.string().nullable().optional(),
+  cobranzaNotas: z.string().nullable().optional(),
   taxCategory: z.enum(['Responsable Inscripto', 'Monotributista', 'Exento']).default('Monotributista'),
   debt: z.number().default(0),
   active: z.boolean().default(true),
   createdAt: dateSchema.optional(),
   updatedAt: dateSchema.optional(),
+}).transform((data) => {
+  const notes = data.cobranzaNotas !== undefined ? data.cobranzaNotas : data.notes;
+  const { cobranzaNotas, ...rest } = data;
+  return { ...rest, notes };
 });
 
 export const planSyncSchema = z.object({

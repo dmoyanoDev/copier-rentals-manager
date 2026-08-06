@@ -195,8 +195,12 @@ export default function RentalsPage() {
             ]
         };
 
-        // Invoke context addRentalAction
-        addRentalAction(nRental, [{
+        // Invoke context addRentalAction — si la máquina se acaba de crear arriba (paso 3),
+        // ya quedó guardada con clientId/abonoId/status finales; no volver a tocarla acá.
+        // Hacerlo igual computa el array de máquinas desde stateRef.current (todavía sin la
+        // creación de recién, que se refleja un tick después vía useEffect) y termina
+        // pisando el estado local con una lista que no incluye la máquina nueva.
+        addRentalAction(nRental, rentalMachineMode === 'create' ? [] : [{
             id: finalMachineId,
             clientId: finalClientId,
             abonoId: finalPlanId,
