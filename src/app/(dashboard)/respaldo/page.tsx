@@ -1283,6 +1283,7 @@ export default function RespaldoPage() {
                                 <option value="lecturas">Lecturas</option>
                                 <option value="tickets">Tickets</option>
                                 <option value="datos">Datos y Respaldo</option>
+                                <option value="seguridad">Seguridad</option>
                             </select>
 
                             <select
