@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { useManagement } from '@/lib/context';
+import { useManagement, defaultCobranzaConfig } from '@/lib/context';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatCurrency, formatPeriod, getSystemAlerts, getAlertSoundForNewAlerts, playSystemSound } from '@/lib/utils';
 import type { Machine } from '@/domain/types';
@@ -157,16 +157,7 @@ export default function DashboardPage() {
         });
         const criticalMachinesList = Object.values(criticalMachinesMap).filter(item => item.count > 1);
 
-        const alerts = getSystemAlerts(clients, readings, machines, gestiones || [], cobranzaConfig || {
-            diasAvisoVencimiento: 3,
-            montoMinimoAlerta: 50000,
-            diasMoraCritica: 15,
-            plantillaEmail: '',
-            plantillaWhatsapp: '',
-            sonidosActivos: true,
-            volumenSonidos: 50,
-            autoAlertasActivas: true
-        });
+        const alerts = getSystemAlerts(clients, readings, machines, gestiones || [], cobranzaConfig || defaultCobranzaConfig);
 
         return {
             activeClientsCount,
@@ -594,10 +585,3 @@ export default function DashboardPage() {
         </div>
     );
 }
-
-const abonos = [
-    { id: 'abono-basic', name: 'Plan Básico 2000', price: 45000, limit: 2000, excessPrice: 15.5 },
-    { id: 'abono-medium', name: 'Plan Pyme 5000', price: 95000, limit: 5000, excessPrice: 12.0 },
-    { id: 'abono-premium', name: 'Plan Corporativo 15000', price: 240000, limit: 15000, excessPrice: 9.0 },
-    { id: 'abono-color', name: 'Plan Color Corporativo 5000', price: 180000, limit: 5000, excessPrice: 28.0 }
-];

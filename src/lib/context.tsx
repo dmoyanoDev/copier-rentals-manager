@@ -27,7 +27,7 @@ export interface LocalClient extends Client {
 
 
 
-const defaultCobranzaConfig: CobranzaConfig = {
+export const defaultCobranzaConfig: CobranzaConfig = {
     diasAvisoVencimiento: 3,
     montoMinimoAlerta: 50000,
     diasMoraCritica: 15,
