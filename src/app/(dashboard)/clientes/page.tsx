@@ -14,6 +14,7 @@ import {
     playSystemSound,
     getClientMovementsHelper,
     getClientFinancialSummaryHelper,
+    getClientReadings,
     getSystemAlerts,
     getAlertSoundForNewAlerts,
     SystemAlert
@@ -1955,19 +1956,20 @@ export default function ClientsPage() {
                         )}
 
                         {/* TAB 2: HISTORIAL FACTURACIÓN */}
-                        {detailTab === 'invoices' && (
+                        {detailTab === 'invoices' && (() => {
+                            // getClientReadings prioritizes each reading's own clientId snapshot over
+                            // the owning machine's CURRENT client, so this stays correct even after a
+                            // machine is reassigned to a different client (matches getClientMovementsHelper,
+                            // which drives the Cuenta Corriente tab/PDF/dashboard alerts for this same data).
+                            const clientInvoices = getClientReadings(selectedClient, readings, machines)
+                                .sort((a, b) => b.month.localeCompare(a.month));
+                            return (
                             <div className="space-y-3">
-                                {readings.filter(r => {
-                                    const mach = machines.find(m => m.id === r.machineId);
-                                    return mach && mach.clientId === selectedClient.id;
-                                }).length === 0 ? (
+                                {clientInvoices.length === 0 ? (
                                     <p className="text-xs text-slate-500 italic py-4">Sin facturas liquidadas registradas.</p>
                                 ) : (
                                     <div className="space-y-2">
-                                        {readings.filter(r => {
-                                            const mach = machines.find(m => m.id === r.machineId);
-                                            return mach && mach.clientId === selectedClient.id;
-                                        }).sort((a,b) => b.month.localeCompare(a.month)).map(r => {
+                                        {clientInvoices.map(r => {
                                             const mach = machines.find(m => m.id === r.machineId);
                                             return (
                                                 <div key={r.id} className="p-3 bg-slate-955 border border-slate-850 rounded-xl text-xs flex justify-between items-center">
@@ -1980,9 +1982,11 @@ export default function ClientsPage() {
                                                     <div className="text-right space-y-1">
                                                         <span className="font-bold text-slate-200 block font-mono-tabular">{formatCurrency(r.totalAmount)}</span>
                                                         <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${
-                                                            r.collectionStatus === 'Pagado' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
+                                                            r.collectionStatus === 'Pagado' ? 'bg-emerald-500/10 text-emerald-400' :
+                                                            r.collectionStatus === 'Parcial' ? 'bg-amber-500/10 text-amber-400' :
+                                                            'bg-red-500/10 text-red-400'
                                                         }`}>
-                                                            {r.collectionStatus === 'Pagado' ? 'PAGADO' : 'PENDIENTE'}
+                                                            {r.collectionStatus === 'Pagado' ? 'PAGADO' : r.collectionStatus === 'Parcial' ? 'PARCIAL' : 'PENDIENTE'}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -1991,7 +1995,8 @@ export default function ClientsPage() {
                                     </div>
                                 )}
                             </div>
-                        )}
+                            );
+                        })()}
 
                     </div>
                 )}

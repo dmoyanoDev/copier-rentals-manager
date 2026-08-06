@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { formatCurrency, formatPeriod, getClientIvaRate } from '@/lib/utils';
+import { formatCurrency, formatPeriod, getClientIvaRate, getReadingClient } from '@/lib/utils';
 import { Reading, Machine } from '@/lib/mockData';
 import { Check, Clock, Search, Filter, RefreshCw, Edit, Trash2, ShieldAlert, Printer } from 'lucide-react';
 import { RegisterPaymentModal } from '@/components/shared/RegisterPaymentModal';
@@ -145,17 +145,17 @@ export default function HistoryPage() {
     // Filtered Readings List
     const filteredReadings = [...readings].filter(r => {
         const mach = machines.find(m => m.id === r.machineId);
-        const client = clients.find(c => c.id === (mach ? mach.clientId : ''));
-        
+        const client = getReadingClient(r, clients, machines);
+
         const q = searchQuery.toLowerCase();
-        const matchesSearch = !searchQuery || 
+        const matchesSearch = !searchQuery ||
             (client && client.name.toLowerCase().includes(q)) ||
             (mach && mach.brand.toLowerCase().includes(q)) ||
             (mach && mach.model.toLowerCase().includes(q)) ||
             (mach && mach.serial.toLowerCase().includes(q));
 
         const matchesPeriod = !filterPeriodState || r.month === filterPeriodState;
-        const matchesClient = !filterClient || (mach && mach.clientId === filterClient);
+        const matchesClient = !filterClient || client?.id === filterClient;
         const isPaidReading = r.collectionStatus === 'Pagado';
         const matchesPayment = !filterPayment || (filterPayment === 'paid' ? isPaidReading : !isPaidReading);
 
@@ -336,8 +336,8 @@ export default function HistoryPage() {
                         ) : (
                             filteredReadings.map(r => {
                                 const mach = machines.find(m => m.id === r.machineId);
-                                const client = clients.find(c => c.id === (mach ? mach.clientId : ''));
-                                
+                                const client = getReadingClient(r, clients, machines);
+
                                 const initialVal = Number(r.initial) || 0;
                                 const finalVal = Number(r.final) || 0;
                                 const excessVal = Number(r.excessCount) || 0;

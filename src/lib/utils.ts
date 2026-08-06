@@ -142,12 +142,29 @@ export interface ClientMovement {
     receivedBy?: string;
 }
 
-export function getClientMovementsHelper(client: Client, readings: Reading[], machines: Machine[], payments: Payment[] = []): ClientMovement[] {
-    const clientReadings = readings.filter(r => {
+// Readings billed to this client — prefers the reading's own clientId snapshot (captured at
+// creation time in lecturas/page.tsx, so it keeps pointing at the client that was actually
+// billed even if the machine is later reassigned to someone else) and only falls back to the
+// machine's current clientId for legacy readings that predate that field.
+export function getClientReadings(client: Client, readings: Reading[], machines: Machine[]): Reading[] {
+    return readings.filter(r => {
         if (r.clientId) return r.clientId === client.id;
         const mach = machines.find(m => m.id === r.machineId);
         return mach && mach.clientId === client.id;
     });
+}
+
+// The inverse lookup of getClientReadings: the client a single reading is billed to. Same
+// clientId-snapshot-first priority, so a reassigned machine doesn't retroactively change who
+// old readings are attributed to.
+export function getReadingClient(reading: Reading, clients: Client[], machines: Machine[]): Client | undefined {
+    if (reading.clientId) return clients.find(c => c.id === reading.clientId);
+    const mach = machines.find(m => m.id === reading.machineId);
+    return mach ? clients.find(c => c.id === mach.clientId) : undefined;
+}
+
+export function getClientMovementsHelper(client: Client, readings: Reading[], machines: Machine[], payments: Payment[] = []): ClientMovement[] {
+    const clientReadings = getClientReadings(client, readings, machines);
 
     const movements: ClientMovement[] = [];
 
