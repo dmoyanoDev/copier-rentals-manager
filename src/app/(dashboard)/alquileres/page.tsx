@@ -14,8 +14,8 @@ import { Machine, Rental, Client, Abono } from '@/lib/mockData';
 import { Search, Filter, PlusCircle, CheckCircle, HelpCircle, XCircle, RefreshCw, Calendar, FileText, Layers, Trash2, Edit2, ShieldAlert } from 'lucide-react';
 
 export default function RentalsPage() {
-    const { 
-        clients, setClients, machines, setMachines, abonos, setAbonos, rentals, setRentals, readings, currentUser,
+    const {
+        clients, machines, abonos, rentals, readings, currentUser,
         updateClientAction, updateAbonoAction, updateMachineAction, addRentalAction, updateRentalAction
     } = useManagement();
     
@@ -148,7 +148,7 @@ export default function RentalsPage() {
                 id: `p-${Date.now()}`,
                 name: newPlanName,
                 limit: parseInt(newPlanLimit, 10) || 2000,
-                price: parseInt(newPlanPrice, 10) || 20000,
+                price: parseFloat(newPlanPrice) || 20000,
                 excessPrice: parseFloat(newPlanExcess) || 15,
                 active: true
             };
