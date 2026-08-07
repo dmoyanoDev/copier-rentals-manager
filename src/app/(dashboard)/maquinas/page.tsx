@@ -111,6 +111,16 @@ export default function MachinesPage() {
             return;
         }
 
+        // El selector de Plan/Abono queda en "Seleccionar Plan..." (value: '') por defecto y
+        // nada más lo exigía — el contrato de alquiler que se crea más abajo sí lo requiere
+        // (rentalSyncSchema: abonoId min(1)), así que guardar sin elegir un plan pasaba la
+        // validación local, mostraba éxito, y luego fallaba la sincronización real en
+        // silencio (reintentando y mostrando "Error de validación de datos" varias veces).
+        if (clientId && !abonoId) {
+            setFormError('Seleccioná un Plan / Abono para el cliente asignado.');
+            return;
+        }
+
         // Serial Duplicate Check
         const cleanSerial = serial.trim().toLowerCase();
         const duplicate = machines.find(m => 
