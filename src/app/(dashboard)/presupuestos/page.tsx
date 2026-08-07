@@ -838,7 +838,10 @@ export default function PresupuestosPage() {
 
     const handleSavePreset = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!presetMarca || !presetModelo) return;
+        if (!presetMarca || !presetModelo) {
+            alert('La marca y el modelo son obligatorios.');
+            return;
+        }
 
         const newPreset: MachinePreset = {
             id: editingPreset ? editingPreset.id : 'preset-' + Date.now(),
@@ -896,7 +899,10 @@ export default function PresupuestosPage() {
 
     const handleSaveTemplate = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!tempNombre || !tempIntro) return;
+        if (!tempNombre || !tempIntro) {
+            alert('El nombre de la plantilla y el texto de introducción son obligatorios.');
+            return;
+        }
 
         const newTemp: BudgetTemplate = {
             id: editingTemplate ? editingTemplate.id : 'temp-' + Date.now(),
