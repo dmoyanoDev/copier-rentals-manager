@@ -112,7 +112,7 @@ export default function RentalsPage() {
         // Check if CUIT already exists
         if (rentalClientMode === 'create') {
             const cleanCuit = newClientCuit.replace(/-/g, '').trim();
-            const duplicateCuit = clients.find(c => c.cuit.replace(/-/g, '').trim() === cleanCuit);
+            const duplicateCuit = clients.find(c => (c.cuit || '').replace(/-/g, '').trim() === cleanCuit);
             if (duplicateCuit) {
                 setCreateError(`El CUIT ${newClientCuit} ya pertenece al cliente "${duplicateCuit.name}".`);
                 return;

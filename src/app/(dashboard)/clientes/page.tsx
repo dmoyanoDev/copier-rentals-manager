@@ -206,7 +206,7 @@ export default function ClientsPage() {
     // Traditional filter handler
     const filteredClients = clients.filter(c => {
         const q = searchQuery.toLowerCase();
-        const matchesSearch = c.name.toLowerCase().includes(q) || c.cuit.includes(q) || c.address?.toLowerCase().includes(q);
+        const matchesSearch = c.name.toLowerCase().includes(q) || (c.cuit || '').includes(q) || c.address?.toLowerCase().includes(q);
         
         const isClientActive = c.active !== false;
         let matchesStatus = true;
@@ -227,7 +227,7 @@ export default function ClientsPage() {
         summary: getClientFinancialSummary(c)
     })).filter(item => {
         const q = accSearchQuery.toLowerCase();
-        const matchesSearch = item.client.name.toLowerCase().includes(q) || item.client.cuit.includes(q);
+        const matchesSearch = item.client.name.toLowerCase().includes(q) || (item.client.cuit || '').includes(q);
         
         let matchesFilter = true;
         if (accFilterDebt === 'debtors') {
@@ -1040,8 +1040,8 @@ export default function ClientsPage() {
         }
 
         const cleanCuit = cuit.replace(/-/g, '').trim();
-        const duplicate = clients.find(c => 
-            c.cuit.replace(/-/g, '').trim() === cleanCuit && 
+        const duplicate = clients.find(c =>
+            (c.cuit || '').replace(/-/g, '').trim() === cleanCuit &&
             (!editingClient || c.id !== editingClient.id)
         );
 

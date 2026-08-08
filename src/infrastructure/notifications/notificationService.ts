@@ -134,7 +134,7 @@ export async function sendTechNotification(
     prioridad: ticket.priority.toUpperCase(),
     tecnico: tech.fullname,
     sla: ticket.slaDate ? new Date(ticket.slaDate).toLocaleString('es-AR') : 'Sin definir',
-    enlace: `${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}/tecnica?ticketId=${ticket.id}`
+    enlace: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/tecnica?ticketId=${ticket.id}`
   };
 
   const replaceVars = (text: string, vars: Record<string, string>) => {
