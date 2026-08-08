@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
         emailDestinatario: to,
         clienteNombre,
         fechaEnvio: new Date().toISOString(),
-        estado: 'enviado'
+        estado: 'simulado'
       });
       return NextResponse.json({ success: true, simulated: true });
     } catch (err: any) {

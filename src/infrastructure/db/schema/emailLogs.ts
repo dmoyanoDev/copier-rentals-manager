@@ -7,5 +7,5 @@ export const emailLogs = sqliteTable('email_logs', {
   emailDestinatario: text('email_destinatario').notNull(),
   clienteNombre: text('cliente_nombre').notNull(),
   fechaEnvio: text('fecha_envio').notNull(),
-  estado: text('estado').notNull(), // "enviado" o "error"
+  estado: text('estado').notNull(), // "enviado", "simulado" (sin YAHOO_APP_PASSWORD configurada) o "error"
 });
