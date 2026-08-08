@@ -2116,7 +2116,7 @@ export default function ClientsPage() {
                                 <option value="interna">Interna (Auditoría)</option>
                             </select>
                         </div>
-                        <div className="flex gap-2 w-full sm:w-auto justify-end">
+                        <div className="flex flex-wrap gap-2 w-full sm:w-auto justify-end">
                             {accountClient && (
                                 <>
                                     <Button variant="secondary" size="sm" onClick={() => printClientAccount(accountClient, pdfVersion)} className="flex items-center gap-1 text-[11px] h-8 flex-1 sm:flex-initial justify-center">
@@ -2124,6 +2124,12 @@ export default function ClientsPage() {
                                     </Button>
                                     <Button variant="secondary" size="sm" onClick={() => downloadExcelClient(accountClient)} className="flex items-center gap-1 text-[11px] h-8 flex-1 sm:flex-initial justify-center">
                                         <Download size={13} /> CSV
+                                    </Button>
+                                    <Button variant="secondary" size="sm" onClick={() => openEmail(accountClient)} className="flex items-center gap-1 text-[11px] h-8 flex-1 sm:flex-initial justify-center">
+                                        <Mail size={13} /> Email
+                                    </Button>
+                                    <Button variant="secondary" size="sm" onClick={() => openWhatsapp(accountClient)} className="flex items-center gap-1 text-[11px] h-8 flex-1 sm:flex-initial justify-center">
+                                        <MessageSquare size={13} /> WhatsApp
                                     </Button>
                                 </>
                             )}
@@ -2251,12 +2257,6 @@ export default function ClientsPage() {
                                                 <span>Acción Sugerida de Cobro</span>
                                             </div>
                                             <div className="flex flex-wrap gap-1.5 justify-center sm:justify-end text-[10px] w-full sm:w-auto">
-                                                <Button variant="secondary" size="sm" onClick={() => handleQuickAction(accountClient, 'whatsapp')} className="h-6 px-2 flex-1 sm:flex-none">
-                                                    WhatsApp
-                                                </Button>
-                                                <Button variant="secondary" size="sm" onClick={() => handleQuickAction(accountClient, 'email')} className="h-6 px-2 flex-1 sm:flex-none">
-                                                    Email
-                                                </Button>
                                                 <Button variant="secondary" size="sm" onClick={() => handleQuickAction(accountClient, 'llamado')} className="h-6 px-2 flex-1 sm:flex-none">
                                                     Registrar Llamada
                                                 </Button>
