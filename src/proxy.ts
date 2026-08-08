@@ -1,21 +1,18 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { decryptSession, isMasterUser } from './src/lib/auth/sessionDecrypt';
+import { decryptSession, isMasterUser } from './lib/auth/sessionDecrypt';
 
 const SESSION_COOKIE_NAME = 'ms_session';
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  console.log(`[Middleware] Path: ${pathname}`);
 
   // 1. Obtener la cookie de sesión
   const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME);
   const token = sessionCookie?.value;
-  console.log(`[Middleware] Token present: ${!!token}`);
 
   // Desencriptar la sesión sin consultar la base de datos (seguro para Edge Runtime)
   const session = token ? await decryptSession(token) : null;
-  console.log(`[Middleware] Session resolved:`, session);
 
   // Rutas públicas de autenticación y de visualización de PDF compartidos
   const isAuthRoute =
@@ -49,9 +46,9 @@ export async function middleware(request: NextRequest) {
   // Protección de roles (RBAC) para técnicos
   if (session.role === 'tecnico') {
     // Los técnicos solo pueden acceder a: Dashboard (/), Soporte Técnico (/tecnica), Consulta de Máquinas (/maquinas) y Lecturas (/lecturas)
-    const restrictedPaths = ['/abonos', '/usuarios', '/clientes', '/historial', '/presupuestos', '/respaldo', '/alquileres'];
+    const restrictedPaths = ['/abonos', '/usuarios', '/clientes', '/historial', '/presupuestos', '/respaldo', '/alquileres', '/estadisticas', '/finanzas', '/catalogo'];
     const isRestricted = restrictedPaths.some(path => pathname.startsWith(path));
-    
+
     if (isRestricted) {
       const accessDeniedUrl = new URL('/', request.url);
       return NextResponse.redirect(accessDeniedUrl);

@@ -10,7 +10,7 @@ import Link from 'next/link';
 import { AlertCircle } from 'lucide-react';
 
 export default function DashboardPage() {
-    const { clients, machines, readings, tickets, currentUser, users, currentMonth, rentals, abonos, gestiones, cobranzaConfig } = useManagement();
+    const { clients, machines, readings, tickets, currentUser, users, currentMonth, rentals, abonos, gestiones, cobranzaConfig, oficinas } = useManagement();
 
     const isTech = currentUser?.role === 'tecnico';
 
@@ -18,7 +18,16 @@ export default function DashboardPage() {
     // 1. DASHBOARD CALCULATIONS (MEMOIZED)
     // ==========================================
     const memoizedData = React.useMemo(() => {
-        const activeClientsCount = clients.length;
+        // "Clientes Activos" cuenta oficinas (ubicaciones), no filas de la tabla clients —
+        // un cliente con varias sedes (ej. un hospital con distintas áreas, cada una con
+        // sus propios equipos) cuenta una vez por oficina cargada. Un cliente activo sin
+        // ninguna oficina cargada todavía cuenta como 1 — su propia dirección es su única
+        // ubicación hasta que se carguen oficinas para él.
+        const activeClientIds = clients.filter(c => c.active !== false).map(c => c.id);
+        const activeClientsCount = activeClientIds.reduce((acc, clientId) => {
+            const count = oficinas.filter(o => o.clientId === clientId).length;
+            return acc + (count > 0 ? count : 1);
+        }, 0);
 
         // Filter active rentals for current month
         const activeRentals = (rentals || []).filter(r => {
@@ -41,6 +50,14 @@ export default function DashboardPage() {
             ...currentMonthReadings.map(r => r.machineId)
         ]);
         const rentedMachinesCount = targetMachineIds.size;
+
+        // "Máquinas Alquiladas" (la card del KPI): total de máquinas con un alquiler
+        // realmente `activo` en este momento — distinto de rentedMachinesCount de arriba,
+        // que además cuenta pausado/vencido y lecturas del mes para el % de "Progreso de
+        // Lecturas del Mes" (un cálculo diferente, no se toca acá).
+        const machinesWithActiveRentalCount = new Set(
+            (rentals || []).filter(r => r.status === 'activo').map(r => r.machineId)
+        ).size;
 
         // Projected Base Fee (Abono Mensual Fijo)
         let projectedBase = 0;
@@ -164,6 +181,7 @@ export default function DashboardPage() {
             activeRentals,
             currentMonthReadings,
             rentedMachinesCount,
+            machinesWithActiveRentalCount,
             projectedBase,
             totalRevenueMonth,
             totalExcessInvoiced,
@@ -178,13 +196,14 @@ export default function DashboardPage() {
             criticalMachinesList,
             alerts
         };
-    }, [clients, machines, readings, tickets, rentals, abonos, currentMonth, currentUser?.id, gestiones, cobranzaConfig]);
+    }, [clients, machines, readings, tickets, rentals, abonos, currentMonth, currentUser?.id, gestiones, cobranzaConfig, oficinas]);
 
     const {
         activeClientsCount,
         activeRentals,
         currentMonthReadings,
         rentedMachinesCount,
+        machinesWithActiveRentalCount,
         projectedBase,
         totalRevenueMonth,
         totalExcessInvoiced,
@@ -414,7 +433,7 @@ export default function DashboardPage() {
                                 <div>
                                     <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Clientes Activos</span>
                                     <span className="block text-2xl font-extrabold text-white mt-1">{activeClientsCount}</span>
-                                    <span className="text-[10px] text-slate-500 mt-1 block">Registrados en el sistema</span>
+                                    <span className="text-[10px] text-slate-500 mt-1 block">Oficinas activas en el sistema</span>
                                 </div>
                                 <div className="w-10 h-10 rounded-xl bg-indigo-600/10 text-indigo-500 flex items-center justify-center">
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
@@ -426,8 +445,8 @@ export default function DashboardPage() {
                             <CardContent className="p-5 flex items-center justify-between">
                                 <div>
                                     <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Máquinas Alquiladas</span>
-                                    <span className="block text-2xl font-extrabold text-white mt-1">{rentedMachinesCount}</span>
-                                    <span className="text-[10px] text-slate-500 mt-1 block">Equipos activos rentados</span>
+                                    <span className="block text-2xl font-extrabold text-white mt-1">{machinesWithActiveRentalCount}</span>
+                                    <span className="text-[10px] text-slate-500 mt-1 block">Con alquiler activo</span>
                                 </div>
                                 <div className="w-10 h-10 rounded-xl bg-indigo-600/10 text-indigo-500 flex items-center justify-center">
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" /></svg>

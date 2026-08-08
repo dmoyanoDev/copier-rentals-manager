@@ -23,6 +23,8 @@ export const tickets = sqliteTable('tickets', {
   diagnostic: text('diagnostic'),
   partsNeeded: text('parts_needed'),
   partsUsed: text('parts_used'),
+  partsNeededItems: text('parts_needed_items', { mode: 'json' }).$defaultFn(() => []).notNull(),
+  partsUsedItems: text('parts_used_items', { mode: 'json' }).$defaultFn(() => []).notNull(),
   internalNotes: text('internal_notes'),
   actionTaken: text('action_taken'),
   assignedTechId: text('assigned_tech_id').references(() => users.id),

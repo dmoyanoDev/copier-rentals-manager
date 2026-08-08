@@ -15,10 +15,10 @@ import { Machine } from '@/lib/mockData';
 import { formatCurrency, formatPeriod } from '@/lib/utils';
 
 export default function MachinesPage() {
-    const { machines, clients, abonos, readings, rentals, tickets, updateMachineAction, addRentalAction, updateRentalAction, currentUser } = useManagement();
+    const { machines, clients, abonos, readings, rentals, tickets, partsCatalog, oficinas, updateMachineAction, addRentalAction, updateRentalAction, currentUser } = useManagement();
     const [searchQuery, setSearchQuery] = useState('');
     const [filterStatus, setFilterStatus] = useState('');
-    
+
     // Modal states
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -34,8 +34,18 @@ export default function MachinesPage() {
     const [currentCounter, setCurrentCounter] = useState('0');
     const [lastServiceCounter, setLastServiceCounter] = useState('0');
     const [preventiveInterval, setPreventiveInterval] = useState('15000');
-    const [status, setStatus] = useState<'Disponible' | 'Alquilada' | 'En Taller' | 'Alerta Técnica' | 'Inactiva'>('Disponible');
+    const [costoPorCopiaInsumos, setCostoPorCopiaInsumos] = useState('');
+    const [acquisitionCost, setAcquisitionCost] = useState('');
+    const [acquisitionDate, setAcquisitionDate] = useState('');
+    const [usefulLifeMonths, setUsefulLifeMonths] = useState('');
+    // Etapa 6: casilleros de consumibles instalados — guardan solo el catalogId elegido;
+    // el contador de instalación se resuelve solo al guardar (ver resolveConsumableSlot).
+    const [tonerCatalogId, setTonerCatalogId] = useState('');
+    const [imageUnitCatalogId, setImageUnitCatalogId] = useState('');
+    const [fuserCatalogId, setFuserCatalogId] = useState('');
+    const [status, setStatus] = useState<'Disponible' | 'Alquilada' | 'En Taller' | 'Alerta Técnica' | 'Vendida' | 'Inactiva'>('Disponible');
     const [clientId, setClientId] = useState('');
+    const [oficinaId, setOficinaId] = useState('');
     const [abonoId, setAbonoId] = useState('');
     const [applyIva, setApplyIva] = useState(false);
     const [formError, setFormError] = useState('');
@@ -51,8 +61,16 @@ export default function MachinesPage() {
             setCurrentCounter(String(machine.currentCounter || 0));
             setLastServiceCounter(String(machine.lastServiceCounter || 0));
             setPreventiveInterval(String(machine.preventiveInterval || 15000));
+            setCostoPorCopiaInsumos(machine.costoPorCopiaInsumos != null ? String(machine.costoPorCopiaInsumos) : '');
+            setAcquisitionCost(machine.acquisitionCost != null ? String(machine.acquisitionCost) : '');
+            setAcquisitionDate(machine.acquisitionDate || '');
+            setUsefulLifeMonths(machine.usefulLifeMonths != null ? String(machine.usefulLifeMonths) : '');
+            setTonerCatalogId(machine.tonerCatalogId || '');
+            setImageUnitCatalogId(machine.imageUnitCatalogId || '');
+            setFuserCatalogId(machine.fuserCatalogId || '');
             setStatus(machine.status || 'Disponible');
             setClientId(machine.clientId || '');
+            setOficinaId(machine.oficinaId || '');
             setAbonoId(machine.abonoId || '');
             setApplyIva(machine.applyIva || false);
         } else {
@@ -64,8 +82,16 @@ export default function MachinesPage() {
             setCurrentCounter('0');
             setLastServiceCounter('0');
             setPreventiveInterval('15000');
+            setCostoPorCopiaInsumos('');
+            setAcquisitionCost('');
+            setAcquisitionDate('');
+            setUsefulLifeMonths('');
+            setTonerCatalogId('');
+            setImageUnitCatalogId('');
+            setFuserCatalogId('');
             setStatus('Disponible');
             setClientId('');
+            setOficinaId('');
             setAbonoId('');
             setApplyIva(false);
         }
@@ -95,6 +121,9 @@ export default function MachinesPage() {
 
     const handleClientIdChange = (id: string) => {
         setClientId(id);
+        // Una oficina pertenece a un solo cliente — si cambia el cliente, la selección
+        // anterior ya no es válida.
+        setOficinaId('');
         if (id) {
             setStatus('Alquilada');
         } else {
@@ -136,6 +165,20 @@ export default function MachinesPage() {
         const counter = parseInt(currentCounter, 10) || 0;
         const initialStatus = clientId ? 'Alquilada' : status;
 
+        // Etapa 6: si se eligió un ítem de catálogo distinto al que había en este casillero,
+        // se considera instalado recién ahora (installedAtCounter = contador actual del
+        // formulario). Si es el mismo ítem que ya estaba, se conserva su contador de
+        // instalación original — así una edición de otro campo (ej. la marca) no reinicia
+        // por accidente el seguimiento de uso del consumible.
+        const resolveConsumableSlot = (selected: string, originalCatalogId: string | null | undefined, originalCounter: number | null | undefined) => {
+            if (!selected) return { catalogId: null as string | null, installedAtCounter: null as number | null };
+            if (selected !== (originalCatalogId || '')) return { catalogId: selected, installedAtCounter: counter };
+            return { catalogId: selected, installedAtCounter: originalCounter ?? counter };
+        };
+        const tonerSlot = resolveConsumableSlot(tonerCatalogId, editingMachine?.tonerCatalogId, editingMachine?.tonerInstalledAtCounter);
+        const imageUnitSlot = resolveConsumableSlot(imageUnitCatalogId, editingMachine?.imageUnitCatalogId, editingMachine?.imageUnitInstalledAtCounter);
+        const fuserSlot = resolveConsumableSlot(fuserCatalogId, editingMachine?.fuserCatalogId, editingMachine?.fuserInstalledAtCounter);
+
         // Domain rule verification
         const evaluated = evaluateMachineRules({
             status: initialStatus,
@@ -152,8 +195,22 @@ export default function MachinesPage() {
             currentCounter: counter,
             lastServiceCounter: parseInt(lastServiceCounter, 10) || 0,
             preventiveInterval: parseInt(preventiveInterval, 10) || 15000,
+            costoPorCopiaInsumos: costoPorCopiaInsumos.trim() === '' ? null : (parseFloat(costoPorCopiaInsumos) || 0),
+            acquisitionCost: acquisitionCost.trim() === '' ? null : (parseFloat(acquisitionCost) || 0),
+            acquisitionDate: acquisitionDate.trim() === '' ? null : acquisitionDate,
+            usefulLifeMonths: usefulLifeMonths.trim() === '' ? null : (parseInt(usefulLifeMonths, 10) || 0),
+            tonerCatalogId: tonerSlot.catalogId,
+            tonerInstalledAtCounter: tonerSlot.installedAtCounter,
+            imageUnitCatalogId: imageUnitSlot.catalogId,
+            imageUnitInstalledAtCounter: imageUnitSlot.installedAtCounter,
+            fuserCatalogId: fuserSlot.catalogId,
+            fuserInstalledAtCounter: fuserSlot.installedAtCounter,
             status: evaluated.status as Machine['status'],
             clientId: clientId || null,
+            // Defensivo: solo se guarda si sigue perteneciendo al cliente actualmente
+            // seleccionado — handleClientIdChange ya la resetea al cambiar de cliente, pero
+            // esto evita guardar una oficina de otro cliente si algo la dejó desincronizada.
+            oficinaId: (oficinaId && oficinas.some(o => o.id === oficinaId && o.clientId === clientId)) ? oficinaId : null,
             abonoId: abonoId || null,
             applyIva
         };
@@ -263,6 +320,91 @@ export default function MachinesPage() {
         return matchesSearch && matchesStatus;
     });
 
+    const renderMachineRow = (m: Machine) => {
+        const client = clients.find(c => c.id === m.clientId);
+        const currentCounter = m.currentCounter || 0;
+        const lastServiceCounter = m.lastServiceCounter || 0;
+        const preventiveInterval = m.preventiveInterval || 15000;
+        const copiesSinceService = currentCounter - lastServiceCounter;
+        const isPreventiveAlert = copiesSinceService >= preventiveInterval;
+
+        return (
+            <TableRow key={m.id} className="hover:bg-slate-900/40">
+                <TableCell className="font-bold text-slate-100">
+                    {m.brand} {m.model}
+                </TableCell>
+                <TableCell className="font-mono-tabular text-xs text-slate-350">{m.serial}</TableCell>
+                <TableCell className="text-xs">
+                    <Badge variant={m.type === 'Color' ? 'info' : 'secondary'}>{m.type}</Badge>
+                </TableCell>
+                <TableCell className="text-xs font-semibold text-slate-300">
+                    {client ? client.name : <span className="text-slate-500 italic">Sin cliente</span>}
+                </TableCell>
+                <TableCell className="text-xs text-slate-400">
+                    {m.oficinaId ? (oficinas.find(o => o.id === m.oficinaId)?.nombre || <span className="text-slate-500 italic">Oficina eliminada</span>) : <span className="text-slate-550 italic">—</span>}
+                </TableCell>
+                <TableCell className="font-mono-tabular text-xs text-slate-300">
+                    {currentCounter.toLocaleString('es-AR')} copias
+                </TableCell>
+                <TableCell className="text-xs">
+                    <div className="space-y-1">
+                        <div className="font-mono-tabular text-slate-400 text-[11px]">
+                            {copiesSinceService.toLocaleString('es-AR')} / {preventiveInterval.toLocaleString('es-AR')}
+                        </div>
+                        {isPreventiveAlert ? (
+                            <Badge variant="warning" className="flex items-center gap-1 font-bold animate-pulse text-[10px]">
+                                <AlertTriangle size={10} /> Mantenimiento Vencido
+                            </Badge>
+                        ) : (
+                            <Badge variant="success" className="text-[10px]">Al día</Badge>
+                        )}
+                    </div>
+                </TableCell>
+                <TableCell className="text-xs">
+                    <Badge variant={m.status === 'Disponible' ? 'success' : 'danger'}>
+                        {m.status === 'Disponible' ? 'Disponible' : 'No disponible'}
+                    </Badge>
+                </TableCell>
+                <TableCell className="text-xs">
+                    <Badge variant={
+                        m.status === 'Disponible' ? 'success' :
+                        m.status === 'Alquilada' ? 'secondary' :
+                        m.status === 'En Taller' ? 'warning' :
+                        m.status === 'Alerta Técnica' ? 'warning' :
+                        m.status === 'Vendida' ? 'info' : 'danger'
+                    }>
+                        {m.status}
+                    </Badge>
+                </TableCell>
+                <TableCell className="text-right">
+                    <div className="flex justify-end gap-1.5">
+                        <button
+                            title="Historial y Ficha del Equipo"
+                            onClick={() => handleOpenDetail(m)}
+                            className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-850 transition-colors"
+                        >
+                            <FileText size={13} className="text-indigo-400" />
+                        </button>
+                        <button
+                            title="Editar Equipo"
+                            onClick={() => handleOpenForm(m)}
+                            className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-850 transition-colors"
+                        >
+                            <Edit size={13} className="text-slate-400" />
+                        </button>
+                        <button
+                            title="Eliminar / Baja"
+                            onClick={() => handleDeleteMachine(m.id)}
+                            className="p-1.5 bg-red-955/20 border border-red-900/30 rounded-lg hover:bg-red-900/20 transition-colors"
+                        >
+                            <Trash2 size={13} className="text-red-400" />
+                        </button>
+                    </div>
+                </TableCell>
+            </TableRow>
+        );
+    };
+
     return (
         <div className="space-y-6 animate-fade-in text-slate-100 pb-12">
             
@@ -289,6 +431,7 @@ export default function MachinesPage() {
                         <option value="Alquilada">Alquilada</option>
                         <option value="En Taller">En Taller</option>
                         <option value="Alerta Técnica">Alerta Técnica</option>
+                        <option value="Vendida">Vendida</option>
                         <option value="Inactiva">Inactiva</option>
                     </select>
                 </div>
@@ -306,6 +449,7 @@ export default function MachinesPage() {
                             <TableHeaderCell>Número de Serie</TableHeaderCell>
                             <TableHeaderCell>Tipo</TableHeaderCell>
                             <TableHeaderCell>Cliente Actual</TableHeaderCell>
+                            <TableHeaderCell>Oficina</TableHeaderCell>
                             <TableHeaderCell>Contador Actual</TableHeaderCell>
                             <TableHeaderCell>Mantenimiento Preventivo</TableHeaderCell>
                             <TableHeaderCell>Disponibilidad</TableHeaderCell>
@@ -316,91 +460,12 @@ export default function MachinesPage() {
                     <TableBody>
                         {filteredMachines.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={9} className="text-center py-10 text-slate-500 text-xs italic">
+                                <TableCell colSpan={10} className="text-center py-10 text-slate-500 text-xs italic">
                                     No se encontraron equipos registrados.
                                 </TableCell>
                             </TableRow>
                         ) : (
-                            filteredMachines.map(m => {
-                                const client = clients.find(c => c.id === m.clientId);
-                                const currentCounter = m.currentCounter || 0;
-                                const lastServiceCounter = m.lastServiceCounter || 0;
-                                const preventiveInterval = m.preventiveInterval || 15000;
-                                const copiesSinceService = currentCounter - lastServiceCounter;
-                                const isPreventiveAlert = copiesSinceService >= preventiveInterval;
-
-                                return (
-                                    <TableRow key={m.id} className="hover:bg-slate-900/40">
-                                        <TableCell className="font-bold text-slate-100">
-                                            {m.brand} {m.model}
-                                        </TableCell>
-                                        <TableCell className="font-mono-tabular text-xs text-slate-350">{m.serial}</TableCell>
-                                        <TableCell className="text-xs">
-                                            <Badge variant={m.type === 'Color' ? 'info' : 'secondary'}>{m.type}</Badge>
-                                        </TableCell>
-                                        <TableCell className="text-xs font-semibold text-slate-300">
-                                            {client ? client.name : <span className="text-slate-500 italic">Sin cliente</span>}
-                                        </TableCell>
-                                        <TableCell className="font-mono-tabular text-xs text-slate-300">
-                                            {currentCounter.toLocaleString('es-AR')} copias
-                                        </TableCell>
-                                        <TableCell className="text-xs">
-                                            <div className="space-y-1">
-                                                <div className="font-mono-tabular text-slate-400 text-[11px]">
-                                                    {copiesSinceService.toLocaleString('es-AR')} / {preventiveInterval.toLocaleString('es-AR')}
-                                                </div>
-                                                {isPreventiveAlert ? (
-                                                    <Badge variant="warning" className="flex items-center gap-1 font-bold animate-pulse text-[10px]">
-                                                        <AlertTriangle size={10} /> Mantenimiento Vencido
-                                                    </Badge>
-                                                ) : (
-                                                    <Badge variant="success" className="text-[10px]">Al día</Badge>
-                                                )}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="text-xs">
-                                            <Badge variant={m.status === 'Disponible' ? 'success' : 'danger'}>
-                                                {m.status === 'Disponible' ? 'Disponible' : 'No disponible'}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-xs">
-                                            <Badge variant={
-                                                m.status === 'Disponible' ? 'success' :
-                                                m.status === 'Alquilada' ? 'secondary' :
-                                                m.status === 'En Taller' ? 'warning' :
-                                                m.status === 'Alerta Técnica' ? 'warning' : 'danger'
-                                            }>
-                                                {m.status}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <div className="flex justify-end gap-1.5">
-                                                <button 
-                                                    title="Historial y Ficha del Equipo"
-                                                    onClick={() => handleOpenDetail(m)}
-                                                    className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-850 transition-colors"
-                                                >
-                                                    <FileText size={13} className="text-indigo-400" />
-                                                </button>
-                                                <button 
-                                                    title="Editar Equipo"
-                                                    onClick={() => handleOpenForm(m)}
-                                                    className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-850 transition-colors"
-                                                >
-                                                    <Edit size={13} className="text-slate-400" />
-                                                </button>
-                                                <button 
-                                                    title="Eliminar / Baja"
-                                                    onClick={() => handleDeleteMachine(m.id)}
-                                                    className="p-1.5 bg-red-955/20 border border-red-900/30 rounded-lg hover:bg-red-900/20 transition-colors"
-                                                >
-                                                    <Trash2 size={13} className="text-red-400" />
-                                                </button>
-                                            </div>
-                                        </TableCell>
-                                    </TableRow>
-                                );
-                            })
+                            filteredMachines.map(m => renderMachineRow(m))
                         )}
                     </TableBody>
                 </Table>
@@ -475,7 +540,82 @@ export default function MachinesPage() {
                         value={preventiveInterval}
                         onChange={(e) => setPreventiveInterval(e.target.value)}
                     />
-                    
+                    <div className="space-y-1">
+                        <Input
+                            label="Costo de Insumos por Copia ($)"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="Opcional"
+                            value={costoPorCopiaInsumos}
+                            onChange={(e) => setCostoPorCopiaInsumos(e.target.value)}
+                        />
+                        <p className="text-[10px] text-slate-500">Estimación manual de tóner/insumos por copia — se usa en la rentabilidad de Estadísticas. Dejalo vacío si no lo sabés todavía.</p>
+                    </div>
+                    <div className="space-y-1">
+                        <div className="grid grid-cols-2 gap-3">
+                            <Input
+                                label="Costo de Adquisición ($)"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="Opcional"
+                                value={acquisitionCost}
+                                onChange={(e) => setAcquisitionCost(e.target.value)}
+                            />
+                            <Input
+                                label="Fecha de Adquisición"
+                                type="date"
+                                value={acquisitionDate}
+                                onChange={(e) => setAcquisitionDate(e.target.value)}
+                            />
+                        </div>
+                        <Input
+                            label="Vida Útil (meses)"
+                            type="number"
+                            min="1"
+                            step="1"
+                            placeholder="Opcional, ej: 60"
+                            value={usefulLifeMonths}
+                            onChange={(e) => setUsefulLifeMonths(e.target.value)}
+                        />
+                        <p className="text-[10px] text-slate-500">Los 3 datos son necesarios juntos para calcular la amortización lineal mensual en Estadísticas. Dejalos vacíos si todavía no los sabés — no se asume ningún valor.</p>
+                    </div>
+
+                    <div className="space-y-1">
+                        <p className="text-xs font-semibold text-slate-350">Consumibles Instalados</p>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <Select
+                                label="Tóner"
+                                value={tonerCatalogId}
+                                onChange={(e) => setTonerCatalogId(e.target.value)}
+                                options={[
+                                    { value: '', label: 'Sin configurar' },
+                                    ...partsCatalog.filter(c => c.rendimientoCopias != null && c.rendimientoCopias > 0 && (c.activo !== false || c.id === tonerCatalogId)).map(c => ({ value: c.id, label: c.nombre }))
+                                ]}
+                            />
+                            <Select
+                                label="Módulo de Imagen"
+                                value={imageUnitCatalogId}
+                                onChange={(e) => setImageUnitCatalogId(e.target.value)}
+                                options={[
+                                    { value: '', label: 'Sin configurar' },
+                                    ...partsCatalog.filter(c => c.rendimientoCopias != null && c.rendimientoCopias > 0 && (c.activo !== false || c.id === imageUnitCatalogId)).map(c => ({ value: c.id, label: c.nombre }))
+                                ]}
+                            />
+                            <Select
+                                label="Fusor"
+                                value={fuserCatalogId}
+                                onChange={(e) => setFuserCatalogId(e.target.value)}
+                                options={[
+                                    { value: '', label: 'Sin configurar' },
+                                    ...partsCatalog.filter(c => c.rendimientoCopias != null && c.rendimientoCopias > 0 && (c.activo !== false || c.id === fuserCatalogId)).map(c => ({ value: c.id, label: c.nombre }))
+                                ]}
+                            />
+                        </div>
+                        <p className="text-[10px] text-slate-500">Solo aparecen los ítems del Catálogo que tienen cargado un rendimiento (copias). Elegir un ítem distinto al que había cuenta como instalarlo recién ahora — para reemplazos del día a día usá el botón "Reemplazar" en Soporte Técnico.</p>
+                    </div>
+
                     <Select
                         disabled={status === 'Inactiva' || status === 'En Taller'}
                         label={status === 'Inactiva' || status === 'En Taller' ? "Cliente Asignado (No disponible por estado operativo)" : "Cliente Asignado"}
@@ -489,6 +629,15 @@ export default function MachinesPage() {
 
                     {clientId && (
                         <>
+                            <Select
+                                label="Oficina / Sede"
+                                value={oficinaId}
+                                onChange={(e) => setOficinaId(e.target.value)}
+                                options={[
+                                    { value: '', label: 'Sin oficina asignada' },
+                                    ...oficinas.filter(o => o.clientId === clientId).map(o => ({ value: o.id, label: o.nombre }))
+                                ]}
+                            />
                             <Select
                                 label="Plan / Abono Asignado"
                                 value={abonoId}
@@ -571,7 +720,8 @@ export default function MachinesPage() {
                                     selectedMachine.status === 'Disponible' ? 'success' :
                                     selectedMachine.status === 'Alquilada' ? 'secondary' :
                                     selectedMachine.status === 'En Taller' ? 'warning' :
-                                    selectedMachine.status === 'Alerta Técnica' ? 'warning' : 'danger'
+                                    selectedMachine.status === 'Alerta Técnica' ? 'warning' :
+                                    selectedMachine.status === 'Vendida' ? 'info' : 'danger'
                                 }>
                                     {selectedMachine.status}
                                 </Badge>

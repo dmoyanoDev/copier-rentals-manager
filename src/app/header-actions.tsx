@@ -21,6 +21,12 @@ const ENTITY_LABELS: Record<SyncEntityType, string> = {
     cobranzaConfig: 'Config. de Cobranza',
     machinePresets: 'Equipo Preset',
     templates: 'Plantilla de Texto',
+    partsCatalog: 'Insumo/Repuesto',
+    gastosGenerales: 'Gasto General',
+    ventas: 'Venta',
+    oficinas: 'Oficina',
+    pricingSettings: 'Configuración de Precios',
+    dollarSettings: 'Configuración de Dólar',
 };
 
 const OPERATION_LABELS: Record<SyncOperation, string> = {

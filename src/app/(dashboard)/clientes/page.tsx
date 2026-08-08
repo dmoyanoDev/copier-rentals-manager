@@ -53,8 +53,8 @@ const LocalBadge = ({ variant, children, className = '' }: { variant: 'success' 
 export default function ClientsPage() {
     const {
         clients, machines, readings, abonos, rentals, tickets,
-        gestiones, cobranzaConfig, currentUser, payments,
-        updateClientAction, addReadingAction, addGestionAction, updateCobranzaConfigAction
+        gestiones, cobranzaConfig, currentUser, payments, oficinas,
+        updateClientAction, addReadingAction, addGestionAction, updateCobranzaConfigAction, addOficinaAction
     } = useManagement();
 
     // Tabs setup
@@ -141,6 +141,10 @@ export default function ClientsPage() {
     const [debt, setDebt] = useState('0');
     const [isActive, setIsActive] = useState(true);
     const [formError, setFormError] = useState('');
+    // Oficinas (sedes) del cliente en edición — lista editable, se guarda como diff contra
+    // `oficinas` al confirmar el formulario (crear nuevas, renombrar existentes, borrar las
+    // que se sacaron de la lista y no tengan máquinas asignadas).
+    const [oficinasDraft, setOficinasDraft] = useState<{ id: string; nombre: string }[]>([]);
 
     // Internal notes temp field
     const [tempInternalNotes, setTempInternalNotes] = useState('');
@@ -1000,6 +1004,7 @@ export default function ClientsPage() {
             setEmail(client.email || '');
             setDebt(String(client.debt || 0));
             setIsActive(client.active !== false);
+            setOficinasDraft(oficinas.filter(o => o.clientId === client.id).map(o => ({ id: o.id, nombre: o.nombre })));
         } else {
             setEditingClient(null);
             setName('');
@@ -1010,6 +1015,7 @@ export default function ClientsPage() {
             setEmail('');
             setDebt('0');
             setIsActive(true);
+            setOficinasDraft([]);
         }
         setIsFormOpen(true);
     };
@@ -1063,8 +1069,44 @@ export default function ClientsPage() {
             updateClientAction(clientData, 'create');
         }
 
+        // Oficinas: diff oficinasDraft contra las oficinas reales de este cliente. El botón
+        // de quitar en la UI ya impide sacar de la lista una oficina con máquinas asignadas,
+        // así que cualquier fila ausente acá es siempre segura de borrar.
+        const existingOficinas = oficinas.filter(o => o.clientId === clientData.id);
+        const draftIds = new Set(oficinasDraft.map(o => o.id));
+        for (const existing of existingOficinas) {
+            if (!draftIds.has(existing.id)) {
+                addOficinaAction(existing, 'delete');
+            }
+        }
+        for (const draft of oficinasDraft) {
+            const nombre = draft.nombre.trim();
+            if (!nombre) continue; // filas vacías se ignoran, no se guardan
+            const existing = existingOficinas.find(o => o.id === draft.id);
+            if (existing) {
+                if (existing.nombre !== nombre) {
+                    addOficinaAction({ ...existing, nombre }, 'update');
+                }
+            } else {
+                addOficinaAction({ id: draft.id, clientId: clientData.id, nombre }, 'create');
+            }
+        }
+
         setIsFormOpen(false);
     };
+
+    const handleAddOficinaRow = () => {
+        setOficinasDraft(prev => [...prev, { id: 'oficina-' + crypto.randomUUID(), nombre: '' }]);
+    };
+    const handleRemoveOficinaRow = (id: string) => {
+        setOficinasDraft(prev => prev.filter(o => o.id !== id));
+    };
+    const handleRenameOficinaRow = (id: string, nombre: string) => {
+        setOficinasDraft(prev => prev.map(o => o.id === id ? { ...o, nombre } : o));
+    };
+    // Una oficina ya guardada con máquinas asignadas no se puede quitar de la lista sin
+    // antes reasignar esas máquinas a otra oficina desde /maquinas.
+    const oficinaHasMachines = (oficinaId: string) => machines.some(m => m.oficinaId === oficinaId);
 
     const handleDeleteClient = (id: string) => {
         const clientMachines = machines.filter(m => m.clientId === id);
@@ -1852,6 +1894,47 @@ export default function ClientsPage() {
                                 { value: 'false', label: 'INACTIVO' }
                             ]}
                         />
+                    </div>
+
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                            <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Oficinas / Sedes</label>
+                            <button
+                                type="button"
+                                onClick={handleAddOficinaRow}
+                                className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
+                            >
+                                <Plus size={12} /> Agregar Oficina
+                            </button>
+                        </div>
+                        {oficinasDraft.length === 0 && (
+                            <p className="text-[10px] text-slate-500 italic">
+                                Sin oficinas cargadas — si este cliente tiene varias sedes (ej. distintas áreas de un hospital, cada una con sus propios equipos), agregalas acá para identificarlas después en Máquinas y Alquileres.
+                            </p>
+                        )}
+                        {oficinasDraft.map(row => {
+                            const locked = oficinaHasMachines(row.id);
+                            return (
+                                <div key={row.id} className="flex items-center gap-2">
+                                    <div className="flex-1">
+                                        <Input
+                                            value={row.nombre}
+                                            onChange={(e) => handleRenameOficinaRow(row.id, e.target.value)}
+                                            placeholder="Ej: Área de Administración"
+                                        />
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleRemoveOficinaRow(row.id)}
+                                        disabled={locked}
+                                        title={locked ? 'No se puede quitar: tiene máquinas asignadas. Reasignalas desde Máquinas primero.' : 'Quitar oficina'}
+                                        className={`p-2 rounded-lg transition-colors ${locked ? 'text-slate-700 cursor-not-allowed' : 'text-slate-400 hover:text-red-400 cursor-pointer'}`}
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
+                            );
+                        })}
                     </div>
 
                     {formError && (

@@ -19,6 +19,12 @@ import {
   payments,
   machinePresets,
   budgetTemplates,
+  partsCatalog,
+  gastosGenerales,
+  ventas,
+  oficinas,
+  pricingSettings,
+  dollarSettings,
 } from '@/infrastructure/db/schema';
 import {
   clientSyncSchema,
@@ -34,6 +40,12 @@ import {
   paymentSyncSchema,
   machinePresetSyncSchema,
   budgetTemplateSyncSchema,
+  partCatalogItemSyncSchema,
+  gastoGeneralSyncSchema,
+  ventaSyncSchema,
+  oficinaSyncSchema,
+  pricingSettingSyncSchema,
+  dollarSettingsSyncSchema,
 } from '@/lib/validation/syncSchemas';
 import { notifyDatabaseChange } from '../signal/route';
 
@@ -67,6 +79,7 @@ export async function POST(request: Request) {
       'clients': 1,
       'plans': 2,
       'abonos': 2,
+      'oficinas': 2,
       'machines': 3,
       'readings': 4,
       'rentals': 5,
@@ -74,7 +87,12 @@ export async function POST(request: Request) {
       'budgets': 7,
       'payments': 8,
       'machinePresets': 1,
-      'templates': 1
+      'templates': 1,
+      'partsCatalog': 1,
+      'gastosGenerales': 1,
+      'ventas': 8,
+      'pricingSettings': 1,
+      'dollarSettings': 1,
     };
 
     const getOrder = (item: any) => {
@@ -188,6 +206,30 @@ export async function POST(request: Request) {
           case 'templates':
             table = budgetTemplates;
             schema = budgetTemplateSyncSchema;
+            break;
+          case 'partsCatalog':
+            table = partsCatalog;
+            schema = partCatalogItemSyncSchema;
+            break;
+          case 'gastosGenerales':
+            table = gastosGenerales;
+            schema = gastoGeneralSyncSchema;
+            break;
+          case 'ventas':
+            table = ventas;
+            schema = ventaSyncSchema;
+            break;
+          case 'oficinas':
+            table = oficinas;
+            schema = oficinaSyncSchema;
+            break;
+          case 'pricingSettings':
+            table = pricingSettings;
+            schema = pricingSettingSyncSchema;
+            break;
+          case 'dollarSettings':
+            table = dollarSettings;
+            schema = dollarSettingsSyncSchema;
             break;
           case 'cobranzaConfig':
             table = cobranzaConfigTable;

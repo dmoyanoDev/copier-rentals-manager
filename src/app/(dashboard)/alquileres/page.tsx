@@ -11,18 +11,22 @@ import { Modal } from '@/components/ui/modal';
 import { Badge } from '@/components/ui/badge';
 import { formatCurrency, formatPeriod, getClientIvaRate } from '@/lib/utils';
 import { Machine, Rental, Client, Abono } from '@/lib/mockData';
-import { Search, Filter, PlusCircle, CheckCircle, HelpCircle, XCircle, RefreshCw, Calendar, FileText, Layers, Trash2, Edit2, ShieldAlert } from 'lucide-react';
+import { Search, Filter, PlusCircle, CheckCircle, HelpCircle, XCircle, RefreshCw, Calendar, FileText, Layers, Trash2, Edit2, ShieldAlert, ChevronRight, ChevronDown } from 'lucide-react';
 
 export default function RentalsPage() {
     const {
-        clients, machines, abonos, rentals, readings, currentUser,
-        updateClientAction, updateAbonoAction, updateMachineAction, addRentalAction, updateRentalAction
+        clients, machines, abonos, rentals, readings, currentUser, oficinas,
+        updateClientAction, updateAbonoAction, updateMachineAction, addRentalAction, updateRentalAction, addOficinaAction
     } = useManagement();
-    
+
     // Core states
     const [searchQuery, setSearchQuery] = useState('');
     const [filterStatus, setFilterStatus] = useState('');
     const [quickTab, setQuickTab] = useState<'all' | 'activo' | 'vencido' | 'finalizado'>('all');
+    const [expandedRentalGroups, setExpandedRentalGroups] = useState<Set<string>>(new Set());
+    const [expandedOficinaGroups, setExpandedOficinaGroups] = useState<Set<string>>(new Set());
+    const [creatingOficinaForClient, setCreatingOficinaForClient] = useState<string | null>(null);
+    const [newOficinaName, setNewOficinaName] = useState('');
 
     // Drawer / Detail states
     const [selectedRental, setSelectedRental] = useState<Rental | null>(null);
@@ -347,6 +351,121 @@ export default function RentalsPage() {
         return matchesSearch && matchesStatus && matchesTab;
     });
 
+    // Mismo agrupado por cliente que /maquinas — un cliente con 17-19 contratos repetía su
+    // nombre esa cantidad de filas seguidas, ilegible. Colapsado por defecto; se auto-expande
+    // mientras hay búsqueda/filtro/pestaña activa para no esconder resultados detrás de un click.
+    // Dentro de cada cliente, un segundo nivel agrupa por oficina (la máquina del alquiler
+    // resuelve su oficina) — solo se muestra ese subgrupo si hay más de un valor distinto o si
+    // el único valor es una oficina real, para no envolver TODO el cliente en un subgrupo
+    // "Sin Oficina Asignada" vacío de información cuando nunca se cargó ninguna.
+    const isFilteringRentals = !!searchQuery || !!filterStatus || quickTab !== 'all';
+    const rentalGroups = (() => {
+        const byClientId = new Map<string, typeof filteredRentals>();
+        for (const r of filteredRentals) {
+            const key = r.clientId || '__sin_cliente__';
+            if (!byClientId.has(key)) byClientId.set(key, []);
+            byClientId.get(key)!.push(r);
+        }
+        const groups = Array.from(byClientId.entries()).map(([clientId, list]) => {
+            const byOficina = new Map<string, typeof list>();
+            for (const r of list) {
+                const mach = machines.find(m => m.id === r.machineId);
+                const oficinaKey = mach?.oficinaId || '__sin_oficina__';
+                if (!byOficina.has(oficinaKey)) byOficina.set(oficinaKey, []);
+                byOficina.get(oficinaKey)!.push(r);
+            }
+            const oficinaGroups = Array.from(byOficina.entries()).map(([oficinaKey, items]) => ({
+                oficinaKey,
+                oficinaName: oficinaKey === '__sin_oficina__' ? 'Sin Oficina Asignada' : (oficinas.find(o => o.id === oficinaKey)?.nombre || 'Oficina eliminada'),
+                items,
+            }));
+            oficinaGroups.sort((a, b) => {
+                if (a.oficinaKey === '__sin_oficina__') return 1;
+                if (b.oficinaKey === '__sin_oficina__') return -1;
+                return a.oficinaName.localeCompare(b.oficinaName, 'es');
+            });
+            const showOficinaSubgroups = oficinaGroups.length > 1 || (oficinaGroups.length === 1 && oficinaGroups[0].oficinaKey !== '__sin_oficina__');
+            return {
+                clientId,
+                clientName: clientId === '__sin_cliente__' ? 'Sin Cliente' : (clients.find(c => c.id === clientId)?.name || 'Desconocido'),
+                items: list,
+                oficinaGroups,
+                showOficinaSubgroups,
+            };
+        });
+        groups.sort((a, b) => {
+            if (a.clientId === '__sin_cliente__') return 1;
+            if (b.clientId === '__sin_cliente__') return -1;
+            return a.clientName.localeCompare(b.clientName, 'es');
+        });
+        return groups;
+    })();
+
+    const toggleRentalGroup = (clientId: string) => {
+        setExpandedRentalGroups(prev => {
+            const next = new Set(prev);
+            if (next.has(clientId)) next.delete(clientId); else next.add(clientId);
+            return next;
+        });
+    };
+
+    const toggleOficinaGroup = (clientId: string, oficinaKey: string) => {
+        const key = `${clientId}::${oficinaKey}`;
+        setExpandedOficinaGroups(prev => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key); else next.add(key);
+            return next;
+        });
+    };
+
+    const handleCreateOficina = () => {
+        const nombre = newOficinaName.trim();
+        if (!nombre || !creatingOficinaForClient) return;
+        addOficinaAction({ id: 'oficina-' + crypto.randomUUID(), clientId: creatingOficinaForClient, nombre }, 'create');
+        setCreatingOficinaForClient(null);
+        setNewOficinaName('');
+    };
+
+    const renderRentalRow = (r: Rental) => {
+        const cl = clients.find(c => c.id === r.clientId);
+        const mach = machines.find(m => m.id === r.machineId);
+        const ab = abonos.find(a => a.id === r.abonoId);
+
+        return (
+            <TableRow key={r.id} className={selectedRental?.id === r.id ? "bg-indigo-950/20" : "hover:bg-slate-900/40"}>
+                <TableCell className="font-bold text-slate-100">{cl ? cl.name : 'Desconocido'}</TableCell>
+                <TableCell className="text-xs text-slate-300">
+                    <strong>{mach ? `${mach.brand} ${mach.model}` : 'Equipo Retirado'}</strong>
+                    {mach && <span className="block text-[10px] text-slate-500">S/N: {mach.serial}</span>}
+                </TableCell>
+                <TableCell className="text-xs text-slate-400">
+                    {mach?.oficinaId ? (oficinas.find(o => o.id === mach.oficinaId)?.nombre || <span className="text-slate-500 italic">Oficina eliminada</span>) : <span className="text-slate-550 italic">—</span>}
+                </TableCell>
+                <TableCell className="text-xs text-slate-350">{ab ? ab.name : 'Abono N/A'}</TableCell>
+                <TableCell className="text-xs text-slate-350 font-mono-tabular">{r.startDate}</TableCell>
+                <TableCell className="text-xs text-slate-400 font-mono-tabular">{r.endDate || <span className="italic">Vigente</span>}</TableCell>
+                <TableCell className="text-xs">
+                    <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${
+                        r.status === 'activo' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                        r.status === 'pausado' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                        r.status === 'vencido' ? 'bg-red-500/10 text-red-500 border border-red-500/20' :
+                        'bg-slate-500/10 text-slate-400 border border-slate-800'
+                    }`}>
+                        {r.status}
+                    </span>
+                </TableCell>
+                <TableCell className="text-right">
+                    <Button variant="secondary" size="sm" onClick={() => {
+                        setSelectedRental(r);
+                        setDetailTab('info');
+                    }}>
+                        Ver Expediente
+                    </Button>
+                </TableCell>
+            </TableRow>
+        );
+    };
+
     return (
         <div className="space-y-6 animate-fade-in text-slate-100 pb-12">
             
@@ -430,6 +549,7 @@ export default function RentalsPage() {
                                 <TableRow>
                                     <TableHeaderCell>Cliente</TableHeaderCell>
                                     <TableHeaderCell>Modelo / Serie</TableHeaderCell>
+                                    <TableHeaderCell>Oficina</TableHeaderCell>
                                     <TableHeaderCell>Plan</TableHeaderCell>
                                     <TableHeaderCell>Fecha Inicio</TableHeaderCell>
                                     <TableHeaderCell>Fecha Fin</TableHeaderCell>
@@ -440,45 +560,67 @@ export default function RentalsPage() {
                             <TableBody>
                                 {filteredRentals.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={7} className="text-center py-10 text-slate-500 text-xs italic">
+                                        <TableCell colSpan={8} className="text-center py-10 text-slate-500 text-xs italic">
                                             No se encontraron contratos de alquileres registrados.
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    filteredRentals.map(r => {
-                                        const cl = clients.find(c => c.id === r.clientId);
-                                        const mach = machines.find(m => m.id === r.machineId);
-                                        const ab = abonos.find(a => a.id === r.abonoId);
-
+                                    rentalGroups.map(group => {
+                                        const isExpanded = isFilteringRentals || expandedRentalGroups.has(group.clientId);
+                                        const activos = group.items.filter(r => r.status === 'activo').length;
                                         return (
-                                            <TableRow key={r.id} className={selectedRental?.id === r.id ? "bg-indigo-950/20" : "hover:bg-slate-900/40"}>
-                                                <TableCell className="font-bold text-slate-100">{cl ? cl.name : 'Desconocido'}</TableCell>
-                                                <TableCell className="text-xs text-slate-300">
-                                                    <strong>{mach ? `${mach.brand} ${mach.model}` : 'Equipo Retirado'}</strong>
-                                                    {mach && <span className="block text-[10px] text-slate-500">S/N: {mach.serial}</span>}
-                                                </TableCell>
-                                                <TableCell className="text-xs text-slate-350">{ab ? ab.name : 'Abono N/A'}</TableCell>
-                                                <TableCell className="text-xs text-slate-350 font-mono-tabular">{r.startDate}</TableCell>
-                                                <TableCell className="text-xs text-slate-400 font-mono-tabular">{r.endDate || <span className="italic">Vigente</span>}</TableCell>
-                                                <TableCell className="text-xs">
-                                                    <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${
-                                                        r.status === 'activo' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
-                                                        r.status === 'pausado' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                                                        r.status === 'vencido' ? 'bg-red-500/10 text-red-500 border border-red-500/20' :
-                                                        'bg-slate-500/10 text-slate-400 border border-slate-800'
-                                                    }`}>
-                                                        {r.status}
-                                                    </span>
-                                                </TableCell>
-                                                <TableCell className="text-right">
-                                                    <Button variant="secondary" size="sm" onClick={() => {
-                                                        setSelectedRental(r);
-                                                        setDetailTab('info');
-                                                    }}>
-                                                        Ver Expediente
-                                                    </Button>
-                                                </TableCell>
-                                            </TableRow>
+                                            <React.Fragment key={group.clientId}>
+                                                <TableRow
+                                                    className="cursor-pointer bg-slate-900/60 hover:bg-slate-900 border-y border-slate-850"
+                                                    onClick={() => toggleRentalGroup(group.clientId)}
+                                                >
+                                                    <TableCell colSpan={8}>
+                                                        <div className="flex items-center gap-2 text-xs">
+                                                            {isExpanded ? <ChevronDown size={14} className="text-slate-400 shrink-0" /> : <ChevronRight size={14} className="text-slate-400 shrink-0" />}
+                                                            <span className="font-bold text-slate-100 uppercase tracking-wide">{group.clientName}</span>
+                                                            <span className="text-slate-500">({group.items.length} contrato{group.items.length !== 1 ? 's' : ''})</span>
+                                                            {activos > 0 && <Badge variant="success" className="text-[10px] ml-2">{activos} Activo{activos !== 1 ? 's' : ''}</Badge>}
+                                                            {group.clientId !== '__sin_cliente__' && (
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setCreatingOficinaForClient(group.clientId);
+                                                                        setNewOficinaName('');
+                                                                    }}
+                                                                    className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-bold text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 border border-indigo-500/20"
+                                                                >
+                                                                    <PlusCircle size={11} /> Nueva Oficina
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </TableCell>
+                                                </TableRow>
+                                                {isExpanded && (group.showOficinaSubgroups ? (
+                                                    group.oficinaGroups.map(og => {
+                                                        const ogKey = `${group.clientId}::${og.oficinaKey}`;
+                                                        const isOgExpanded = isFilteringRentals || expandedOficinaGroups.has(ogKey);
+                                                        return (
+                                                            <React.Fragment key={ogKey}>
+                                                                <TableRow
+                                                                    className="cursor-pointer bg-slate-950/60 hover:bg-slate-900/60"
+                                                                    onClick={() => toggleOficinaGroup(group.clientId, og.oficinaKey)}
+                                                                >
+                                                                    <TableCell colSpan={8}>
+                                                                        <div className="flex items-center gap-2 text-[11px] pl-5 border-l border-slate-800 ml-1.5">
+                                                                            {isOgExpanded ? <ChevronDown size={12} className="text-slate-500 shrink-0" /> : <ChevronRight size={12} className="text-slate-500 shrink-0" />}
+                                                                            <span className={`font-semibold uppercase tracking-wide ${og.oficinaKey === '__sin_oficina__' ? 'text-slate-500 italic' : 'text-slate-300'}`}>{og.oficinaName}</span>
+                                                                            <span className="text-slate-550">({og.items.length})</span>
+                                                                        </div>
+                                                                    </TableCell>
+                                                                </TableRow>
+                                                                {isOgExpanded && og.items.map(r => renderRentalRow(r))}
+                                                            </React.Fragment>
+                                                        );
+                                                    })
+                                                ) : (
+                                                    group.items.map(r => renderRentalRow(r))
+                                                ))}
+                                            </React.Fragment>
                                         );
                                     })
                                 )}
@@ -981,6 +1123,50 @@ export default function RentalsPage() {
                                 </Button>
                                 <Button variant="primary" size="md" className="flex-1" onClick={handleChangePlan} disabled={!selectedNewPlanId}>
                                     Confirmar Cambio
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+
+            {/* MODAL: CREAR OFICINA RÁPIDA (desde el header de un grupo de cliente) */}
+            {creatingOficinaForClient && (
+                <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+                    <Card className="w-full max-w-sm border-slate-850 bg-slate-900 text-slate-100 animate-fade-in">
+                        <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+                            <h3 className="font-bold text-sm text-slate-100 flex items-center gap-1.5"><PlusCircle size={15} className="text-indigo-400" /> Nueva Oficina</h3>
+                            <button className="text-slate-400 hover:text-slate-205" onClick={() => setCreatingOficinaForClient(null)}>
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
+                        <CardContent className="p-5 space-y-4">
+                            <div className="text-xs bg-slate-955 p-3 rounded-xl border border-slate-850">
+                                <span className="text-slate-500">Cliente:</span>{' '}
+                                <span className="font-bold text-slate-200">
+                                    {clients.find(c => c.id === creatingOficinaForClient)?.name}
+                                </span>
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[10px] uppercase font-bold text-slate-500 block">Nombre de la Oficina / Sede *</label>
+                                <input
+                                    type="text"
+                                    autoFocus
+                                    placeholder="Ej: Sede Central, Área Contable..."
+                                    value={newOficinaName}
+                                    onChange={(e) => setNewOficinaName(e.target.value)}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') handleCreateOficina(); }}
+                                    className="w-full bg-slate-950 border border-slate-850 rounded-xl px-3 py-2 text-xs text-slate-100 outline-none focus:ring-1 focus:ring-indigo-500"
+                                />
+                            </div>
+
+                            <div className="flex gap-3 pt-2">
+                                <Button variant="secondary" size="md" className="flex-1" onClick={() => setCreatingOficinaForClient(null)}>
+                                    Cancelar
+                                </Button>
+                                <Button variant="primary" size="md" className="flex-1" onClick={handleCreateOficina} disabled={!newOficinaName.trim()}>
+                                    Crear Oficina
                                 </Button>
                             </div>
                         </CardContent>

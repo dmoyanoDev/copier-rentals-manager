@@ -42,6 +42,12 @@ import { syncTombstones } from '@/infrastructure/db/schema/syncTombstones';
 import { payments } from '@/infrastructure/db/schema/payments';
 import { machinePresets } from '@/infrastructure/db/schema/machinePresets';
 import { budgetTemplates } from '@/infrastructure/db/schema/budgetTemplates';
+import { partsCatalog } from '@/infrastructure/db/schema/partsCatalog';
+import { gastosGenerales } from '@/infrastructure/db/schema/gastosGenerales';
+import { oficinas } from '@/infrastructure/db/schema/oficinas';
+import { ventas } from '@/infrastructure/db/schema/ventas';
+import { pricingSettings } from '@/infrastructure/db/schema/pricingSettings';
+import { dollarSettings } from '@/infrastructure/db/schema/dollarSettings';
 import { defaultMachinePresets, defaultBudgetTemplates } from '@/domain/budget/presets';
 
 
@@ -114,7 +120,9 @@ export async function ensureSchemaSynced(db: any) {
       { name: 'technical_cost', type: 'INTEGER' },
       { name: 'observations', type: 'TEXT' },
       { name: 'resolved_at', type: 'INTEGER' },
-      { name: 'updated_at', type: 'INTEGER NOT NULL DEFAULT 0' }
+      { name: 'updated_at', type: 'INTEGER NOT NULL DEFAULT 0' },
+      { name: 'parts_needed_items', type: "TEXT NOT NULL DEFAULT '[]'" },
+      { name: 'parts_used_items', type: "TEXT NOT NULL DEFAULT '[]'" }
     ];
     for (const col of ticketsColumns) {
       try {
@@ -151,7 +159,19 @@ export async function ensureSchemaSynced(db: any) {
     // sync poll). Real columns now, same defaults the frontend already assumed.
     const machinesColumns = [
       { name: 'last_service_counter', type: 'INTEGER NOT NULL DEFAULT 0' },
-      { name: 'preventive_interval', type: 'INTEGER NOT NULL DEFAULT 15000' }
+      { name: 'preventive_interval', type: 'INTEGER NOT NULL DEFAULT 15000' },
+      { name: 'costo_por_copia_insumos', type: 'REAL' },
+      { name: 'acquisition_cost', type: 'REAL' },
+      { name: 'acquisition_date', type: 'TEXT' },
+      { name: 'useful_life_months', type: 'INTEGER' },
+      // Etapa 6: casilleros de consumibles instalados (tóner/módulo de imagen/fusor).
+      { name: 'toner_catalog_id', type: 'TEXT' },
+      { name: 'toner_installed_at_counter', type: 'INTEGER' },
+      { name: 'image_unit_catalog_id', type: 'TEXT' },
+      { name: 'image_unit_installed_at_counter', type: 'INTEGER' },
+      { name: 'fuser_catalog_id', type: 'TEXT' },
+      { name: 'fuser_installed_at_counter', type: 'INTEGER' },
+      { name: 'oficina_id', type: 'TEXT' }
     ];
     for (const col of machinesColumns) {
       try {
@@ -293,6 +313,126 @@ export async function ensureSchemaSynced(db: any) {
       )
     `);
 
+    // 12b. Ensure parts_catalog table exists (catálogo de insumos/repuestos usado por
+    // Estadísticas y el selector de repuestos en tickets — arranca vacío, sin seed, para
+    // no inventar nombres de productos ajenos al negocio real de cada instalación).
+    await db.run(sql`
+      CREATE TABLE IF NOT EXISTS parts_catalog (
+        id TEXT PRIMARY KEY NOT NULL,
+        nombre TEXT NOT NULL,
+        categoria TEXT NOT NULL DEFAULT 'Insumo',
+        unidad TEXT NOT NULL DEFAULT 'Unidad',
+        costo_unitario REAL NOT NULL DEFAULT 0,
+        stock_actual INTEGER NOT NULL DEFAULT 0,
+        stock_minimo INTEGER NOT NULL DEFAULT 0,
+        notas TEXT,
+        activo INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
+    // 12b-2. Etapa 6: rendimiento_copias en parts_catalog (tabla ya existente en
+    // producción, CREATE TABLE IF NOT EXISTS de arriba no la alcanza).
+    try {
+      await db.run(sql`ALTER TABLE parts_catalog ADD COLUMN rendimiento_copias INTEGER`);
+    } catch (e) {}
+
+    // 12c. Ensure gastos_generales table exists (ledger de costos de estructura — se
+    // restan del resultado del negocio total por período, no se prorratean por máquina).
+    await db.run(sql`
+      CREATE TABLE IF NOT EXISTS gastos_generales (
+        id TEXT PRIMARY KEY NOT NULL,
+        categoria TEXT NOT NULL DEFAULT 'Otros',
+        monto REAL NOT NULL DEFAULT 0,
+        fecha TEXT NOT NULL,
+        descripcion TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
+    // 12d. Ensure ventas table exists (registro de ventas de equipos de flota, insumos y
+    // repuestos — su margen precioVenta-costoVenta se suma al Resultado del Negocio del
+    // período junto al resultadoOperativo de las máquinas, ver getBusinessResult).
+    await db.run(sql`
+      CREATE TABLE IF NOT EXISTS ventas (
+        id TEXT PRIMARY KEY NOT NULL,
+        tipo TEXT NOT NULL,
+        origen TEXT NOT NULL,
+        machine_id TEXT,
+        catalog_id TEXT,
+        descripcion TEXT,
+        client_id TEXT,
+        client_name_snapshot TEXT,
+        cantidad REAL NOT NULL DEFAULT 1,
+        precio_venta REAL NOT NULL DEFAULT 0,
+        costo_venta REAL NOT NULL DEFAULT 0,
+        fecha TEXT NOT NULL,
+        notas TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
+    // 12e. Ensure oficinas table exists (sedes/ubicaciones dentro de un cliente — ej. un
+    // hospital con varias áreas, cada una con sus propios equipos alquilados).
+    await db.run(sql`
+      CREATE TABLE IF NOT EXISTS oficinas (
+        id TEXT PRIMARY KEY NOT NULL,
+        client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+        nombre TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
+    // 12f. Módulo Catálogo/Stock — columnas nuevas en parts_catalog (nullable, no afectan
+    // filas existentes) y las 2 tablas nuevas de config de precios/dólar.
+    for (const col of [
+      'codigo TEXT', 'descripcion TEXT', 'tipo_producto TEXT', 'subcategoria TEXT',
+      'marca TEXT', 'modelo TEXT', 'proveedor TEXT', 'moneda TEXT', 'costo_base REAL',
+    ]) {
+      try {
+        await db.run(sql.raw(`ALTER TABLE parts_catalog ADD COLUMN ${col}`));
+      } catch (e) {}
+    }
+
+    // 12g. pricing_settings: una fila scope='global' (id fijo) siempre completa, y filas
+    // opcionales scope='categoria'/'unidad' que sobrescriben solo lo que traen no-nulo.
+    // scope_key no lleva FK (es polimórfico — null/tipoProducto/parts_catalog.id según
+    // scope), mismo criterio ya usado sin FK por ventas.catalog_id.
+    await db.run(sql`
+      CREATE TABLE IF NOT EXISTS pricing_settings (
+        id TEXT PRIMARY KEY NOT NULL,
+        scope TEXT NOT NULL,
+        scope_key TEXT,
+        transporte_pct REAL,
+        precio_lista_pct REAL,
+        precio_efectivo_pct REAL,
+        licitaciones_pct REAL,
+        insumos_repuestos_pct REAL,
+        equipos_pct REAL,
+        promociones_pct REAL,
+        promociones_activa INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
+    // 12h. dollar_settings: singleton, mismo patrón que cobranza_config.
+    await db.run(sql`
+      CREATE TABLE IF NOT EXISTS dollar_settings (
+        id TEXT PRIMARY KEY NOT NULL DEFAULT 'singleton',
+        manual_stock_rate REAL NOT NULL DEFAULT 0,
+        last_oficial_venta REAL,
+        last_blue_venta REAL,
+        last_fetched_at INTEGER,
+        last_fetch_status TEXT NOT NULL DEFAULT 'never',
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
     // 13. Seed catalog defaults idempotently, keyed by the same fixed ids the frontend
     // used to hardcode (preset-hp-432, temp-alquiler, etc.) — every existing device
     // converges on the same rows instead of duplicating them, and they become real,
@@ -304,6 +444,36 @@ export async function ensureSchemaSynced(db: any) {
     for (const t of defaultBudgetTemplates) {
       await db.insert(budgetTemplates).values({ ...t, createdAt: seedNow, updatedAt: seedNow }).onConflictDoNothing();
     }
+
+    // 13b. Módulo Catálogo/Stock — fila global de pricing_settings (id fijo, siempre
+    // completa) con los 8 valores reales extraídos y verificados de la hoja "PRECIO DE
+    // VENTA INSUMOS Y EQUIP" del Excel de la empresa. licitaciones/insumosRepuestos/equipos
+    // arrancan iguales a precioEfectivo (25%) porque la planilla no los distingue hoy — se
+    // separan ajustando cada uno desde el panel de configuración. promociones arranca en 0%
+    // e inactiva (funcionalidad nueva, sin valor histórico).
+    await db.insert(pricingSettings).values({
+      id: 'pricing-global',
+      scope: 'global',
+      scopeKey: null,
+      transportePct: 0.05,
+      precioListaPct: 0.19,
+      precioEfectivoPct: 0.25,
+      licitacionesPct: 0.25,
+      insumosRepuestosPct: 0.25,
+      equiposPct: 0.25,
+      promocionesPct: 0,
+      promocionesActiva: false,
+      createdAt: seedNow,
+      updatedAt: seedNow,
+    }).onConflictDoNothing();
+
+    // 13c. dollar_settings singleton — arranca en 0 (revisar), se completa desde el panel.
+    await db.insert(dollarSettings).values({
+      id: 'singleton',
+      manualStockRate: 0,
+      lastFetchStatus: 'never',
+      updatedAt: seedNow,
+    }).onConflictDoNothing();
 
     isDbSchemaSynced = true;
     console.log("Database schema auto-sync completed successfully.");
@@ -355,8 +525,14 @@ export async function GET(request: Request) {
       dbPayments,
       dbMachinePresets,
       dbBudgetTemplates,
+      dbPartsCatalog,
+      dbGastosGenerales,
+      dbVentas,
+      dbOficinas,
       dbCobranzaConfig,
-      dbTombstones
+      dbTombstones,
+      dbPricingSettings,
+      dbDollarSettings,
     ] = await Promise.all([
       isValidSince ? db.select().from(users).where(gt(users.updatedAt, sinceValue)) : db.select().from(users),
       isValidSince ? db.select().from(clients).where(gt(clients.updatedAt, sinceValue)) : db.select().from(clients),
@@ -384,10 +560,21 @@ export async function GET(request: Request) {
       // and permanently avoids the blind spot instead of just working around today's seed.
       db.select().from(machinePresets),
       db.select().from(budgetTemplates),
+      // Plain incremental fetch (no seed data, so no FULLY_FETCHED_TABLES workaround needed).
+      isValidSince ? db.select().from(partsCatalog).where(gt(partsCatalog.updatedAt, sinceValue)) : db.select().from(partsCatalog),
+      isValidSince ? db.select().from(gastosGenerales).where(gt(gastosGenerales.updatedAt, sinceValue)) : db.select().from(gastosGenerales),
+      isValidSince ? db.select().from(ventas).where(gt(ventas.updatedAt, sinceValue)) : db.select().from(ventas),
+      isValidSince ? db.select().from(oficinas).where(gt(oficinas.updatedAt, sinceValue)) : db.select().from(oficinas),
       db.select().from(cobranzaConfigTable).limit(1),
       // Tombstones only matter for incremental pulls — a full sync's server lists are
       // already authoritative (a deleted row simply isn't in them).
       isValidSince ? db.select().from(syncTombstones).where(gt(syncTombstones.deletedAt, sinceValue)) : Promise.resolve([]),
+      // Always full-fetch, same reasoning as machinePresets/budgetTemplates above — the
+      // global row is seeded server-side with a fixed past timestamp (see ensureSchemaSynced
+      // 13b), so a device whose cursor has already advanced past that moment would never
+      // see it via an incremental `since`-filtered query.
+      db.select().from(pricingSettings),
+      db.select().from(dollarSettings).limit(1),
     ]);
 
     // Every authenticated role (not just master) hits this endpoint for routine
@@ -420,11 +607,17 @@ export async function GET(request: Request) {
       payments: dbPayments,
       machinePresets: dbMachinePresets,
       templates: dbBudgetTemplates,
+      partsCatalog: dbPartsCatalog,
+      gastosGenerales: dbGastosGenerales,
+      ventas: dbVentas,
+      oficinas: dbOficinas,
       // Only populated on incremental pulls — tells other devices which entities were
       // hard-deleted since `since` so they can drop them from local state too.
       tombstones: dbTombstones.map((t: any) => ({ entityType: t.entityType, entityId: t.entityId })),
       // Return singleton config object directly (not array) for easy consumption
       cobranzaConfig: dbCobranzaConfig[0] ?? null,
+      pricingSettings: dbPricingSettings,
+      dollarSettings: dbDollarSettings[0] ?? null,
       backupMeta: {
         exportDate: new Date().toISOString(),
         version: '2.0.0',
@@ -506,6 +699,11 @@ export async function POST(request: Request) {
     const dedupedPayments = dedupeById<any>(payload.payments);
     const dedupedMachinePresets = dedupeById<any>(payload.machinePresets);
     const dedupedBudgetTemplates = dedupeById<any>(payload.templates);
+    const dedupedPartsCatalog = dedupeById<any>(payload.partsCatalog);
+    const dedupedPricingSettings = dedupeById<any>(payload.pricingSettings);
+    const dedupedGastosGenerales = dedupeById<any>(payload.gastosGenerales);
+    const dedupedVentas = dedupeById<any>(payload.ventas);
+    const dedupedOficinas = dedupeById<any>(payload.oficinas);
     const dedupedSharedPdfs = dedupeById<any>(payload.sharedPdfs);
     const dedupedNotificationSettings = dedupeById<any>(payload.notificationSettings);
     const dedupedNotificationHistory = dedupeById<any>(payload.notificationHistory);
@@ -634,6 +832,17 @@ export async function POST(request: Request) {
             isAvailable: m.isAvailable ?? true,
             pdfUrl: m.pdfUrl || null,
             features: m.features || null,
+            costoPorCopiaInsumos: m.costoPorCopiaInsumos != null ? Number(m.costoPorCopiaInsumos) : null,
+            acquisitionCost: m.acquisitionCost != null ? Number(m.acquisitionCost) : null,
+            acquisitionDate: m.acquisitionDate || null,
+            usefulLifeMonths: m.usefulLifeMonths != null ? Number(m.usefulLifeMonths) : null,
+            tonerCatalogId: m.tonerCatalogId || null,
+            tonerInstalledAtCounter: m.tonerInstalledAtCounter != null ? Number(m.tonerInstalledAtCounter) : null,
+            imageUnitCatalogId: m.imageUnitCatalogId || null,
+            imageUnitInstalledAtCounter: m.imageUnitInstalledAtCounter != null ? Number(m.imageUnitInstalledAtCounter) : null,
+            fuserCatalogId: m.fuserCatalogId || null,
+            fuserInstalledAtCounter: m.fuserInstalledAtCounter != null ? Number(m.fuserInstalledAtCounter) : null,
+            oficinaId: m.oficinaId || null,
             createdAt: m.createdAt ? new Date(m.createdAt) : new Date(),
             updatedAt: m.updatedAt ? new Date(m.updatedAt) : new Date()
           });
@@ -695,6 +904,8 @@ export async function POST(request: Request) {
             diagnostic: t.diagnostic || null,
             partsNeeded: t.partsNeeded || null,
             partsUsed: t.partsUsed || null,
+            partsNeededItems: typeof t.partsNeededItems === 'string' ? JSON.parse(t.partsNeededItems) : (t.partsNeededItems || []),
+            partsUsedItems: typeof t.partsUsedItems === 'string' ? JSON.parse(t.partsUsedItems) : (t.partsUsedItems || []),
             internalNotes: t.internalNotes || null,
             actionTaken: t.actionTaken || null,
             assignedTechId: t.assignedTechId || null,
@@ -881,6 +1092,92 @@ export async function POST(request: Request) {
         }
       }
 
+      // Restore parts_catalog — same additive-replace pattern as machine_presets.
+      if (dedupedPartsCatalog.length) {
+        await tx.delete(partsCatalog);
+        for (const p of dedupedPartsCatalog) {
+          await tx.insert(partsCatalog).values({
+            id: p.id,
+            nombre: p.nombre || 'Ítem sin nombre',
+            categoria: p.categoria || 'Insumo',
+            unidad: p.unidad || 'Unidad',
+            costoUnitario: Number(p.costoUnitario) || 0,
+            stockActual: Number(p.stockActual) || 0,
+            stockMinimo: Number(p.stockMinimo) || 0,
+            notas: p.notas || null,
+            activo: p.activo ?? true,
+            rendimientoCopias: p.rendimientoCopias != null ? Number(p.rendimientoCopias) : null,
+            codigo: p.codigo || null,
+            descripcion: p.descripcion || null,
+            tipoProducto: p.tipoProducto || null,
+            subcategoria: p.subcategoria || null,
+            marca: p.marca || null,
+            modelo: p.modelo || null,
+            proveedor: p.proveedor || null,
+            moneda: p.moneda || 'ARS',
+            costoBase: p.costoBase != null ? Number(p.costoBase) : null,
+            createdAt: p.createdAt ? new Date(p.createdAt) : new Date(),
+            updatedAt: p.updatedAt ? new Date(p.updatedAt) : new Date(),
+          });
+        }
+      }
+
+      // Restore gastos_generales — mismo patrón additive-replace que parts_catalog.
+      if (dedupedGastosGenerales.length) {
+        await tx.delete(gastosGenerales);
+        for (const g of dedupedGastosGenerales) {
+          await tx.insert(gastosGenerales).values({
+            id: g.id,
+            categoria: g.categoria || 'Otros',
+            monto: Number(g.monto) || 0,
+            fecha: g.fecha || new Date().toISOString().split('T')[0],
+            descripcion: g.descripcion || null,
+            createdAt: g.createdAt ? new Date(g.createdAt) : new Date(),
+            updatedAt: g.updatedAt ? new Date(g.updatedAt) : new Date(),
+          });
+        }
+      }
+
+      // Restore ventas — mismo patrón additive-replace que gastos_generales/parts_catalog.
+      if (dedupedVentas.length) {
+        await tx.delete(ventas);
+        for (const v of dedupedVentas) {
+          await tx.insert(ventas).values({
+            id: v.id,
+            tipo: v.tipo || 'Insumo',
+            origen: v.origen || 'externo',
+            machineId: v.machineId || null,
+            catalogId: v.catalogId || null,
+            descripcion: v.descripcion || null,
+            clientId: v.clientId || null,
+            clientNameSnapshot: v.clientNameSnapshot || null,
+            cantidad: Number(v.cantidad) || 1,
+            precioVenta: Number(v.precioVenta) || 0,
+            costoVenta: Number(v.costoVenta) || 0,
+            fecha: v.fecha || new Date().toISOString().split('T')[0],
+            notas: v.notas || null,
+            createdAt: v.createdAt ? new Date(v.createdAt) : new Date(),
+            updatedAt: v.updatedAt ? new Date(v.updatedAt) : new Date(),
+          });
+        }
+      }
+
+      // Restore oficinas — mismo patrón additive-replace que ventas/gastos_generales.
+      // Se restaura después de clients (ya procesado más arriba) porque client_id es
+      // FK NOT NULL con cascade.
+      if (dedupedOficinas.length) {
+        await tx.delete(oficinas);
+        for (const o of dedupedOficinas) {
+          await tx.insert(oficinas).values({
+            id: o.id,
+            clientId: o.clientId,
+            nombre: o.nombre || 'Oficina sin nombre',
+            createdAt: o.createdAt ? new Date(o.createdAt) : new Date(),
+            updatedAt: o.updatedAt ? new Date(o.updatedAt) : new Date(),
+          });
+        }
+      }
+
       // Restore cobranzaConfig singleton — upsert so we never lose it
       if (payload.cobranzaConfig) {
         const cfg = payload.cobranzaConfig;
@@ -904,6 +1201,43 @@ export async function POST(request: Request) {
           volumenSonidos: cfg.volumenSonidos ?? 50,
           autoAlertasActivas: cfg.autoAlertasActivas ?? true,
           updatedAt: cfg.updatedAt ? new Date(cfg.updatedAt) : new Date(),
+        });
+      }
+
+      // Restore pricing_settings — mismo patrón additive-replace que oficinas/ventas.
+      if (dedupedPricingSettings.length) {
+        await tx.delete(pricingSettings);
+        for (const p of dedupedPricingSettings) {
+          await tx.insert(pricingSettings).values({
+            id: p.id,
+            scope: p.scope,
+            scopeKey: p.scopeKey ?? null,
+            transportePct: p.transportePct ?? null,
+            precioListaPct: p.precioListaPct ?? null,
+            precioEfectivoPct: p.precioEfectivoPct ?? null,
+            licitacionesPct: p.licitacionesPct ?? null,
+            insumosRepuestosPct: p.insumosRepuestosPct ?? null,
+            equiposPct: p.equiposPct ?? null,
+            promocionesPct: p.promocionesPct ?? null,
+            promocionesActiva: p.promocionesActiva ?? null,
+            createdAt: p.createdAt ? new Date(p.createdAt) : new Date(),
+            updatedAt: p.updatedAt ? new Date(p.updatedAt) : new Date(),
+          });
+        }
+      }
+
+      // Restore dollar_settings singleton — upsert so we never lose the manual rate.
+      if (payload.dollarSettings) {
+        const ds = payload.dollarSettings;
+        await tx.delete(dollarSettings);
+        await tx.insert(dollarSettings).values({
+          id: 'singleton',
+          manualStockRate: Number(ds.manualStockRate) || 0,
+          lastOficialVenta: ds.lastOficialVenta != null ? Number(ds.lastOficialVenta) : null,
+          lastBlueVenta: ds.lastBlueVenta != null ? Number(ds.lastBlueVenta) : null,
+          lastFetchedAt: ds.lastFetchedAt ? new Date(ds.lastFetchedAt) : null,
+          lastFetchStatus: ds.lastFetchStatus || 'never',
+          updatedAt: ds.updatedAt ? new Date(ds.updatedAt) : new Date(),
         });
       }
 

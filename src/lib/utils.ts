@@ -32,10 +32,10 @@ export function escapeHtml(value: string): string {
         .replace(/'/g, '&#39;');
 }
 
-export function formatCurrency(value: number): string {
+export function formatCurrency(value: number, currency: 'ARS' | 'USD' = 'ARS'): string {
     return new Intl.NumberFormat('es-AR', {
         style: 'currency',
-        currency: 'ARS',
+        currency,
         minimumFractionDigits: 2
     }).format(value);
 }

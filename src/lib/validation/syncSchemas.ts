@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { PAYMENT_METHODS } from '@/domain/types';
+import { PAYMENT_METHODS, GASTO_CATEGORIAS, VENTA_TIPOS, VENTA_ORIGENES, TIPO_PRODUCTO_VALUES } from '@/domain/types';
 
 const dateSchema = z.union([z.string(), z.number(), z.date()]).transform(val => {
   const d = new Date(val);
@@ -54,6 +54,15 @@ export const budgetMachineConfigSchema = z.object({
   copiaExcedente: z.number().default(0),
   cantidad: z.number().default(1),
   subtotal: z.number().default(0),
+});
+
+export const partUsageEntrySchema = z.object({
+  catalogId: z.string().min(1),
+  nombre: z.string().default(''),
+  categoria: z.enum(['Insumo', 'Repuesto']).default('Insumo'),
+  unidad: z.string().default('Unidad'),
+  cantidad: z.number().default(1),
+  costoUnitario: z.number().default(0),
 });
 
 export const budgetSendLogSchema = z.object({
@@ -115,6 +124,7 @@ export const machineSyncSchema = z.object({
   currentCounter: z.number().int().optional(), // frontend alias — used in transform below
   clientId: z.string().nullable().optional(),
   abonoId: z.string().nullable().optional(),
+  oficinaId: z.string().nullable().optional(),
   installationDate: z.string().nullable().optional(),
   initialCounter: z.number().int().default(0),
   lastServiceCounter: z.number().int().default(0),
@@ -124,6 +134,16 @@ export const machineSyncSchema = z.object({
   isAvailable: z.boolean().default(true),
   pdfUrl: z.string().nullable().optional(),
   features: z.string().nullable().optional(),
+  costoPorCopiaInsumos: z.number().nullable().optional(),
+  acquisitionCost: z.number().nullable().optional(),
+  acquisitionDate: z.string().nullable().optional(),
+  usefulLifeMonths: z.number().int().nullable().optional(),
+  tonerCatalogId: z.string().nullable().optional(),
+  tonerInstalledAtCounter: z.number().int().nullable().optional(),
+  imageUnitCatalogId: z.string().nullable().optional(),
+  imageUnitInstalledAtCounter: z.number().int().nullable().optional(),
+  fuserCatalogId: z.string().nullable().optional(),
+  fuserInstalledAtCounter: z.number().int().nullable().optional(),
   createdAt: dateSchema.optional(),
   updatedAt: dateSchema.optional(),
 }).transform((data) => {
@@ -196,6 +216,8 @@ export const ticketSyncSchema = z.object({
   diagnostic: z.string().nullable().optional(),
   partsNeeded: z.string().nullable().optional(),
   partsUsed: z.string().nullable().optional(),
+  partsNeededItems: z.array(partUsageEntrySchema).default([]),
+  partsUsedItems: z.array(partUsageEntrySchema).default([]),
   internalNotes: z.string().nullable().optional(),
   actionTaken: z.string().nullable().optional(),
   assignedTechId: z.string().nullable().optional(),
@@ -343,6 +365,92 @@ export const machinePresetSyncSchema = z.object({
   updatedAt: dateSchema.optional(),
 });
 
+export const partCatalogItemSyncSchema = z.object({
+  id: z.string().min(1),
+  nombre: z.string().min(1),
+  categoria: z.enum(['Insumo', 'Repuesto']).default('Insumo'),
+  unidad: z.string().default('Unidad'),
+  costoUnitario: z.number().default(0),
+  stockActual: z.number().int().default(0),
+  stockMinimo: z.number().int().default(0),
+  notas: z.string().nullable().optional(),
+  activo: z.boolean().default(true),
+  rendimientoCopias: z.number().int().nullable().optional(),
+  codigo: z.string().nullable().optional(),
+  descripcion: z.string().nullable().optional(),
+  tipoProducto: z.enum(TIPO_PRODUCTO_VALUES).nullable().optional(),
+  subcategoria: z.string().nullable().optional(),
+  marca: z.string().nullable().optional(),
+  modelo: z.string().nullable().optional(),
+  proveedor: z.string().nullable().optional(),
+  moneda: z.enum(['ARS', 'USD']).nullable().optional(),
+  costoBase: z.number().nullable().optional(),
+  createdAt: dateSchema.optional(),
+  updatedAt: dateSchema.optional(),
+});
+
+export const pricingSettingSyncSchema = z.object({
+  id: z.string().min(1),
+  scope: z.enum(['global', 'categoria', 'unidad']),
+  scopeKey: z.string().nullable().optional(),
+  transportePct: z.number().nullable().optional(),
+  precioListaPct: z.number().nullable().optional(),
+  precioEfectivoPct: z.number().nullable().optional(),
+  licitacionesPct: z.number().nullable().optional(),
+  insumosRepuestosPct: z.number().nullable().optional(),
+  equiposPct: z.number().nullable().optional(),
+  promocionesPct: z.number().nullable().optional(),
+  promocionesActiva: z.boolean().nullable().optional(),
+  createdAt: dateSchema.optional(),
+  updatedAt: dateSchema.optional(),
+});
+
+export const dollarSettingsSyncSchema = z.object({
+  id: z.string().default('singleton'),
+  manualStockRate: z.number().default(0),
+  lastOficialVenta: z.number().nullable().optional(),
+  lastBlueVenta: z.number().nullable().optional(),
+  lastFetchedAt: dateSchema.nullable().optional(),
+  lastFetchStatus: z.enum(['ok', 'error', 'never']).default('never'),
+  updatedAt: dateSchema.optional(),
+});
+
+export const gastoGeneralSyncSchema = z.object({
+  id: z.string().min(1),
+  categoria: z.enum(GASTO_CATEGORIAS).default('Otros'),
+  monto: z.number().default(0),
+  fecha: z.string().min(1),
+  descripcion: z.string().nullable().optional(),
+  createdAt: dateSchema.optional(),
+  updatedAt: dateSchema.optional(),
+});
+
+export const oficinaSyncSchema = z.object({
+  id: z.string().min(1),
+  clientId: z.string().min(1),
+  nombre: z.string().min(1),
+  createdAt: dateSchema.optional(),
+  updatedAt: dateSchema.optional(),
+});
+
+export const ventaSyncSchema = z.object({
+  id: z.string().min(1),
+  tipo: z.enum(VENTA_TIPOS).default('Insumo'),
+  origen: z.enum(VENTA_ORIGENES).default('externo'),
+  machineId: z.string().nullable().optional(),
+  catalogId: z.string().nullable().optional(),
+  descripcion: z.string().nullable().optional(),
+  clientId: z.string().nullable().optional(),
+  clientNameSnapshot: z.string().nullable().optional(),
+  cantidad: z.number().default(1),
+  precioVenta: z.number().default(0),
+  costoVenta: z.number().default(0),
+  fecha: z.string().min(1),
+  notas: z.string().nullable().optional(),
+  createdAt: dateSchema.optional(),
+  updatedAt: dateSchema.optional(),
+});
+
 export const budgetTemplateSyncSchema = z.object({
   id: z.string().min(1),
   nombre: z.string().min(1),
@@ -382,7 +490,7 @@ export const cobranzaConfigSyncSchema = z.object({
 export const syncQueueItemSchema = z.object({
   id: z.string().min(1),
   entityId: z.string().min(1),
-  entityType: z.enum(['clients', 'machines', 'readings', 'tickets', 'plans', 'users', 'rentals', 'budgets', 'gestiones', 'cobranzaConfig', 'payments', 'machinePresets', 'templates']),
+  entityType: z.enum(['clients', 'machines', 'readings', 'tickets', 'plans', 'users', 'rentals', 'budgets', 'gestiones', 'cobranzaConfig', 'payments', 'machinePresets', 'templates', 'partsCatalog', 'gastosGenerales', 'ventas']),
   operation: z.enum(['create', 'update', 'delete']),
   payload: z.any(),
   updatedAt: z.string(),

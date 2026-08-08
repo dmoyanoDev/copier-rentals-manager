@@ -8,21 +8,90 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Modal } from '@/components/ui/modal';
+import { PartsPicker } from '@/components/shared/PartsPicker';
 import { Ticket, User } from '@/lib/mockData';
+import { PartUsageEntry, Machine, PartCatalogItem } from '@/domain/types';
 import { autoAssignTech } from '@/domain/ticket/assignment';
-import { 
-    Plus, PlusCircle, Edit, User as UserIcon, Calendar, Settings, AlertTriangle, 
-    Search, Filter, Shield, Wrench, X, Clock, DollarSign, Activity, 
-    CheckCircle, HelpCircle, Check, ArrowRight, Phone, Mail, MapPin, 
-    Users, Bell, History, CheckSquare, Eye, RefreshCw, BarChart2, Star, Award
+import {
+    Plus, PlusCircle, Edit, User as UserIcon, Calendar, Settings, AlertTriangle,
+    Search, Filter, Shield, Wrench, X, Clock, DollarSign, Activity,
+    CheckCircle, HelpCircle, Check, ArrowRight, Phone, Mail, MapPin,
+    Users, Bell, History, CheckSquare, Eye, RefreshCw, BarChart2, Star, Award, Droplet
 } from 'lucide-react';
 
+// Etapa 6 del plan de rentabilidad: una "instancia de casillero" es un consumible
+// (tóner/módulo de imagen/fusor) efectivamente configurado en una máquina — se arma una
+// lista plana de éstas (no una por máquina) para poder calcular métricas agregadas y
+// renderizar cada casillero de forma uniforme, sin importar cuál de los 3 sea.
+type ConsumableSlotKey = 'toner' | 'imageUnit' | 'fuser';
+
+interface ConsumableSlotInstance {
+    machine: Machine;
+    slotKey: ConsumableSlotKey;
+    slotLabel: string;
+    item: PartCatalogItem | undefined;
+    installedAtCounter: number;
+    currentCounter: number;
+    // null = no se puede calcular % (el ítem fue borrado del catálogo, o no tiene
+    // rendimiento cargado) — nunca se muestra un 0% falso en ese caso.
+    pct: number | null;
+    isOverdue: boolean;
+    isWarning: boolean;
+}
+
+function buildConsumableSlotInstance(
+    machine: Machine,
+    slotKey: ConsumableSlotKey,
+    slotLabel: string,
+    catalogId: string | null | undefined,
+    installedAtCounter: number | null | undefined,
+    catalog: PartCatalogItem[]
+): ConsumableSlotInstance | null {
+    if (!catalogId) return null;
+    const item = catalog.find(c => c.id === catalogId);
+    const currentCounter = machine.currentCounter || 0;
+    const installed = installedAtCounter || 0;
+    const diff = Math.max(0, currentCounter - installed);
+    const validYield = item != null && item.rendimientoCopias != null && item.rendimientoCopias > 0;
+    const pct = validYield ? (diff / (item!.rendimientoCopias as number)) * 100 : null;
+    return {
+        machine, slotKey, slotLabel, item, installedAtCounter: installed, currentCounter,
+        pct, isOverdue: pct != null && pct >= 100, isWarning: pct != null && pct >= 80 && pct < 100,
+    };
+}
+
+// Misma paleta verde/amarillo(≥80%)/rojo(≥100%) que la pestaña Preventivos.
+function ConsumableSlotCell({ instance, onReemplazar }: { instance: ConsumableSlotInstance | undefined; onReemplazar: (i: ConsumableSlotInstance) => void }) {
+    if (!instance) {
+        return <span className="text-[10px] text-slate-550 italic">Sin configurar</span>;
+    }
+    if (instance.pct == null) {
+        return <span className="text-[10px] text-amber-500">{instance.item ? 'Sin rendimiento cargado' : 'Ítem eliminado del catálogo'}</span>;
+    }
+    return (
+        <div className="space-y-1 py-0.5 min-w-[130px]">
+            <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] text-slate-350 truncate max-w-[90px]" title={instance.item!.nombre}>{instance.item!.nombre}</span>
+                <span className={`text-[10px] font-mono-tabular shrink-0 ${instance.isOverdue ? 'text-red-500 font-extrabold' : (instance.isWarning ? 'text-amber-500 font-bold' : 'text-slate-400')}`}>
+                    {Math.round(instance.pct)}%
+                </span>
+            </div>
+            <div className="w-full bg-slate-900 rounded-full h-1">
+                <div className={`h-1 rounded-full ${instance.isOverdue ? 'bg-red-500' : (instance.isWarning ? 'bg-amber-500' : 'bg-emerald-500')}`} style={{ width: `${Math.min(100, instance.pct)}%` }} />
+            </div>
+            <button onClick={() => onReemplazar(instance)} className="text-[9px] font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
+                <RefreshCw size={10} /> Reemplazar
+            </button>
+        </div>
+    );
+}
+
 export default function TechnicalPage() {
-    const { tickets, setTickets, currentUser, users, clients, machines, updateTicketAction, updateUserAction, updateMachineAction, bulkSyncAction } = useManagement();
+    const { tickets, setTickets, currentUser, users, clients, machines, partsCatalog, updateTicketAction, updateUserAction, updateMachineAction, bulkSyncAction } = useManagement();
     const isTech = currentUser?.role === 'tecnico';
 
     // Core Navigation Tabs: 'bitacora' | 'tecnicos' | 'config' | 'historial_envios' | 'metricas'
-    const [currentTab, setCurrentTab] = useState<'bitacora' | 'mantenimiento' | 'tecnicos' | 'config' | 'historial_envios' | 'metricas'>('bitacora');
+    const [currentTab, setCurrentTab] = useState<'bitacora' | 'mantenimiento' | 'insumos' | 'tecnicos' | 'config' | 'historial_envios' | 'metricas'>('bitacora');
     
     // Selected states
     const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
@@ -69,6 +138,9 @@ export default function TechnicalPage() {
     const [editActionTaken, setEditActionTaken] = useState('');
     const [editPartsUsed, setEditPartsUsed] = useState('');
     const [editPartsNeeded, setEditPartsNeeded] = useState('');
+    const [editPartsUsedItems, setEditPartsUsedItems] = useState<PartUsageEntry[]>([]);
+    const [editPartsNeededItems, setEditPartsNeededItems] = useState<PartUsageEntry[]>([]);
+
     const [editAssignedTechId, setEditAssignedTechId] = useState('');
     const [editTechnicalCost, setEditTechnicalCost] = useState('0');
     const [editObservations, setEditObservations] = useState('');
@@ -463,6 +535,8 @@ export default function TechnicalPage() {
         setEditActionTaken(t.actionTaken || '');
         setEditPartsUsed(t.partsUsed || '');
         setEditPartsNeeded(t.partsNeeded || '');
+        setEditPartsUsedItems(t.partsUsedItems || []);
+        setEditPartsNeededItems(t.partsNeededItems || []);
         setEditAssignedTechId(t.assignedTechId || '');
         setEditTechnicalCost(String(t.technicalCost || 0));
         setEditObservations(t.observations || '');
@@ -555,6 +629,8 @@ export default function TechnicalPage() {
             actionTaken: editActionTaken,
             partsUsed: editPartsUsed,
             partsNeeded: editPartsNeeded,
+            partsUsedItems: editPartsUsedItems,
+            partsNeededItems: editPartsNeededItems,
             assignedTechId: editAssignedTechId || null,
             technicalCost: Number(editTechnicalCost) || 0,
             observations: editObservations,
@@ -953,6 +1029,27 @@ export default function TechnicalPage() {
 
     const techWarn = getTechWarningInfo(editAssignedTechId);
 
+    // Etapa 6: lista plana de casilleros de consumibles configurados (uno por
+    // máquina×casillero con catalogId cargado) — alimenta tanto las métricas como la
+    // tabla de la pestaña "Rendimiento de Insumos".
+    const consumableSlotInstances: ConsumableSlotInstance[] = machines.flatMap(m => [
+        buildConsumableSlotInstance(m, 'toner', 'Tóner', m.tonerCatalogId, m.tonerInstalledAtCounter, partsCatalog),
+        buildConsumableSlotInstance(m, 'imageUnit', 'Módulo de Imagen', m.imageUnitCatalogId, m.imageUnitInstalledAtCounter, partsCatalog),
+        buildConsumableSlotInstance(m, 'fuser', 'Fusor', m.fuserCatalogId, m.fuserInstalledAtCounter, partsCatalog),
+    ]).filter((s): s is ConsumableSlotInstance => s !== null);
+
+    const machinesWithConsumables = machines.filter(m => m.tonerCatalogId || m.imageUnitCatalogId || m.fuserCatalogId);
+
+    const triggerReemplazarConsumable = (instance: ConsumableSlotInstance) => {
+        if (!confirm(`¿Confirmás el reemplazo de "${instance.slotLabel}" en ${instance.machine.brand} ${instance.machine.model} (S/N ${instance.machine.serial})? Se reiniciará su contador de uso a ${instance.currentCounter.toLocaleString('es-AR')} copias.`)) return;
+        const updated: Machine = { ...instance.machine };
+        if (instance.slotKey === 'toner') updated.tonerInstalledAtCounter = instance.currentCounter;
+        else if (instance.slotKey === 'imageUnit') updated.imageUnitInstalledAtCounter = instance.currentCounter;
+        else updated.fuserInstalledAtCounter = instance.currentCounter;
+        updateMachineAction(updated, 'update');
+        alert(`¡${instance.slotLabel} reemplazado con éxito!`);
+    };
+
     return (
         <div className="space-y-6 animate-fade-in relative text-slate-100">
             {/* Header section */}
@@ -979,7 +1076,15 @@ export default function TechnicalPage() {
                     >
                         <Wrench size={13} className="text-amber-500" /> Preventivos
                     </button>
-                    <button 
+                    <button
+                        onClick={() => setCurrentTab('insumos')}
+                        className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 shrink-0 ${
+                            currentTab === 'insumos' ? 'bg-indigo-650 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                    >
+                        <Droplet size={13} className="text-sky-500" /> Rendimiento de Insumos
+                    </button>
+                    <button
                         onClick={() => setCurrentTab('tecnicos')}
                         className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 shrink-0 ${
                             currentTab === 'tecnicos' ? 'bg-indigo-650 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
@@ -1434,6 +1539,82 @@ export default function TechnicalPage() {
                                                         )}
                                                     </div>
                                                 </TableCell>
+                                            </TableRow>
+                                        );
+                                    })
+                                )}
+                            </TableBody>
+                        </Table>
+                    </TableContainer>
+                </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* TABS: RENDIMIENTO DE INSUMOS (Etapa 6) */}
+            {/* ========================================================================= */}
+            {currentTab === 'insumos' && (
+                <div className="space-y-6 animate-fade-in">
+                    <p className="text-[10px] text-slate-500 -mt-2">
+                        Uso real de tóner, módulo de imagen y fusor según el rendimiento cargado en Catálogo. Solo aparecen los equipos con al menos un consumible configurado — asignalo desde Máquinas → Editar.
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <Card className="bg-slate-950 border border-slate-850 p-4 space-y-1">
+                            <span className="text-[10px] text-slate-450 uppercase font-extrabold tracking-wider block">Consumibles Vencidos</span>
+                            <span className="text-2xl font-extrabold text-red-500 block">
+                                {consumableSlotInstances.filter(s => s.isOverdue).length}
+                            </span>
+                            <p className="text-[9px] text-slate-500 mt-1">Superaron el 100% del rendimiento cargado para ese ítem.</p>
+                        </Card>
+                        <Card className="bg-slate-950 border border-slate-850 p-4 space-y-1">
+                            <span className="text-[10px] text-slate-450 uppercase font-extrabold tracking-wider block">Próximos a Vencer</span>
+                            <span className="text-2xl font-extrabold text-amber-500 block">
+                                {consumableSlotInstances.filter(s => s.isWarning).length}
+                            </span>
+                            <p className="text-[9px] text-slate-500 mt-1">Se encuentran entre el 80% y el 99% del rendimiento cargado.</p>
+                        </Card>
+                        <Card className="bg-slate-950 border border-slate-850 p-4 space-y-1">
+                            <span className="text-[10px] text-slate-455 uppercase font-extrabold tracking-wider block">Casilleros Configurados</span>
+                            <span className="text-2xl font-extrabold text-sky-450 block">
+                                {consumableSlotInstances.length}
+                            </span>
+                            <p className="text-[9px] text-slate-500 mt-1">Tóner + Módulo de Imagen + Fusor sumados, de un máximo de 3 por equipo.</p>
+                        </Card>
+                    </div>
+
+                    <TableContainer>
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHeaderCell>Equipo / Modelo</TableHeaderCell>
+                                    <TableHeaderCell>Número de Serie</TableHeaderCell>
+                                    <TableHeaderCell>Cliente / Ubicación</TableHeaderCell>
+                                    <TableHeaderCell>Tóner</TableHeaderCell>
+                                    <TableHeaderCell>Módulo de Imagen</TableHeaderCell>
+                                    <TableHeaderCell>Fusor</TableHeaderCell>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {machinesWithConsumables.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={6} className="text-center py-12 text-slate-500 italic">
+                                            Todavía no configuraste ningún consumible. Andá a Máquinas → Editar para asignar un Tóner, Módulo de Imagen o Fusor a un equipo.
+                                        </TableCell>
+                                    </TableRow>
+                                ) : (
+                                    machinesWithConsumables.map(m => {
+                                        const cl = clients.find(c => c.id === m.clientId);
+                                        const tonerInstance = consumableSlotInstances.find(s => s.machine.id === m.id && s.slotKey === 'toner');
+                                        const imageUnitInstance = consumableSlotInstances.find(s => s.machine.id === m.id && s.slotKey === 'imageUnit');
+                                        const fuserInstance = consumableSlotInstances.find(s => s.machine.id === m.id && s.slotKey === 'fuser');
+                                        return (
+                                            <TableRow key={m.id} className="hover:bg-slate-900/40">
+                                                <TableCell className="font-bold text-slate-100">{m.brand} {m.model}</TableCell>
+                                                <TableCell className="font-mono text-xs text-slate-350">{m.serial}</TableCell>
+                                                <TableCell className="text-xs text-slate-350">{cl ? cl.name : <span className="text-slate-550 italic">Stock en Taller</span>}</TableCell>
+                                                <TableCell><ConsumableSlotCell instance={tonerInstance} onReemplazar={triggerReemplazarConsumable} /></TableCell>
+                                                <TableCell><ConsumableSlotCell instance={imageUnitInstance} onReemplazar={triggerReemplazarConsumable} /></TableCell>
+                                                <TableCell><ConsumableSlotCell instance={fuserInstance} onReemplazar={triggerReemplazarConsumable} /></TableCell>
                                             </TableRow>
                                         );
                                     })
@@ -2220,8 +2401,12 @@ export default function TechnicalPage() {
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1 col-span-2">
+                                        <label className="text-[10px] uppercase font-bold text-slate-505 block">Repuestos Necesarios (Catálogo)</label>
+                                        <PartsPicker catalog={partsCatalog} value={editPartsNeededItems} onChange={setEditPartsNeededItems} />
+                                    </div>
                                     <div className="space-y-1">
-                                        <label className="text-[10px] uppercase font-bold text-slate-505 block">Repuestos Necesarios</label>
+                                        <label className="text-[10px] uppercase font-bold text-slate-505 block">Repuestos Necesarios (notas / no catalogado)</label>
                                         <input
                                             type="text"
                                             value={editPartsNeeded}
@@ -2231,7 +2416,7 @@ export default function TechnicalPage() {
                                         />
                                     </div>
                                     <div className="space-y-1">
-                                        <label className="text-[10px] uppercase font-bold text-slate-505 block">Repuestos Utilizados</label>
+                                        <label className="text-[10px] uppercase font-bold text-slate-505 block">Repuestos Utilizados (notas / no catalogado)</label>
                                         <input
                                             type="text"
                                             value={editPartsUsed}
@@ -2239,6 +2424,10 @@ export default function TechnicalPage() {
                                             placeholder="Repuestos instalados"
                                             className="w-full bg-slate-955 border border-slate-855 rounded-xl px-3 py-1.5 text-slate-200 text-xs outline-none"
                                         />
+                                    </div>
+                                    <div className="space-y-1 col-span-2">
+                                        <label className="text-[10px] uppercase font-bold text-slate-505 block">Repuestos Utilizados (Catálogo)</label>
+                                        <PartsPicker catalog={partsCatalog} value={editPartsUsedItems} onChange={setEditPartsUsedItems} />
                                     </div>
                                 </div>
 

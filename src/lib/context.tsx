@@ -9,7 +9,13 @@ import {
     Ticket,
     User,
     Abono,
-    Rental
+    Rental,
+    PartCatalogItem,
+    GastoGeneral,
+    Venta,
+    Oficina,
+    PricingSetting,
+    DollarSettings
 } from '@/domain/types';
 import { Budget, BudgetTemplate, MachinePreset } from '@/domain/budget/types';
 import { BRANDING } from '@/config/branding';
@@ -46,6 +52,15 @@ export const defaultCobranzaConfig: CobranzaConfig = {
     sonidosActivos: true,
     volumenSonidos: 50,
     autoAlertasActivas: true
+};
+
+export const defaultDollarSettings: DollarSettings = {
+    id: 'singleton',
+    manualStockRate: 0,
+    lastOficialVenta: null,
+    lastBlueVenta: null,
+    lastFetchedAt: null,
+    lastFetchStatus: 'never',
 };
 
 const defaultGestiones: Gestion[] = [
@@ -96,6 +111,12 @@ interface ManagementContextType {
     setBudgets: React.Dispatch<React.SetStateAction<Budget[]>>;
     templates: BudgetTemplate[];
     machinePresets: MachinePreset[];
+    partsCatalog: PartCatalogItem[];
+    gastosGenerales: GastoGeneral[];
+    ventas: Venta[];
+    oficinas: Oficina[];
+    pricingSettings: PricingSetting[];
+    dollarSettings: DollarSettings;
 
     // Cobranza Additions
     gestiones: Gestion[];
@@ -130,6 +151,13 @@ interface ManagementContextType {
     // Budget catalog actions — backed by Turso (antes vivían solo en localStorage)
     addMachinePresetAction: (preset: MachinePreset, operation?: 'create' | 'update' | 'delete') => void;
     addTemplateAction: (template: BudgetTemplate, operation?: 'create' | 'update' | 'delete') => void;
+    addPartCatalogItemAction: (item: PartCatalogItem, operation?: 'create' | 'update' | 'delete') => void;
+    bulkUpdatePartsCatalogAction: (items: PartCatalogItem[]) => void;
+    addGastoGeneralAction: (gasto: GastoGeneral, operation?: 'create' | 'update' | 'delete') => void;
+    addVentaAction: (venta: Venta, operation?: 'create' | 'update' | 'delete') => void;
+    addOficinaAction: (oficina: Oficina, operation?: 'create' | 'update' | 'delete') => void;
+    addPricingSettingAction: (setting: PricingSetting, operation?: 'create' | 'update' | 'delete') => void;
+    updateDollarSettingsAction: (settings: DollarSettings) => void;
     // For bulk operations (e.g. CSV import) that already computed and set their own local
     // array via setClients/setMachines/etc — enqueues each item's sync individually instead
     // of going through the single-item *Action helpers, which would each redundantly
@@ -237,11 +265,11 @@ const autoTimestampState = (newState: any) => {
 // in this delta" — the isIncremental fallback below must not apply to them (see its
 // comment for what breaks otherwise: a delete resurrected by one stale in-flight poll
 // becomes permanent once the tombstone's short incremental window passes).
-const FULLY_FETCHED_TABLES = new Set(['templates', 'machinePresets']);
+const FULLY_FETCHED_TABLES = new Set(['templates', 'machinePresets', 'pricingSettings']);
 
 const mergeData = (local: any, server: any, lastSyncTime: Date | null, isIncremental: boolean = false, tombstonesByTable: Record<string, string[]> = {}, discardLocalOnly: boolean = false) => {
     const merged = { ...local };
-    const tables = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets', 'gestiones', 'payments', 'templates', 'machinePresets'];
+    const tables = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets', 'gestiones', 'payments', 'templates', 'machinePresets', 'partsCatalog', 'gastosGenerales', 'ventas', 'oficinas', 'pricingSettings'];
     const lastSync = lastSyncTime ? lastSyncTime.getTime() : 0;
 
     let deletedIds: string[] = [];
@@ -347,6 +375,12 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const [budgets, setBudgets] = useState<Budget[]>([]);
     const [templates, setTemplates] = useState<BudgetTemplate[]>([]);
     const [machinePresets, setMachinePresets] = useState<MachinePreset[]>([]);
+    const [partsCatalog, setPartsCatalog] = useState<PartCatalogItem[]>([]);
+    const [gastosGenerales, setGastosGenerales] = useState<GastoGeneral[]>([]);
+    const [ventas, setVentas] = useState<Venta[]>([]);
+    const [oficinas, setOficinas] = useState<Oficina[]>([]);
+    const [pricingSettings, setPricingSettings] = useState<PricingSetting[]>([]);
+    const [dollarSettings, setDollarSettings] = useState<DollarSettings>(defaultDollarSettings);
 
     // Cobranza states
     const [gestiones, setGestiones] = useState<Gestion[]>([]);
@@ -380,6 +414,11 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         payments: [] as Payment[],
         templates: [] as BudgetTemplate[],
         machinePresets: [] as MachinePreset[],
+        partsCatalog: [] as PartCatalogItem[],
+        gastosGenerales: [] as GastoGeneral[],
+        ventas: [] as Venta[],
+        oficinas: [] as Oficina[],
+        pricingSettings: [] as PricingSetting[],
         currentUser: null as User | null,
         lastSyncTime: null as Date | null,
     });
@@ -388,7 +427,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     useEffect(() => {
         stateRef.current = {
             clients, machines, readings, tickets, abonos, users, rentals, budgets, gestiones, payments,
-            templates, machinePresets,
+            templates, machinePresets, partsCatalog, gastosGenerales, ventas, oficinas, pricingSettings,
             currentUser, lastSyncTime,
         };
     });
@@ -698,7 +737,12 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         gestiones: stateRef.current.gestiones || [],
                         payments: stateRef.current.payments || [],
                         templates: stateRef.current.templates || [],
-                        machinePresets: stateRef.current.machinePresets || []
+                        machinePresets: stateRef.current.machinePresets || [],
+                        partsCatalog: stateRef.current.partsCatalog || [],
+                        gastosGenerales: stateRef.current.gastosGenerales || [],
+                        ventas: stateRef.current.ventas || [],
+                        oficinas: stateRef.current.oficinas || [],
+                        pricingSettings: stateRef.current.pricingSettings || []
                     };
                     if (!isInitialLoadDoneRef.current && typeof window !== 'undefined') {
                         try {
@@ -717,7 +761,12 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                                     gestiones: parsedLocal.gestiones || [],
                                     payments: parsedLocal.payments || [],
                                     templates: parsedLocal.templates || [],
-                                    machinePresets: parsedLocal.machinePresets || []
+                                    machinePresets: parsedLocal.machinePresets || [],
+                                    partsCatalog: parsedLocal.partsCatalog || [],
+                                    gastosGenerales: parsedLocal.gastosGenerales || [],
+                                    ventas: parsedLocal.ventas || [],
+                                    oficinas: parsedLocal.oficinas || [],
+                                    pricingSettings: parsedLocal.pricingSettings || []
                                 };
                             }
                         } catch (e) {
@@ -751,11 +800,23 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     setPayments(merged.payments || []);
                     setTemplates(merged.templates || []);
                     setMachinePresets(merged.machinePresets || []);
+                    setPartsCatalog(merged.partsCatalog || []);
+                    setGastosGenerales(merged.gastosGenerales || []);
+                    setVentas(merged.ventas || []);
+                    setOficinas(merged.oficinas || []);
+                    setPricingSettings(merged.pricingSettings || []);
 
                     if (parsed.cobranzaConfig) {
                         setCobranzaConfig({
                             ...defaultCobranzaConfig,
                             ...parsed.cobranzaConfig
+                        });
+                    }
+
+                    if (parsed.dollarSettings) {
+                        setDollarSettings({
+                            ...defaultDollarSettings,
+                            ...parsed.dollarSettings
                         });
                     }
 
@@ -771,9 +832,15 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         budgets: merged.budgets || [],
                         templates: merged.templates || [],
                         machinePresets: merged.machinePresets || [],
+                        partsCatalog: merged.partsCatalog || [],
+                        gastosGenerales: merged.gastosGenerales || [],
+                        ventas: merged.ventas || [],
+                        oficinas: merged.oficinas || [],
+                        pricingSettings: merged.pricingSettings || [],
                         gestiones: merged.gestiones || [],
                         payments: merged.payments || [],
-                        cobranzaConfig: parsed.cobranzaConfig || cobranzaConfig || defaultCobranzaConfig
+                        cobranzaConfig: parsed.cobranzaConfig || cobranzaConfig || defaultCobranzaConfig,
+                        dollarSettings: parsed.dollarSettings || dollarSettings || defaultDollarSettings
                     };
                     try {
                         localStorage.setItem('ms_data', JSON.stringify(stateToSave));
@@ -789,7 +856,7 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     // Regular create/update/delete already goes through the per-item sync
                     // queue (processSyncQueue) regardless of this block.
                     if (!isIncremental) {
-                        const tablesToCompare = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets', 'templates', 'machinePresets'];
+                        const tablesToCompare = ['clients', 'machines', 'readings', 'tickets', 'abonos', 'users', 'rentals', 'budgets', 'templates', 'machinePresets', 'partsCatalog', 'gastosGenerales', 'ventas', 'oficinas', 'pricingSettings'];
                         let localChangesExist = false;
                         for (const table of tablesToCompare) {
                             const serverList = parsed[table] || (table === 'abonos' ? parsed.plans || [] : []);
@@ -1075,6 +1142,11 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 setBudgets(parsed.budgets || []);
                 setTemplates(parsed.templates || []);
                 setMachinePresets(parsed.machinePresets || []);
+                setPartsCatalog(parsed.partsCatalog || []);
+                setGastosGenerales(parsed.gastosGenerales || []);
+                setVentas(parsed.ventas || []);
+                setOficinas(parsed.oficinas || []);
+                setPricingSettings(parsed.pricingSettings || []);
                 setGestiones(parsed.gestiones || defaultGestiones);
                 setPayments(parsed.payments || []);
 
@@ -1085,6 +1157,15 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     });
                 } else {
                     setCobranzaConfig(defaultCobranzaConfig);
+                }
+
+                if (parsed.dollarSettings) {
+                    setDollarSettings({
+                        ...defaultDollarSettings,
+                        ...parsed.dollarSettings
+                    });
+                } else {
+                    setDollarSettings(defaultDollarSettings);
                 }
             } catch (e) {
                 console.error(e);
@@ -1102,9 +1183,15 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             setBudgets([]);
             setTemplates([]);
             setMachinePresets([]);
+            setPartsCatalog([]);
+            setGastosGenerales([]);
+            setVentas([]);
+            setOficinas([]);
+            setPricingSettings([]);
             setGestiones([]);
             setPayments([]);
             setCobranzaConfig(defaultCobranzaConfig);
+            setDollarSettings(defaultDollarSettings);
         }
 
         if (typeof window !== 'undefined') {
@@ -1188,16 +1275,22 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             budgets: customState?.budgets ?? stateRef.current.budgets,
             templates,
             machinePresets,
+            partsCatalog,
+            gastosGenerales,
+            ventas,
+            oficinas,
+            pricingSettings,
             gestiones,
             payments,
-            cobranzaConfig
+            cobranzaConfig,
+            dollarSettings
         };
         try {
             localStorage.setItem('ms_data', JSON.stringify(stateToSave));
         } catch (e) {
             console.error("Error saving state to localStorage:", e);
         }
-    }, [templates, machinePresets, gestiones, payments, cobranzaConfig]);
+    }, [templates, machinePresets, partsCatalog, gastosGenerales, ventas, oficinas, pricingSettings, gestiones, payments, cobranzaConfig, dollarSettings]);
 
     // Generic enqueue helper
     const enqueueSyncItem = useCallback((entityId: string, entityType: SyncEntityType, operation: 'create' | 'update' | 'delete', payload: any) => {
@@ -1605,6 +1698,168 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         enqueueSyncItem(template.id, 'templates', operation, operation === 'delete' ? template : templateWithTime);
     }, [enqueueSyncItem]);
 
+    // Parts catalog action: catálogo de insumos/repuestos usado por Estadísticas y el
+    // selector de repuestos en tickets — mismo patrón que addMachinePresetAction.
+    const addPartCatalogItemAction = useCallback((item: PartCatalogItem, operation: 'create' | 'update' | 'delete' = 'create') => {
+        const nowStr = new Date().toISOString();
+        const itemWithTime = { ...item, updatedAt: nowStr, createdAt: item.createdAt || nowStr };
+
+        let updatedCatalog = stateRef.current.partsCatalog;
+        if (operation === 'delete') {
+            updatedCatalog = stateRef.current.partsCatalog.filter(p => p.id !== item.id);
+        } else if (operation === 'create') {
+            updatedCatalog = [...stateRef.current.partsCatalog, itemWithTime];
+        } else {
+            updatedCatalog = stateRef.current.partsCatalog.map(p => p.id === item.id ? itemWithTime : p);
+        }
+        setPartsCatalog(updatedCatalog);
+
+        try {
+            const raw = localStorage.getItem('ms_data');
+            const current = raw ? JSON.parse(raw) : {};
+            localStorage.setItem('ms_data', JSON.stringify({ ...current, partsCatalog: updatedCatalog }));
+        } catch (e) {}
+
+        enqueueSyncItem(item.id, 'partsCatalog', operation, operation === 'delete' ? item : itemWithTime);
+    }, [enqueueSyncItem]);
+
+    // Bulk update de catálogo (activar/desactivar en lote, recálculo de costoUnitario al
+    // cambiar el dólar manual): a diferencia de llamar addPartCatalogItemAction una vez por
+    // ítem en un forEach — que pisaría en silencio los cambios anteriores del mismo lote,
+    // mismo bug ya documentado con addRentalAction/tickets/lecturas en este archivo, porque
+    // cada llamada recalcularía sobre el mismo stateRef.current.partsCatalog desactualizado
+    // (solo se refresca un tick después via useEffect) — arma el array final una sola vez y
+    // hace un único setPartsCatalog + una única escritura a localStorage.
+    const bulkUpdatePartsCatalogAction = useCallback((changedItems: PartCatalogItem[]) => {
+        const nowStr = new Date().toISOString();
+        const changedById = new Map(changedItems.map(i => [i.id, { ...i, updatedAt: nowStr }]));
+        const updatedCatalog = stateRef.current.partsCatalog.map(p => changedById.get(p.id) ?? p);
+        setPartsCatalog(updatedCatalog);
+
+        try {
+            const raw = localStorage.getItem('ms_data');
+            const current = raw ? JSON.parse(raw) : {};
+            localStorage.setItem('ms_data', JSON.stringify({ ...current, partsCatalog: updatedCatalog }));
+        } catch (e) {}
+
+        changedItems.forEach(item => enqueueSyncItem(item.id, 'partsCatalog', 'update', changedById.get(item.id)));
+    }, [enqueueSyncItem]);
+
+    // Gasto general action: ledger de costos de estructura del negocio — mismo patrón
+    // que addPartCatalogItemAction.
+    const addGastoGeneralAction = useCallback((gasto: GastoGeneral, operation: 'create' | 'update' | 'delete' = 'create') => {
+        const nowStr = new Date().toISOString();
+        const gastoWithTime = { ...gasto, updatedAt: nowStr, createdAt: gasto.createdAt || nowStr };
+
+        let updatedGastos = stateRef.current.gastosGenerales;
+        if (operation === 'delete') {
+            updatedGastos = stateRef.current.gastosGenerales.filter(g => g.id !== gasto.id);
+        } else if (operation === 'create') {
+            updatedGastos = [...stateRef.current.gastosGenerales, gastoWithTime];
+        } else {
+            updatedGastos = stateRef.current.gastosGenerales.map(g => g.id === gasto.id ? gastoWithTime : g);
+        }
+        setGastosGenerales(updatedGastos);
+
+        try {
+            const raw = localStorage.getItem('ms_data');
+            const current = raw ? JSON.parse(raw) : {};
+            localStorage.setItem('ms_data', JSON.stringify({ ...current, gastosGenerales: updatedGastos }));
+        } catch (e) {}
+
+        enqueueSyncItem(gasto.id, 'gastosGenerales', operation, operation === 'delete' ? gasto : gastoWithTime);
+    }, [enqueueSyncItem]);
+
+    const addVentaAction = useCallback((venta: Venta, operation: 'create' | 'update' | 'delete' = 'create') => {
+        const nowStr = new Date().toISOString();
+        const ventaWithTime = { ...venta, updatedAt: nowStr, createdAt: venta.createdAt || nowStr };
+
+        let updatedVentas = stateRef.current.ventas;
+        if (operation === 'delete') {
+            updatedVentas = stateRef.current.ventas.filter(v => v.id !== venta.id);
+        } else if (operation === 'create') {
+            updatedVentas = [...stateRef.current.ventas, ventaWithTime];
+        } else {
+            updatedVentas = stateRef.current.ventas.map(v => v.id === venta.id ? ventaWithTime : v);
+        }
+        setVentas(updatedVentas);
+
+        try {
+            const raw = localStorage.getItem('ms_data');
+            const current = raw ? JSON.parse(raw) : {};
+            localStorage.setItem('ms_data', JSON.stringify({ ...current, ventas: updatedVentas }));
+        } catch (e) {}
+
+        enqueueSyncItem(venta.id, 'ventas', operation, operation === 'delete' ? venta : ventaWithTime);
+    }, [enqueueSyncItem]);
+
+    // Oficina action: sedes/ubicaciones dentro de un cliente — mismo patrón que
+    // addGastoGeneralAction/addVentaAction.
+    const addOficinaAction = useCallback((oficina: Oficina, operation: 'create' | 'update' | 'delete' = 'create') => {
+        const nowStr = new Date().toISOString();
+        const oficinaWithTime = { ...oficina, updatedAt: nowStr, createdAt: oficina.createdAt || nowStr };
+
+        let updatedOficinas = stateRef.current.oficinas;
+        if (operation === 'delete') {
+            updatedOficinas = stateRef.current.oficinas.filter(o => o.id !== oficina.id);
+        } else if (operation === 'create') {
+            updatedOficinas = [...stateRef.current.oficinas, oficinaWithTime];
+        } else {
+            updatedOficinas = stateRef.current.oficinas.map(o => o.id === oficina.id ? oficinaWithTime : o);
+        }
+        setOficinas(updatedOficinas);
+
+        try {
+            const raw = localStorage.getItem('ms_data');
+            const current = raw ? JSON.parse(raw) : {};
+            localStorage.setItem('ms_data', JSON.stringify({ ...current, oficinas: updatedOficinas }));
+        } catch (e) {}
+
+        enqueueSyncItem(oficina.id, 'oficinas', operation, operation === 'delete' ? oficina : oficinaWithTime);
+    }, [enqueueSyncItem]);
+
+    // Módulo Catálogo/Stock: guarda un override (global/categoría/unidad) de parámetros
+    // de precios. Mismo patrón self-contained que addOficinaAction — no depende de
+    // saveStateToLocalStorage para no acoplarse a su dependency array.
+    const addPricingSettingAction = useCallback((setting: PricingSetting, operation: 'create' | 'update' | 'delete' = 'create') => {
+        const nowStr = new Date().toISOString();
+        const settingWithTime = { ...setting, updatedAt: nowStr, createdAt: setting.createdAt || nowStr };
+
+        let updated = stateRef.current.pricingSettings;
+        if (operation === 'delete') {
+            updated = stateRef.current.pricingSettings.filter(p => p.id !== setting.id);
+        } else if (operation === 'create') {
+            updated = [...stateRef.current.pricingSettings, settingWithTime];
+        } else {
+            updated = stateRef.current.pricingSettings.map(p => p.id === setting.id ? settingWithTime : p);
+        }
+        setPricingSettings(updated);
+
+        try {
+            const raw = localStorage.getItem('ms_data');
+            const current = raw ? JSON.parse(raw) : {};
+            localStorage.setItem('ms_data', JSON.stringify({ ...current, pricingSettings: updated }));
+        } catch (e) {}
+
+        enqueueSyncItem(setting.id, 'pricingSettings', operation, operation === 'delete' ? setting : settingWithTime);
+    }, [enqueueSyncItem]);
+
+    // DollarSettings action: saves configuration singleton to Turso (mismo patrón que
+    // updateCobranzaConfigAction).
+    const updateDollarSettingsAction = useCallback((settings: DollarSettings) => {
+        const nowStr = new Date().toISOString();
+        const settingsWithTime = { ...settings, id: 'singleton' as const, updatedAt: nowStr };
+        setDollarSettings(settingsWithTime);
+
+        try {
+            const raw = localStorage.getItem('ms_data');
+            const current = raw ? JSON.parse(raw) : {};
+            localStorage.setItem('ms_data', JSON.stringify({ ...current, dollarSettings: settingsWithTime }));
+        } catch (e) {}
+
+        enqueueSyncItem('singleton', 'dollarSettings', 'update', settingsWithTime);
+    }, [enqueueSyncItem]);
+
     // CobranzaConfig action: saves configuration singleton to Turso
     const updateCobranzaConfigAction = useCallback((config: CobranzaConfig) => {
         const nowStr = new Date().toISOString();
@@ -1656,6 +1911,12 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 setBudgets,
                 templates,
                 machinePresets,
+                partsCatalog,
+                gastosGenerales,
+                ventas,
+                oficinas,
+                pricingSettings,
+                dollarSettings,
                 gestiones,
                 setGestiones,
                 payments,
@@ -1681,6 +1942,13 @@ export const ManagementProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 addPaymentAction,
                 addMachinePresetAction,
                 addTemplateAction,
+                addPartCatalogItemAction,
+                bulkUpdatePartsCatalogAction,
+                addGastoGeneralAction,
+                addVentaAction,
+                addOficinaAction,
+                addPricingSettingAction,
+                updateDollarSettingsAction,
                 bulkSyncAction,
                 resetSyncAction
             }}
