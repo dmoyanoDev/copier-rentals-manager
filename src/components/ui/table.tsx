@@ -42,7 +42,7 @@ export const TableRow = ({ className = '', children, ...props }: React.HTMLAttri
 
 export const TableHead = ({ className = '', children, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) => {
   return (
-    <th className={`px-6 py-3 font-semibold text-slate-300 ${className}`} {...props}>
+    <th className={`px-3 md:px-6 py-3 font-semibold text-slate-300 ${className}`} {...props}>
       {children}
     </th>
   );
@@ -52,7 +52,7 @@ export const TableHeaderCell = TableHead;
 
 export const TableCell = ({ className = '', children, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) => {
   return (
-    <td className={`px-6 py-4 text-slate-300 font-medium ${className}`} {...props}>
+    <td className={`px-3 md:px-6 py-4 text-slate-300 font-medium ${className}`} {...props}>
       {children}
     </td>
   );

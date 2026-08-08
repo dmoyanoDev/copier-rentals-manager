@@ -25,10 +25,10 @@ export const Modal = ({ isOpen, onClose, title, children, footer }: ModalProps) 
       <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0">
-          <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wider">{title}</h3>
+          <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wider min-w-0 truncate">{title}</h3>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-200 transition-colors p-1 rounded-lg hover:bg-slate-800 cursor-pointer"
+            className="text-slate-400 hover:text-slate-200 transition-colors p-1 rounded-lg hover:bg-slate-800 cursor-pointer shrink-0"
           >
             <X size={18} />
           </button>
@@ -41,7 +41,7 @@ export const Modal = ({ isOpen, onClose, title, children, footer }: ModalProps) 
 
         {/* Footer */}
         {footer && (
-          <div className="flex items-center justify-end px-6 py-4 bg-slate-950/40 border-t border-slate-800 space-x-3 shrink-0">
+          <div className="flex flex-wrap items-center justify-end gap-3 px-6 py-4 bg-slate-950/40 border-t border-slate-800 shrink-0">
             {footer}
           </div>
         )}

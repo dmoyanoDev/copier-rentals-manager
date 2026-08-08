@@ -277,7 +277,7 @@ export default function AbonosPage() {
                         onChange={(e) => setPrice(e.target.value)}
                         required
                     />
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <Input
                             label="Copias Incluidas *"
                             type="number"

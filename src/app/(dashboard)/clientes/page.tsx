@@ -1862,7 +1862,7 @@ export default function ClientsPage() {
                         onChange={(e) => setAddress(e.target.value)}
                         placeholder="Ej: Av. Rivadavia 4500, CABA"
                     />
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <Input
                             label="Teléfono de Contacto"
                             value={phone}
@@ -1877,7 +1877,7 @@ export default function ClientsPage() {
                             placeholder="Ej: contacto@empresa.com"
                         />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <Input
                             label="Deuda Inicial ($)"
                             type="number"
@@ -1984,7 +1984,7 @@ export default function ClientsPage() {
                         </div>
 
                         {/* Detalle Datos */}
-                        <div className="grid grid-cols-2 gap-4 text-xs">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                             <div>
                                 <span className="text-slate-500 font-bold block">CONTACTO</span>
                                 <span className="text-slate-300 block mt-1">{selectedClient.phone || 'Sin teléfono'}</span>
@@ -2498,7 +2498,7 @@ export default function ClientsPage() {
                                                         <span className="text-indigo-400">{g.type}</span>
                                                         <span className="text-[10px] text-slate-500">{g.date}</span>
                                                     </div>
-                                                    <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-400">
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] text-slate-400">
                                                         <span>Medio: {g.channel}</span>
                                                         <span>Resultado: {g.result}</span>
                                                     </div>

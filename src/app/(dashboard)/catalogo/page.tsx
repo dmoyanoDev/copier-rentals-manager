@@ -590,7 +590,7 @@ export default function CatalogoPage() {
             </div>
 
             {selectedIds.size > 0 && (
-                <div className="flex items-center gap-3 px-4 py-2.5 bg-indigo-950/20 border border-indigo-900/30 rounded-xl">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 bg-indigo-950/20 border border-indigo-900/30 rounded-xl">
                     <span className="text-[11px] text-indigo-300 font-semibold">{selectedIds.size} seleccionado{selectedIds.size === 1 ? '' : 's'}</span>
                     <Button variant="secondary" size="sm" onClick={() => handleBulkSetActive(true)}>Activar</Button>
                     <Button variant="secondary" size="sm" onClick={() => handleBulkSetActive(false)}>Desactivar</Button>

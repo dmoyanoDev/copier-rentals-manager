@@ -45,7 +45,7 @@ export const CardContent = ({ className = '', children, ...props }: React.HTMLAt
 
 export const CardFooter = ({ className = '', children, ...props }: React.HTMLAttributes<HTMLDivElement>) => {
   return (
-    <div className={`mt-5 flex items-center pt-0 ${className}`} {...props}>
+    <div className={`mt-5 flex flex-wrap items-center gap-2 pt-0 ${className}`} {...props}>
       {children}
     </div>
   );

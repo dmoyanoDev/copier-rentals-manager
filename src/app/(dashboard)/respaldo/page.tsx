@@ -1241,13 +1241,13 @@ export default function RespaldoPage() {
                 <div className="space-y-6 animate-fade-in">
                     {/* Filters Toolbar */}
                     <div className="p-4 bg-slate-955 border border-slate-850/60 rounded-xl space-y-3">
-                        <div className="flex justify-between items-center text-xs font-semibold text-slate-400">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 text-xs font-semibold text-slate-400">
                             <div className="flex items-center gap-2">
                                 <Filter size={14} /> Filtros de Auditoría
                             </div>
-                            <Button 
-                                variant="secondary" 
-                                size="sm" 
+                            <Button
+                                variant="secondary"
+                                size="sm"
                                 onClick={loadAuditLogs}
                                 disabled={isLoadingAudit}
                                 className="flex items-center gap-1 bg-slate-900 border-slate-850"

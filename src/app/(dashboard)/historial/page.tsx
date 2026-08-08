@@ -551,7 +551,7 @@ export default function HistoryPage() {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div className="text-xs bg-indigo-950/20 p-3 rounded-xl border border-indigo-900/30">
                                     <span className="text-slate-400 block">Contador Anterior</span>
                                     <span className="font-bold text-slate-205 font-mono-tabular mt-1 block">

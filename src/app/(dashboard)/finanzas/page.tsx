@@ -318,7 +318,7 @@ export default function FinanzasPage() {
                         </Button>
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-1 gap-4 max-w-xs">
+                    <div className="max-w-xs">
                         <Card className="p-4">
                             <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Total (según filtro)</p>
                             <p className="text-xl font-bold text-slate-100 mt-1">{formatCurrency(totalFiltrado)}</p>
@@ -389,7 +389,7 @@ export default function FinanzasPage() {
                         </Button>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4 max-w-md">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-md">
                         <Card className="p-4">
                             <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Total Facturado (según filtro)</p>
                             <p className="text-xl font-bold text-slate-100 mt-1">{formatCurrency(totalVentasMonto)}</p>
@@ -598,7 +598,7 @@ export default function FinanzasPage() {
                             />
                         )}
 
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <Input
                                 label="Cantidad *"
                                 type="number"
@@ -614,7 +614,7 @@ export default function FinanzasPage() {
                                 onChange={(e) => setVentaFecha(e.target.value)}
                             />
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <Input
                                 label="Precio de Venta ($) *"
                                 type="number"

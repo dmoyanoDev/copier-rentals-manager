@@ -931,7 +931,7 @@ export default function PresupuestosPage() {
         <div className="space-y-6 animate-fade-in relative print:p-0">
             {/* Header Tabs */}
             <div className="flex flex-wrap justify-between items-center border-b border-slate-800 pb-3 gap-4 print:hidden">
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                     <Button variant={activeTab === 'list' ? 'primary' : 'secondary'} size="sm" onClick={() => setActiveTab('list')}>
                         <FileText size={15} className="mr-1.5" /> Presupuestos ({budgets.length})
                     </Button>
@@ -1065,7 +1065,7 @@ export default function PresupuestosPage() {
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div>
                                             <span className="text-[9px] uppercase font-bold text-slate-500 block">Propuesto Para</span>
                                             <span className="font-bold text-slate-200 block mt-0.5">{selectedBudget.clientSnapshot.nombreRazonSocial}</span>
@@ -1095,7 +1095,7 @@ export default function PresupuestosPage() {
                                                         </span>
                                                     </div>
                                                     <p className="text-[10px] text-slate-400">{m.technicalSummary}</p>
-                                                    <div className="grid grid-cols-2 gap-4 text-[10px] pt-1">
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-[10px] pt-1">
                                                         <div>
                                                             <span className="font-bold text-slate-500 block uppercase">Especificaciones del Contrato</span>
                                                             <pre className="font-sans text-slate-350 whitespace-pre-wrap mt-0.5">{m.editableSpecsText}</pre>
@@ -1204,7 +1204,7 @@ export default function PresupuestosPage() {
                                     </div>
 
                                     {/* Commercial Terms block */}
-                                    <div className="border-t border-slate-850 pt-4 grid grid-cols-3 gap-4 text-[10px] text-slate-400">
+                                    <div className="border-t border-slate-850 pt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-[10px] text-slate-400">
                                         <div className="space-y-1.5">
                                             <span className="font-bold text-slate-300 block uppercase text-[8px] tracking-wider">Condiciones Comerciales</span>
                                             <p>Validez de la oferta: <strong>{selectedBudget.validezOferta}</strong></p>
@@ -1290,7 +1290,7 @@ export default function PresupuestosPage() {
                                 />
 
                                 {clientId && (
-                                    <div className="grid grid-cols-2 gap-4 animate-fade-in pt-1">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-fade-in pt-1">
                                         <Input
                                             label="Nombre / Razón Social *"
                                             value={clientName}
@@ -1342,7 +1342,7 @@ export default function PresupuestosPage() {
                             {/* Section 2: Type and Template */}
                             <div className="space-y-4">
                                 <h4 className="font-bold text-indigo-400 border-b border-slate-850 pb-1.5 uppercase text-[9px] tracking-wider">2. Tipo de Propuesta y Plantilla</h4>
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <Select
                                         label="Tipo de Presupuesto"
                                         value={tipo}
@@ -1818,7 +1818,7 @@ export default function PresupuestosPage() {
                             {/* Section 5: Totals, Discounts and Taxes */}
                             <div className="space-y-4">
                                 <h4 className="font-bold text-indigo-400 border-b border-slate-850 pb-1.5 uppercase text-[9px] tracking-wider">5. Configuración de IVA y Descuentos</h4>
-                                <div className="grid grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                     <Select
                                         label="Modo de IVA"
                                         value={ivaMode}
@@ -1890,7 +1890,7 @@ export default function PresupuestosPage() {
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4 border-b border-slate-850 pb-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-b border-slate-850 pb-4">
                                     <div>
                                         <span className="text-[9px] uppercase font-bold text-slate-500 block">Cliente Destinatario</span>
                                         <span className="font-bold text-slate-200 block mt-0.5">{clientName || <span className="text-slate-500 italic">[Nombre del Cliente]</span>}</span>
@@ -1920,7 +1920,7 @@ export default function PresupuestosPage() {
                                                     </span>
                                                 </div>
                                                 <p className="text-[10px] text-slate-400">{m.technicalSummary}</p>
-                                                <div className="grid grid-cols-2 gap-4 text-[10px] pt-1">
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-[10px] pt-1">
                                                     <div>
                                                         <pre className="font-sans text-slate-350 whitespace-pre-wrap">{m.editableSpecsText}</pre>
                                                     </div>
@@ -2023,7 +2023,7 @@ export default function PresupuestosPage() {
                                     </span>
                                 </div>
 
-                                <div className="border-t border-slate-850 pt-4 grid grid-cols-3 gap-4 text-[10px] text-slate-400">
+                                <div className="border-t border-slate-850 pt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-[10px] text-slate-400">
                                     <div className="space-y-1">
                                         <span className="font-bold text-slate-350 block uppercase text-[8px] tracking-wider">Cláusulas</span>
                                         <p>Validez oferta: <strong>{validezOferta}</strong></p>
@@ -2166,7 +2166,7 @@ export default function PresupuestosPage() {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <span className="text-[9px] uppercase font-bold text-slate-500 block">PROPUESTO PARA</span>
                                 <span className="font-bold block text-sm mt-0.5">{selectedBudget.clientSnapshot.nombreRazonSocial}</span>
@@ -2194,7 +2194,7 @@ export default function PresupuestosPage() {
                                             <span className="font-bold font-mono-tabular">{formatCurrency(m.abonoBase)} / base</span>
                                         </div>
                                         <p className="text-[10px]">{m.technicalSummary}</p>
-                                        <div className="grid grid-cols-2 gap-4 text-[10px] pt-1">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-[10px] pt-1">
                                             <div>
                                                 <pre className="font-sans whitespace-pre-wrap">{m.editableSpecsText}</pre>
                                             </div>
@@ -2272,7 +2272,7 @@ export default function PresupuestosPage() {
                         </div>
 
                         {/* Commercial Terms block */}
-                        <div className="border-t pt-4 grid grid-cols-3 gap-4 text-[10px]">
+                        <div className="border-t pt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-[10px]">
                             <div className="space-y-1">
                                 <span className="font-bold block uppercase text-[8px] tracking-wider">Condiciones Comerciales</span>
                                 <p>Validez de la oferta: <strong>{selectedBudget.validezOferta}</strong></p>
@@ -2415,7 +2415,7 @@ export default function PresupuestosPage() {
                 }
             >
                 <form className="space-y-4 text-xs" onSubmit={handleSavePreset}>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <Input
                             label="Marca *"
                             value={presetMarca}
@@ -2437,7 +2437,7 @@ export default function PresupuestosPage() {
                         onChange={(e) => setPresetNombre(e.target.value)}
                         placeholder="Ej: Ricoh IM 430F Corporativo"
                     />
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <Select
                             label="Tipo de Copiado"
                             value={presetTipo}

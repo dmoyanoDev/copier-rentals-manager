@@ -1198,19 +1198,19 @@ export default function TechnicalPage() {
 
                     {/* Filter toolbar */}
                     <div className="p-4 bg-slate-955 border border-slate-850/60 rounded-xl space-y-3">
-                        <div className="flex justify-between items-center text-xs font-semibold text-slate-400">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 text-xs font-semibold text-slate-400">
                             <div className="flex items-center gap-2">
                                 <Filter size={14} /> Filtros de Asistencia
                             </div>
-                            <div className="flex gap-2">
-                                <Button 
-                                    variant="secondary" 
-                                    size="sm" 
-                                    onClick={handleRunSlaCron} 
+                            <div className="flex flex-wrap gap-2">
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={handleRunSlaCron}
                                     disabled={isSimulatingCron}
                                     className="flex items-center gap-1 bg-slate-900 border-slate-800"
                                 >
-                                    <RefreshCw size={12} className={isSimulatingCron ? 'animate-spin' : ''} /> 
+                                    <RefreshCw size={12} className={isSimulatingCron ? 'animate-spin' : ''} />
                                     🚀 Correr Cron SLA y Escalamiento
                                 </Button>
                                 <Button variant="primary" size="sm" onClick={handleOpenCreate}>
@@ -1632,7 +1632,7 @@ export default function TechnicalPage() {
                 <div className="space-y-4 animate-fade-in">
                     {/* Filter / Search tech */}
                     <div className="p-4 bg-slate-950 border border-slate-850/60 rounded-xl space-y-3">
-                        <div className="flex justify-between items-center text-xs font-semibold text-slate-400">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 text-xs font-semibold text-slate-400">
                             <div className="flex items-center gap-2">
                                 <Filter size={14} /> Filtros de Técnicos
                             </div>
@@ -1790,7 +1790,7 @@ export default function TechnicalPage() {
                                 <h3 className="font-bold text-slate-100 text-sm">Habilitación de Canales de Alerta</h3>
                                 <p className="text-[10px] text-slate-450">Define qué redes de despacho estarán activas en todo el sistema técnico.</p>
                                 
-                                <div className="grid grid-cols-2 gap-4 mt-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
                                     <label className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${
                                         configEmailEnabled ? 'bg-slate-900 border-indigo-500 text-slate-100' : 'bg-slate-955 border-slate-855 text-slate-500'
                                     }`}>
@@ -1924,7 +1924,7 @@ export default function TechnicalPage() {
                 <div className="space-y-4 animate-fade-in">
                     {/* Log Filter toolbar */}
                     <div className="p-4 bg-slate-950 border border-slate-850/60 rounded-xl space-y-3">
-                        <div className="flex justify-between items-center text-xs font-semibold text-slate-450">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 text-xs font-semibold text-slate-450">
                             <div className="flex items-center gap-2">
                                 <History size={14} /> Auditoría e Historial General de Alertas
                             </div>
@@ -2218,7 +2218,7 @@ export default function TechnicalPage() {
                             )}
 
                             {/* Actions toolbar */}
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 <button 
                                     onClick={() => handleManualResendNotification('asignado')}
                                     className="px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-[10px] font-bold hover:bg-slate-900 transition-all text-center cursor-pointer"
@@ -2246,7 +2246,7 @@ export default function TechnicalPage() {
                             </div>
 
                             {/* Priority and Category block */}
-                            <div className="grid grid-cols-2 gap-4 bg-slate-955/40 p-4 rounded-xl border border-slate-850/60">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-955/40 p-4 rounded-xl border border-slate-850/60">
                                 <div>
                                     <span className="text-[9px] uppercase font-bold text-slate-505 block">Prioridad</span>
                                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-extrabold mt-1 uppercase ${
@@ -2330,7 +2330,7 @@ export default function TechnicalPage() {
                                     </button>
                                 </div>
                                 
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div>
                                         <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Estado</label>
                                         <select
@@ -2400,7 +2400,7 @@ export default function TechnicalPage() {
                                     />
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div className="space-y-1 col-span-2">
                                         <label className="text-[10px] uppercase font-bold text-slate-505 block">Repuestos Necesarios (Catálogo)</label>
                                         <PartsPicker catalog={partsCatalog} value={editPartsNeededItems} onChange={setEditPartsNeededItems} />
@@ -2431,7 +2431,7 @@ export default function TechnicalPage() {
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div className="space-y-1">
                                         <label className="text-[10px] uppercase font-bold text-slate-505 block">Costo de Mano de Obra ($)</label>
                                         <input
@@ -2529,7 +2529,7 @@ export default function TechnicalPage() {
                             </div>
 
                             {/* Zone and Brands Specialty */}
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="p-3 bg-slate-955/20 border border-slate-850/30 rounded-xl space-y-1">
                                     <span className="text-[9px] uppercase font-bold text-slate-505 block">Zona de Cobertura</span>
                                     <span className="font-bold text-slate-250 block">{selectedTech.zone || 'General'}</span>
@@ -2629,7 +2629,7 @@ export default function TechnicalPage() {
                 }
             >
                 <form className="space-y-4" onSubmit={handleSaveTech}>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <Input
                             label="Nombre y Apellido *"
                             value={formTechFullname}
@@ -2658,7 +2658,7 @@ export default function TechnicalPage() {
                         </div>
                     )}
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <Input
                             label="Teléfono de Contacto"
                             value={formTechPhone}
@@ -2673,7 +2673,7 @@ export default function TechnicalPage() {
                         />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <Input
                             label="Zona o Localidad de Cobertura"
                             value={formTechZone}
@@ -2688,7 +2688,7 @@ export default function TechnicalPage() {
                         />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <Select
                             label="Disponibilidad Actual"
                             value={formTechAvailability}
@@ -2746,7 +2746,7 @@ export default function TechnicalPage() {
                 }
             >
                 <form className="space-y-4" onSubmit={handleCreateTicket}>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <label className={`flex items-center justify-center p-3 rounded-xl border cursor-pointer transition-all ${
                             newClientType === 'existente' 
                                 ? 'bg-slate-900 border-indigo-500 text-slate-100 font-bold' 
@@ -2812,7 +2812,7 @@ export default function TechnicalPage() {
                                 value={newClientName}
                                 onChange={(e) => setNewClientName(e.target.value)}
                             />
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <Input
                                     label="Dirección Completa"
                                     value={newClientAddress}
@@ -2824,7 +2824,7 @@ export default function TechnicalPage() {
                                     onChange={(e) => setNewClientContact(e.target.value)}
                                 />
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <Input
                                     label="Teléfono / WhatsApp"
                                     value={newClientPhone}
@@ -2838,7 +2838,7 @@ export default function TechnicalPage() {
                                     onChange={(e) => setNewClientEmail(e.target.value)}
                                 />
                             </div>
-                            <div className="grid grid-cols-2 gap-3 border-t border-slate-855 pt-3 mt-1">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-slate-855 pt-3 mt-1">
                                 <Input
                                     label="Modelo del Equipo *"
                                     value={newMachineDesc}
@@ -2855,7 +2855,7 @@ export default function TechnicalPage() {
                         </div>
                     )}
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <Select
                             label="Categoría *"
                             value={newCategory}
@@ -2886,7 +2886,7 @@ export default function TechnicalPage() {
                         placeholder="Ej: El papel se traba en el fusor / Código de error SC340..."
                     />
 
-                    <div className="grid grid-cols-2 gap-4 pt-1.5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1.5">
                         <Select
                             label="Asignar Técnico Responsable"
                             disabled={shouldAutoAssignOnCreate}

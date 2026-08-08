@@ -100,7 +100,7 @@ const PageHeaderActions: React.FC = () => {
     };
 
     return (
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-y-2 gap-x-3">
             {/* Cloud Database Sync Status Indicator */}
             <button
                 onClick={() => pendingCount > 0 ? setShowPendingModal(true) : syncFromDatabase(null, true)}

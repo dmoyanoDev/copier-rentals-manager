@@ -717,7 +717,7 @@ export default function ReadingsPage() {
                                 </span>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div className="text-xs bg-indigo-950/20 p-3 rounded-xl border border-indigo-900/30">
                                     <span className="text-slate-400 block text-[9px] uppercase font-bold">Contador Anterior</span>
                                     <span className="font-bold text-slate-205 font-mono-tabular mt-1 block">
@@ -865,7 +865,7 @@ export default function ReadingsPage() {
                                         ))}
                                     </select>
                                 ) : (
-                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                                         <input
                                             type="text"
                                             placeholder="Nombre / Razón Social"
@@ -925,7 +925,7 @@ export default function ReadingsPage() {
                                         ))}
                                     </select>
                                 ) : (
-                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                                         <input
                                             type="text"
                                             placeholder="Nombre del Abono (Ej: Plan Pro 10k)"
@@ -990,7 +990,7 @@ export default function ReadingsPage() {
                                         ))}
                                     </select>
                                 ) : (
-                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                                         <input
                                             type="text"
                                             placeholder="Marca (Ej: Ricoh, Konica)"

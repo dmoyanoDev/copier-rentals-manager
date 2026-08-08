@@ -653,7 +653,7 @@ export default function RentalsPage() {
                                     </span>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-3 border-t border-slate-850 pt-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-slate-850 pt-3">
                                     <div>
                                         <span className="text-[9px] uppercase font-bold text-slate-550 block tracking-wider">Equipo</span>
                                         <span className="font-bold text-slate-300">
@@ -776,7 +776,7 @@ export default function RentalsPage() {
                                 {selectedRental.status === 'activo' && (
                                     <div className="border-t border-slate-850 pt-3 space-y-2">
                                         <span className="text-[9px] uppercase font-bold text-slate-550 block tracking-wider">Gestión Contractual</span>
-                                        <div className="grid grid-cols-2 gap-2">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                             <Button variant="secondary" size="sm" onClick={handleRenewRental}>
                                                 Renovar Alquiler
                                             </Button>
@@ -846,7 +846,7 @@ export default function RentalsPage() {
                                         ))}
                                     </select>
                                 ) : (
-                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                                         <input
                                             type="text"
                                             placeholder="Nombre / Razón Social"
@@ -906,7 +906,7 @@ export default function RentalsPage() {
                                         ))}
                                     </select>
                                 ) : (
-                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                                         <input
                                             type="text"
                                             placeholder="Nombre del Abono (Ej: Plan Pro 5k)"
@@ -971,7 +971,7 @@ export default function RentalsPage() {
                                         ))}
                                     </select>
                                 ) : (
-                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                                         <input
                                             type="text"
                                             placeholder="Marca (Ej: Ricoh, Konica)"
@@ -1005,7 +1005,7 @@ export default function RentalsPage() {
                             </div>
 
                             {/* STEP 4: DETALLES CONTRATO */}
-                            <div className="space-y-3 pt-3 border-t border-slate-850 grid grid-cols-2 gap-3 text-xs">
+                            <div className="space-y-3 pt-3 border-t border-slate-850 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                                 <div className="space-y-1 col-span-2">
                                     <label className="text-[10px] uppercase font-bold text-slate-500 block">Fecha de Inicio Contrato</label>
                                     <input
